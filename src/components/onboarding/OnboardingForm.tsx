@@ -93,6 +93,12 @@ const OnboardingForm = () => {
           <p className="mt-2 text-sm text-muted-foreground">
             Tell us about yourself so we can represent you perfectly.
           </p>
+          <Link to="/">
+            <Button variant="ghost" size="sm" className="mt-3 gap-1 text-xs text-muted-foreground">
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Back to Homepage
+            </Button>
+          </Link>
         </div>
 
         {/* Step indicator */}
