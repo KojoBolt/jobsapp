@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Loader2,
 } from "lucide-react";
+import VerifiedHumanBadge from "@/components/dashboard/VerifiedHumanBadge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -227,6 +228,7 @@ const ResumeManager = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-foreground">{resume.name}</span>
+                    <VerifiedHumanBadge variant="emerald" size="sm" />
                     {resume.isPrimary && (
                       <Badge variant="interview" className="text-[10px]">
                         <Star className="mr-0.5 h-2.5 w-2.5" /> Primary

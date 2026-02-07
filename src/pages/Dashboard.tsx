@@ -2,6 +2,7 @@ import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import StatsCards from "@/components/dashboard/StatsCards";
 import ApplicationFeed from "@/components/dashboard/ApplicationFeed";
 import PowerUpWidget from "@/components/dashboard/PowerUpWidget";
+import DeployButton from "@/components/dashboard/DeployButton";
 import RecommendedProducts from "@/components/accelerators/RecommendedProducts";
 
 const Dashboard = () => {
@@ -14,6 +15,7 @@ const Dashboard = () => {
             Track your application campaign in real-time.
           </p>
         </div>
+        <DeployButton />
         <PowerUpWidget />
         <StatsCards />
         <ApplicationFeed />

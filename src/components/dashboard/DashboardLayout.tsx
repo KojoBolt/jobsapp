@@ -31,6 +31,7 @@ import CrispChat from "@/components/dashboard/CrispChat";
 import LegalModal from "@/components/legal/LegalModal";
 import TermsOfService from "@/components/legal/TermsOfService";
 import PrivacyPolicy from "@/components/legal/PrivacyPolicy";
+import CurrentStrategy from "@/components/dashboard/CurrentStrategy";
 
 const navItems = [
   { title: "Overview", url: "/dashboard", icon: LayoutDashboard },
@@ -97,6 +98,16 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            {/* Current Strategy */}
+            <SidebarGroup className="mt-4">
+              <SidebarGroupLabel className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
+                Strategy
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <CurrentStrategy />
               </SidebarGroupContent>
             </SidebarGroup>
 
