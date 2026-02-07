@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/sidebar";
 import { NavLink } from "@/components/NavLink";
 import SupportPanel from "@/components/dashboard/SupportPanel";
+import CrispChat from "@/components/dashboard/CrispChat";
 import LegalModal from "@/components/legal/LegalModal";
 import TermsOfService from "@/components/legal/TermsOfService";
 import PrivacyPolicy from "@/components/legal/PrivacyPolicy";
@@ -158,6 +159,8 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
 
         {/* Floating Support Button */}
         <SupportPanel />
+        {/* Crisp Live Chat Widget */}
+        <CrispChat />
       </div>
     </SidebarProvider>
   );

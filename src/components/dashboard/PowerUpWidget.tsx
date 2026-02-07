@@ -57,10 +57,10 @@ const PowerUpWidget = () => {
         </div>
 
         <Button
-          variant="hero"
+          variant="gold"
           size="lg"
           onClick={() => setShowCheckout(true)}
-          className="relative gap-2"
+          className="relative gap-2 animate-pulse-gold"
         >
           <Badge
             variant="interview"

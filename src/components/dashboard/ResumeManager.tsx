@@ -17,21 +17,24 @@ import {
   Trash2,
   Plus,
   CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface ResumeVersion {
   id: string;
   name: string;
   fileName: string;
+  filePath: string;
   isPrimary: boolean;
   uploadedAt: string;
 }
 
 const initialResumes: ResumeVersion[] = [
-  { id: "r1", name: "Tech Resume", fileName: "resume_swe_2026.pdf", isPrimary: true, uploadedAt: "Feb 1, 2026" },
-  { id: "r2", name: "PM Resume", fileName: "resume_pm_2026.pdf", isPrimary: false, uploadedAt: "Jan 28, 2026" },
-  { id: "r3", name: "Creative Resume", fileName: "resume_creative.pdf", isPrimary: false, uploadedAt: "Jan 20, 2026" },
+  { id: "r1", name: "Tech Resume", fileName: "resume_swe_2026.pdf", filePath: "", isPrimary: true, uploadedAt: "Feb 1, 2026" },
+  { id: "r2", name: "PM Resume", fileName: "resume_pm_2026.pdf", filePath: "", isPrimary: false, uploadedAt: "Jan 28, 2026" },
+  { id: "r3", name: "Creative Resume", fileName: "resume_creative.pdf", filePath: "", isPrimary: false, uploadedAt: "Jan 20, 2026" },
 ];
 
 const ResumeManager = () => {
@@ -39,6 +42,7 @@ const ResumeManager = () => {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newFile, setNewFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
 
   const setPrimary = (id: string) => {
@@ -46,17 +50,23 @@ const ResumeManager = () => {
     toast({ title: "Primary Resume Updated", description: "Future applications will use this resume." });
   };
 
-  const deleteResume = (id: string) => {
+  const deleteResume = async (id: string) => {
     const target = resumes.find((r) => r.id === id);
     if (target?.isPrimary) {
       toast({ title: "Cannot Delete", description: "Set another resume as primary first.", variant: "destructive" });
       return;
     }
+
+    // Delete from storage if it has a file path
+    if (target?.filePath) {
+      await supabase.storage.from("resumes").remove([target.filePath]);
+    }
+
     setResumes(resumes.filter((r) => r.id !== id));
     toast({ title: "Resume Removed", description: `"${target?.name}" has been deleted.` });
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!newName.trim() || !newFile) {
       toast({ title: "Missing Info", description: "Please provide a name and file.", variant: "destructive" });
       return;
@@ -65,18 +75,75 @@ const ResumeManager = () => {
       toast({ title: "Limit Reached", description: "You can store up to 5 resume versions.", variant: "destructive" });
       return;
     }
-    const newResume: ResumeVersion = {
-      id: `r${Date.now()}`,
-      name: newName.trim(),
-      fileName: newFile.name,
-      isPrimary: resumes.length === 0,
-      uploadedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-    };
-    setResumes([...resumes, newResume]);
-    setNewName("");
-    setNewFile(null);
-    setUploadOpen(false);
-    toast({ title: "Resume Uploaded ✓", description: `"${newResume.name}" added to your vault.` });
+    if (newFile.size > 10 * 1024 * 1024) {
+      toast({ title: "File Too Large", description: "Maximum file size is 10MB.", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      // Get current user for folder path
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id ?? "anonymous";
+      const timestamp = Date.now();
+      const sanitizedName = newFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `${userId}/${timestamp}_${sanitizedName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("resumes")
+        .upload(filePath, newFile, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        // If auth error, still add locally with demo note
+        if (uploadError.message.includes("security") || uploadError.message.includes("auth") || uploadError.message.includes("policy")) {
+          const newResume: ResumeVersion = {
+            id: `r${timestamp}`,
+            name: newName.trim(),
+            fileName: newFile.name,
+            filePath: "",
+            isPrimary: resumes.length === 0,
+            uploadedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          };
+          setResumes([...resumes, newResume]);
+          setNewName("");
+          setNewFile(null);
+          setUploadOpen(false);
+          toast({
+            title: "Resume Added (Local) ✓",
+            description: "Sign in to enable cloud storage for your resumes.",
+          });
+          return;
+        }
+        throw uploadError;
+      }
+
+      const newResume: ResumeVersion = {
+        id: `r${timestamp}`,
+        name: newName.trim(),
+        fileName: newFile.name,
+        filePath,
+        isPrimary: resumes.length === 0,
+        uploadedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      };
+      setResumes([...resumes, newResume]);
+      setNewName("");
+      setNewFile(null);
+      setUploadOpen(false);
+      toast({ title: "Resume Uploaded ✓", description: `"${newResume.name}" stored securely in the cloud.` });
+    } catch (err) {
+      console.error("Upload error:", err);
+      toast({
+        title: "Upload Failed",
+        description: err instanceof Error ? err.message : "Something went wrong.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -128,8 +195,15 @@ const ResumeManager = () => {
                 className="hidden"
                 onChange={(e) => e.target.files?.[0] && setNewFile(e.target.files[0])}
               />
-              <Button variant="hero" className="w-full" onClick={handleUpload}>
-                Upload Resume
+              <Button variant="hero" className="w-full gap-2" onClick={handleUpload} disabled={uploading}>
+                {uploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  "Upload Resume"
+                )}
               </Button>
             </div>
           </DialogContent>
@@ -156,6 +230,11 @@ const ResumeManager = () => {
                     {resume.isPrimary && (
                       <Badge variant="interview" className="text-[10px]">
                         <Star className="mr-0.5 h-2.5 w-2.5" /> Primary
+                      </Badge>
+                    )}
+                    {resume.filePath && (
+                      <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                        Cloud
                       </Badge>
                     )}
                   </div>

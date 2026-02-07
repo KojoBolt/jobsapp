@@ -54,6 +54,12 @@
     --status-reviewing: 45 93% 47%;
     --status-submitted: 213 94% 55%;
     --status-interview: 142 71% 45%;
+
+    /* Premium gold */
+    --gold: 43 96% 56%;
+    --gold-foreground: 0 0% 8%;
+    --glow-gold: 0 0 20px hsl(43 96% 56% / 0.4), 0 0 60px hsl(43 96% 56% / 0.15);
+    --glow-gold-strong: 0 0 30px hsl(43 96% 56% / 0.6), 0 0 80px hsl(43 96% 56% / 0.25);
   }
 }
 
@@ -93,6 +99,14 @@
 
   .glow-primary-strong {
     box-shadow: var(--glow-primary-strong);
+  }
+
+  .glow-gold {
+    box-shadow: var(--glow-gold);
+  }
+
+  .glow-gold-strong {
+    box-shadow: var(--glow-gold-strong);
   }
 
   .gradient-text {
