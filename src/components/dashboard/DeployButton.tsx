@@ -7,6 +7,8 @@ import DeployTerminal from "./deploy/DeployTerminal";
 import PriorityVisualizer from "./deploy/PriorityVisualizer";
 import ApplicationGrid from "./deploy/ApplicationGrid";
 import ReviewerActivity from "./deploy/ReviewerActivity";
+import ReviewerQueue from "./deploy/ReviewerQueue";
+import HumanQualityCounter from "./deploy/HumanQualityCounter";
 import LiveStats from "./deploy/LiveStats";
 import CompletionModal from "./deploy/CompletionModal";
 
@@ -256,15 +258,41 @@ const DeployButton = () => {
                   </motion.div>
                 </div>
 
-                {/* Right Column: Reviewer Activity */}
+                {/* Right Column: Reviewer Widgets */}
                 <div className="space-y-4">
                   {(phase === "priority" || phase === "orchestration") && (
                     <motion.div
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.1 }}
+                    >
+                      <ReviewerActivity
+                        industry="Engineering"
+                        onVerified={() => setHumanStamps((prev) => prev + 1)}
+                      />
+                    </motion.div>
+                  )}
+
+                  {phase === "orchestration" && (
+                    <motion.div
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.2 }}
                     >
-                      <ReviewerActivity />
+                      <ReviewerQueue
+                        totalProcessed={totalProcessed}
+                        industry="Engineering"
+                      />
+                    </motion.div>
+                  )}
+
+                  {(phase === "priority" || phase === "orchestration") && (
+                    <motion.div
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3 }}
+                    >
+                      <HumanQualityCounter count={humanStamps} />
                     </motion.div>
                   )}
 
