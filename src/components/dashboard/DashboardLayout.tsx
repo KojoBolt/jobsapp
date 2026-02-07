@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Activity,
+  Users,
   Gift,
   Settings,
   Zap,
@@ -37,7 +38,8 @@ const navItems = [
   { title: "Refinement Engine", url: "/refinement", icon: Sparkles },
   { title: "Resume Manager", url: "/profile", icon: FileText },
   { title: "Career Accelerators", url: "/accelerators", icon: ShoppingBag },
-  { title: "Invite a Friend", url: "/referrals", icon: Gift },
+  { title: "Referrals", url: "/referrals", icon: Users },
+  { title: "Invite a Friend", url: "/invite", icon: Gift },
   { title: "Support", url: "/support", icon: LifeBuoy },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
@@ -52,6 +54,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const getPageTitle = () => {
     if (location.pathname === "/accelerators") return "Career Accelerators";
     if (location.pathname === "/referrals") return "Referral Network";
+    if (location.pathname === "/invite") return "Invite a Friend";
     if (location.pathname === "/profile") return "Resume Manager";
     if (location.pathname === "/support") return "Support Hub";
     if (location.pathname === "/settings") return "Settings";
