@@ -7,6 +7,7 @@ import {
   Settings,
   Zap,
   LogOut,
+  Sparkles,
 } from "lucide-react";
 import {
   Sidebar,
@@ -25,6 +26,7 @@ import { NavLink } from "@/components/NavLink";
 const navItems = [
   { title: "Overview", url: "/dashboard", icon: LayoutDashboard },
   { title: "Applications", url: "/dashboard", icon: Activity },
+  { title: "Refinement Engine", url: "/refinement", icon: Sparkles },
   { title: "Referrals", url: "/referrals", icon: Users },
   { title: "Settings", url: "/dashboard", icon: Settings },
 ];

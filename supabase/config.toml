@@ -1,0 +1,4 @@
+project_id = "pempjibekapukdoethro"
+
+[functions.humanize]
+verify_jwt = false
