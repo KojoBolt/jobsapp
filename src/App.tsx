@@ -13,6 +13,7 @@ import Support from "./pages/Support";
 import Settings from "./pages/Settings";
 import CareerAccelerators from "./pages/CareerAccelerators";
 import PurchaseSuccess from "./pages/PurchaseSuccess";
+import InviteFriend from "./pages/InviteFriend";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
           <Route path="/settings" element={<Settings />} />
           <Route path="/accelerators" element={<CareerAccelerators />} />
           <Route path="/purchase-success" element={<PurchaseSuccess />} />
+          <Route path="/invite" element={<InviteFriend />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
