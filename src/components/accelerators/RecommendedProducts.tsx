@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Eye, BookOpen, Video, FileText } from "lucide-react";
+import { Sparkles, Eye, BookOpen, Video, FileText, ShoppingCart } from "lucide-react";
 import { products, type Product } from "@/data/products";
 import ProductModal from "./ProductModal";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 const categoryIcons: Record<string, React.ElementType> = {
   "E-Book": BookOpen,
@@ -19,17 +20,39 @@ const categoryIcons: Record<string, React.ElementType> = {
 const RecommendedProducts = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   // Show top 3 paid products as recommendations
   const recommended = products.filter((p) => !p.isFree).slice(0, 3);
 
-  const handlePurchase = (product: Product) => {
+  const handlePurchase = async (product: Product) => {
     setModalOpen(false);
-    toast({
-      title: "Purchase Successful!",
-      description: `"${product.title}" has been added to your library.`,
-    });
+    setIsLoading(true);
+    try {
+      const callbackUrl = `${window.location.origin}/purchase-success?product=${encodeURIComponent(product.title)}`;
+      const { data, error } = await supabase.functions.invoke("paystack-checkout", {
+        body: {
+          email: "customer@jobapp.com",
+          amount: product.memberPrice,
+          productId: product.id,
+          productTitle: product.title,
+          callbackUrl,
+        },
+      });
+      if (error) throw error;
+      if (data?.authorization_url) {
+        window.location.href = data.authorization_url;
+      }
+    } catch {
+      toast({
+        title: "Payment Error",
+        description: "Unable to initiate checkout. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -79,10 +102,25 @@ const RecommendedProducts = () => {
                     ${product.originalPrice}
                   </span>
                 </div>
-                <Button variant="outline" size="sm" className="mt-auto w-full text-xs">
-                  <Eye className="mr-1 h-3 w-3" />
-                  Quick View
-                </Button>
+                <div className="mt-auto flex gap-1.5">
+                  <Button variant="outline" size="sm" className="flex-1 text-xs">
+                    <Eye className="mr-1 h-3 w-3" />
+                    View
+                  </Button>
+                  <Button
+                    variant="gold"
+                    size="sm"
+                    className="flex-1 text-xs font-bold"
+                    disabled={isLoading}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePurchase(product);
+                    }}
+                  >
+                    <ShoppingCart className="mr-1 h-3 w-3" />
+                    Buy
+                  </Button>
+                </div>
               </div>
             );
           })}
@@ -93,6 +131,7 @@ const RecommendedProducts = () => {
           open={modalOpen}
           onOpenChange={setModalOpen}
           onPurchase={handlePurchase}
+          isLoading={isLoading}
         />
       </CardContent>
     </Card>

@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Eye, BookOpen, Video, FileText, Gift } from "lucide-react";
+import { Eye, BookOpen, Video, FileText, Gift, ShoppingCart } from "lucide-react";
 import type { Product } from "@/data/products";
 
 const categoryIcons: Record<string, React.ElementType> = {
@@ -15,9 +15,11 @@ const categoryIcons: Record<string, React.ElementType> = {
 interface ProductCardProps {
   product: Product;
   onQuickView: (product: Product) => void;
+  onBuyNow?: (product: Product) => void;
+  isLoading?: boolean;
 }
 
-const ProductCard = ({ product, onQuickView }: ProductCardProps) => {
+const ProductCard = ({ product, onQuickView, onBuyNow, isLoading = false }: ProductCardProps) => {
   const Icon = categoryIcons[product.category] || FileText;
 
   return (
@@ -48,7 +50,7 @@ const ProductCard = ({ product, onQuickView }: ProductCardProps) => {
         </h3>
 
         <p className="line-clamp-2 text-xs text-muted-foreground">
-          {product.description}
+          {product.headline}
         </p>
 
         {/* Price */}
@@ -70,15 +72,40 @@ const ProductCard = ({ product, onQuickView }: ProductCardProps) => {
           )}
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full"
-          onClick={() => onQuickView(product)}
-        >
-          <Eye className="mr-1.5 h-3.5 w-3.5" />
-          Quick View
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={() => onQuickView(product)}
+          >
+            <Eye className="mr-1.5 h-3.5 w-3.5" />
+            Quick View
+          </Button>
+          {!product.isFree && (
+            <Button
+              variant="gold"
+              size="sm"
+              className="flex-1 font-bold"
+              onClick={() => onBuyNow?.(product)}
+              disabled={isLoading}
+            >
+              <ShoppingCart className="mr-1.5 h-3.5 w-3.5" />
+              {isLoading ? "…" : "Get This Now"}
+            </Button>
+          )}
+          {product.isFree && (
+            <Button
+              variant="default"
+              size="sm"
+              className="flex-1"
+              onClick={() => onBuyNow?.(product)}
+            >
+              <Gift className="mr-1.5 h-3.5 w-3.5" />
+              Get Free
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
