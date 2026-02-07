@@ -62,6 +62,10 @@ export default {
           submitted: "hsl(var(--status-submitted))",
           interview: "hsl(var(--status-interview))",
         },
+        gold: {
+          DEFAULT: "hsl(var(--gold))",
+          foreground: "hsl(var(--gold-foreground))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -89,6 +93,10 @@ export default {
           "0%, 100%": { boxShadow: "0 0 20px hsl(213 94% 55% / 0.3)" },
           "50%": { boxShadow: "0 0 40px hsl(213 94% 55% / 0.5)" },
         },
+        "pulse-gold": {
+          "0%, 100%": { boxShadow: "0 0 20px hsl(43 96% 56% / 0.3)" },
+          "50%": { boxShadow: "0 0 40px hsl(43 96% 56% / 0.5)" },
+        },
         "progress-fill": {
           from: { width: "0%" },
           to: { width: "var(--progress-width)" },
@@ -100,6 +108,7 @@ export default {
         "fade-in": "fade-in 0.5s ease-out forwards",
         "slide-in-left": "slide-in-left 0.5s ease-out forwards",
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
+        "pulse-gold": "pulse-gold 2s ease-in-out infinite",
         "progress-fill": "progress-fill 2s ease-out forwards",
       },
     },
