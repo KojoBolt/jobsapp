@@ -1,6 +1,7 @@
 import { useState } from "react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import SocialProofTicker from "@/components/accelerators/SocialProofTicker";
 import { ShoppingBag, Library } from "lucide-react";
 import ProductGallery from "@/components/accelerators/ProductGallery";
 import MyLibrary from "@/components/accelerators/MyLibrary";
@@ -41,6 +42,8 @@ const CareerAccelerators = () => {
             <MyLibrary purchasedIds={purchasedIds} />
           </TabsContent>
         </Tabs>
+
+        <SocialProofTicker />
       </div>
     </DashboardLayout>
   );
