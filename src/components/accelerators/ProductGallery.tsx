@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ProductCard from "./ProductCard";
 import ProductModal from "./ProductModal";
 import { products, careerBundle, type Product } from "@/data/products";
@@ -12,6 +13,7 @@ const ProductGallery = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [purchasedIds, setPurchasedIds] = useState<Set<string>>(new Set());
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   const handleQuickView = (product: Product) => {
@@ -20,15 +22,18 @@ const ProductGallery = () => {
   };
 
   const handlePurchase = (product: Product) => {
-    // Mock purchase — Stripe integration can be wired later
     setPurchasedIds((prev) => new Set(prev).add(product.id));
     setModalOpen(false);
-    toast({
-      title: product.isFree ? "Added to Your Library!" : "Purchase Successful!",
-      description: product.isFree
-        ? `"${product.title}" is now in your library.`
-        : `"${product.title}" has been added to your library for instant access.`,
-    });
+
+    if (product.isFree) {
+      toast({
+        title: "Added to Your Library!",
+        description: `"${product.title}" is now in your library.`,
+      });
+    } else {
+      // Navigate to success page for paid products
+      navigate(`/purchase-success?product=${encodeURIComponent(product.title)}`);
+    }
   };
 
   return (
