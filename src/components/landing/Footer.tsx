@@ -1,5 +1,8 @@
 import { Zap } from "lucide-react";
 import { Link } from "react-router-dom";
+import LegalModal from "@/components/legal/LegalModal";
+import TermsOfService from "@/components/legal/TermsOfService";
+import PrivacyPolicy from "@/components/legal/PrivacyPolicy";
 
 const Footer = () => {
   return (
@@ -14,9 +17,25 @@ const Footer = () => {
           </div>
 
           <div className="flex items-center gap-6 text-sm text-muted-foreground">
-            <a href="#process" className="hover:text-foreground transition-colors">How It Works</a>
-            <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
-            <Link to="/dashboard" className="hover:text-foreground transition-colors">Dashboard</Link>
+            <a href="#process" className="transition-colors hover:text-foreground">How It Works</a>
+            <a href="#pricing" className="transition-colors hover:text-foreground">Pricing</a>
+            <Link to="/dashboard" className="transition-colors hover:text-foreground">Dashboard</Link>
+            <LegalModal
+              title="Terms of Service"
+              trigger={
+                <button className="transition-colors hover:text-foreground">Terms of Service</button>
+              }
+            >
+              <TermsOfService />
+            </LegalModal>
+            <LegalModal
+              title="Privacy Policy"
+              trigger={
+                <button className="transition-colors hover:text-foreground">Privacy Policy</button>
+              }
+            >
+              <PrivacyPolicy />
+            </LegalModal>
           </div>
 
           <p className="text-xs text-muted-foreground">

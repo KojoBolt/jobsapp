@@ -17,21 +17,22 @@ export interface Application {
   status: "Reviewing" | "Submitted" | "Interview";
   date: string;
   humanNote: string;
+  resumeUsed: string;
 }
 
 const sampleApplications: Application[] = [
-  { id: "1", company: "Google", role: "Senior Software Engineer", link: "#", status: "Interview", date: "Feb 5, 2026", humanNote: "Highlighted your distributed systems experience from your last role. Emphasized leadership in paragraph 2." },
-  { id: "2", company: "Stripe", role: "Full Stack Engineer", link: "#", status: "Submitted", date: "Feb 4, 2026", humanNote: "Personalized paragraph 2 to highlight your SQL and payments experience. Added fintech keywords." },
-  { id: "3", company: "Meta", role: "Product Engineer", link: "#", status: "Submitted", date: "Feb 4, 2026", humanNote: "Focused on your React expertise and scale. Referenced Meta's infrastructure blog in closing." },
-  { id: "4", company: "Notion", role: "Frontend Engineer", link: "#", status: "Reviewing", date: "Feb 3, 2026", humanNote: "Emphasized your passion for productivity tools and collaborative editing experience." },
-  { id: "5", company: "Vercel", role: "Developer Experience", link: "#", status: "Interview", date: "Feb 3, 2026", humanNote: "Connected your open-source contributions to their developer platform mission." },
-  { id: "6", company: "Linear", role: "Software Engineer", link: "#", status: "Submitted", date: "Feb 2, 2026", humanNote: "Highlighted your experience with real-time collaboration and WebSocket systems." },
-  { id: "7", company: "Figma", role: "Systems Engineer", link: "#", status: "Submitted", date: "Feb 2, 2026", humanNote: "Focused on your C++ background and performance optimization case studies." },
-  { id: "8", company: "Datadog", role: "Backend Engineer", link: "#", status: "Reviewing", date: "Feb 1, 2026", humanNote: "Tailored to their observability stack. Mentioned your monitoring pipeline project." },
-  { id: "9", company: "Plaid", role: "API Engineer", link: "#", status: "Submitted", date: "Feb 1, 2026", humanNote: "Emphasized API design patterns and your experience with financial data integrations." },
-  { id: "10", company: "Airbnb", role: "Staff Engineer", link: "#", status: "Interview", date: "Jan 31, 2026", humanNote: "Highlighted your microservices migration leadership and system design expertise." },
-  { id: "11", company: "Coinbase", role: "Security Engineer", link: "#", status: "Submitted", date: "Jan 30, 2026", humanNote: "Focused on your cryptography background and secure architecture experience." },
-  { id: "12", company: "Shopify", role: "Full Stack Developer", link: "#", status: "Reviewing", date: "Jan 30, 2026", humanNote: "Connected your e-commerce side projects to their merchant platform mission." },
+  { id: "1", company: "Google", role: "Senior Software Engineer", link: "https://careers.google.com", status: "Interview", date: "Feb 5, 2026", humanNote: "Highlighted your distributed systems experience from your last role. Emphasized leadership in paragraph 2.", resumeUsed: "Tech Resume" },
+  { id: "2", company: "Stripe", role: "Full Stack Engineer", link: "https://stripe.com/jobs", status: "Submitted", date: "Feb 4, 2026", humanNote: "Personalized paragraph 2 to highlight your SQL and payments experience. Added fintech keywords.", resumeUsed: "Tech Resume" },
+  { id: "3", company: "Meta", role: "Product Engineer", link: "https://metacareers.com", status: "Submitted", date: "Feb 4, 2026", humanNote: "Focused on your React expertise and scale. Referenced Meta's infrastructure blog in closing.", resumeUsed: "Tech Resume" },
+  { id: "4", company: "Notion", role: "Frontend Engineer", link: "https://notion.so/careers", status: "Reviewing", date: "Feb 3, 2026", humanNote: "Emphasized your passion for productivity tools and collaborative editing experience.", resumeUsed: "Creative Resume" },
+  { id: "5", company: "Vercel", role: "Developer Experience", link: "https://vercel.com/careers", status: "Interview", date: "Feb 3, 2026", humanNote: "Connected your open-source contributions to their developer platform mission.", resumeUsed: "Tech Resume" },
+  { id: "6", company: "Linear", role: "Software Engineer", link: "https://linear.app/careers", status: "Submitted", date: "Feb 2, 2026", humanNote: "Highlighted your experience with real-time collaboration and WebSocket systems.", resumeUsed: "Tech Resume" },
+  { id: "7", company: "Figma", role: "Systems Engineer", link: "https://figma.com/careers", status: "Submitted", date: "Feb 2, 2026", humanNote: "Focused on your C++ background and performance optimization case studies.", resumeUsed: "Tech Resume" },
+  { id: "8", company: "Datadog", role: "Backend Engineer", link: "https://datadog.com/careers", status: "Reviewing", date: "Feb 1, 2026", humanNote: "Tailored to their observability stack. Mentioned your monitoring pipeline project.", resumeUsed: "Tech Resume" },
+  { id: "9", company: "Plaid", role: "API Engineer", link: "https://plaid.com/careers", status: "Submitted", date: "Feb 1, 2026", humanNote: "Emphasized API design patterns and your experience with financial data integrations.", resumeUsed: "PM Resume" },
+  { id: "10", company: "Airbnb", role: "Staff Engineer", link: "https://airbnb.com/careers", status: "Interview", date: "Jan 31, 2026", humanNote: "Highlighted your microservices migration leadership and system design expertise.", resumeUsed: "Tech Resume" },
+  { id: "11", company: "Coinbase", role: "Security Engineer", link: "https://coinbase.com/careers", status: "Submitted", date: "Jan 30, 2026", humanNote: "Focused on your cryptography background and secure architecture experience.", resumeUsed: "Tech Resume" },
+  { id: "12", company: "Shopify", role: "Full Stack Developer", link: "https://shopify.com/careers", status: "Reviewing", date: "Jan 30, 2026", humanNote: "Connected your e-commerce side projects to their merchant platform mission.", resumeUsed: "Creative Resume" },
 ];
 
 const statusVariant: Record<string, "reviewing" | "submitted" | "interview"> = {
@@ -61,6 +62,7 @@ const ApplicationFeed = () => {
               <th className="px-6 py-3">Company</th>
               <th className="px-6 py-3">Role</th>
               <th className="px-6 py-3">Status</th>
+              <th className="px-6 py-3">Resume</th>
               <th className="px-6 py-3">Date</th>
               <th className="px-6 py-3 text-right">Actions</th>
             </tr>
@@ -75,13 +77,32 @@ const ApplicationFeed = () => {
                 className="border-b border-border/20 transition-colors hover:bg-muted/30"
               >
                 <td className="px-6 py-4">
-                  <span className="text-sm font-medium text-foreground">{app.company}</span>
+                  <a
+                    href={app.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-primary"
+                  >
+                    {app.company}
+                    <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                  </a>
                 </td>
                 <td className="px-6 py-4">
-                  <span className="text-sm text-muted-foreground">{app.role}</span>
+                  <a
+                    href={app.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
+                  >
+                    {app.role}
+                    <ExternalLink className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                  </a>
                 </td>
                 <td className="px-6 py-4">
                   <Badge variant={statusVariant[app.status]}>{app.status}</Badge>
+                </td>
+                <td className="px-6 py-4">
+                  <Badge variant="human" className="text-[10px]">{app.resumeUsed}</Badge>
                 </td>
                 <td className="px-6 py-4">
                   <span className="text-sm text-muted-foreground">{app.date}</span>
@@ -99,9 +120,11 @@ const ApplicationFeed = () => {
                         <p className="mt-1 text-muted-foreground">{app.humanNote}</p>
                       </TooltipContent>
                     </Tooltip>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
+                    <a href={app.link} target="_blank" rel="noopener noreferrer">
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    </a>
                   </div>
                 </td>
               </motion.tr>
@@ -121,12 +144,30 @@ const ApplicationFeed = () => {
             className="rounded-lg border border-border/30 bg-muted/20 p-4"
           >
             <div className="mb-2 flex items-center justify-between">
-              <span className="font-medium text-foreground">{app.company}</span>
+              <a
+                href={app.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 font-medium text-foreground transition-colors hover:text-primary"
+              >
+                {app.company}
+                <ExternalLink className="h-3 w-3 text-muted-foreground" />
+              </a>
               <Badge variant={statusVariant[app.status]} className="text-xs">
                 {app.status}
               </Badge>
             </div>
-            <p className="mb-2 text-sm text-muted-foreground">{app.role}</p>
+            <a
+              href={app.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-2 block text-sm text-muted-foreground transition-colors hover:text-primary"
+            >
+              {app.role}
+            </a>
+            <div className="mb-2">
+              <Badge variant="human" className="text-[10px]">{app.resumeUsed}</Badge>
+            </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">{app.date}</span>
               <Tooltip>

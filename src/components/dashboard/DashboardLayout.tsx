@@ -8,6 +8,8 @@ import {
   Zap,
   LogOut,
   Sparkles,
+  LifeBuoy,
+  FileText,
 } from "lucide-react";
 import {
   Sidebar,
@@ -22,13 +24,19 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { NavLink } from "@/components/NavLink";
+import SupportPanel from "@/components/dashboard/SupportPanel";
+import LegalModal from "@/components/legal/LegalModal";
+import TermsOfService from "@/components/legal/TermsOfService";
+import PrivacyPolicy from "@/components/legal/PrivacyPolicy";
 
 const navItems = [
   { title: "Overview", url: "/dashboard", icon: LayoutDashboard },
   { title: "Applications", url: "/dashboard", icon: Activity },
   { title: "Refinement Engine", url: "/refinement", icon: Sparkles },
+  { title: "Resume Manager", url: "/profile", icon: FileText },
   { title: "Referrals", url: "/referrals", icon: Users },
-  { title: "Settings", url: "/dashboard", icon: Settings },
+  { title: "Support", url: "/support", icon: LifeBuoy },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 interface DashboardLayoutProps {
@@ -37,6 +45,14 @@ interface DashboardLayoutProps {
 
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
+
+  const getPageTitle = () => {
+    if (location.pathname === "/referrals") return "Referral Network";
+    if (location.pathname === "/profile") return "Resume Manager";
+    if (location.pathname === "/support") return "Support Hub";
+    if (location.pathname === "/settings") return "Settings";
+    return "Campaign Dashboard";
+  };
 
   return (
     <SidebarProvider>
@@ -77,6 +93,43 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
               </SidebarGroupContent>
             </SidebarGroup>
 
+            {/* Legal Links */}
+            <SidebarGroup className="mt-4">
+              <SidebarGroupLabel className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
+                Legal
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <LegalModal
+                      title="Terms of Service"
+                      trigger={
+                        <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                          <FileText className="h-4 w-4" />
+                          <span>Terms of Service</span>
+                        </button>
+                      }
+                    >
+                      <TermsOfService />
+                    </LegalModal>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <LegalModal
+                      title="Privacy Policy"
+                      trigger={
+                        <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                          <FileText className="h-4 w-4" />
+                          <span>Privacy Policy</span>
+                        </button>
+                      }
+                    >
+                      <PrivacyPolicy />
+                    </LegalModal>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
             <div className="mt-auto pt-4">
               <SidebarMenu>
                 <SidebarMenuItem>
@@ -98,12 +151,13 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
         <main className="flex-1 overflow-auto">
           <header className="flex h-16 items-center border-b border-border/50 px-6">
             <SidebarTrigger className="mr-4" />
-            <h2 className="text-sm font-medium text-foreground">
-              {location.pathname === "/referrals" ? "Referral Network" : "Campaign Dashboard"}
-            </h2>
+            <h2 className="text-sm font-medium text-foreground">{getPageTitle()}</h2>
           </header>
           <div className="p-6">{children}</div>
         </main>
+
+        {/* Floating Support Button */}
+        <SupportPanel />
       </div>
     </SidebarProvider>
   );
