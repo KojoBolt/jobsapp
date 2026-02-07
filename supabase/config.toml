@@ -2,3 +2,6 @@ project_id = "pempjibekapukdoethro"
 
 [functions.humanize]
 verify_jwt = false
+
+[functions.paystack-checkout]
+verify_jwt = false
