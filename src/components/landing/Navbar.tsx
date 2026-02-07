@@ -39,6 +39,9 @@ const Navbar = () => {
           <a href="#pricing" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
             Pricing
           </a>
+          <Link to="/refinement" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+            Refinement Engine
+          </Link>
           <Link to="/dashboard">
             <Button variant="ghost" size="sm">
               Dashboard
