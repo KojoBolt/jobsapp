@@ -17,6 +17,8 @@ import {
   BookOpen,
   Video,
   FileText,
+  Zap,
+  TrendingUp,
 } from "lucide-react";
 import type { Product } from "@/data/products";
 
@@ -34,6 +36,7 @@ interface ProductModalProps {
   onOpenChange: (open: boolean) => void;
   isPurchased?: boolean;
   onPurchase?: (product: Product) => void;
+  isLoading?: boolean;
 }
 
 const ProductModal = ({
@@ -42,6 +45,7 @@ const ProductModal = ({
   onOpenChange,
   isPurchased = false,
   onPurchase,
+  isLoading = false,
 }: ProductModalProps) => {
   if (!product) return null;
 
@@ -77,16 +81,23 @@ const ProductModal = ({
         <Separator className="bg-border/50" />
 
         <div className="space-y-4">
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            {product.longDescription}
+          {/* Headline */}
+          <h3 className="text-base font-bold leading-snug text-foreground">
+            {product.headline}
+          </h3>
+
+          {/* Hook */}
+          <p className="text-sm leading-relaxed text-muted-foreground italic">
+            {product.hook}
           </p>
 
-          {/* Features */}
+          {/* What's Inside */}
           <div className="space-y-2">
-            <h4 className="text-sm font-semibold text-foreground">
-              What's Included
+            <h4 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <Zap className="h-3.5 w-3.5 text-gold" />
+              What's Inside
             </h4>
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               {product.features.map((feature, i) => (
                 <li
                   key={i}
@@ -97,6 +108,17 @@ const ProductModal = ({
                 </li>
               ))}
             </ul>
+          </div>
+
+          {/* The Result */}
+          <div className="rounded-lg border border-status-interview/20 bg-status-interview/5 p-3">
+            <p className="flex items-start gap-2 text-sm font-medium text-foreground">
+              <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-status-interview" />
+              <span>
+                <span className="font-semibold">The Result:</span>{" "}
+                {product.result}
+              </span>
+            </p>
           </div>
 
           <Separator className="bg-border/50" />
@@ -116,6 +138,9 @@ const ProductModal = ({
                   <span className="text-sm text-muted-foreground line-through">
                     ${product.originalPrice}
                   </span>
+                  <Badge variant="gold" className="text-[10px]">
+                    Member Exclusive
+                  </Badge>
                 </>
               )}
             </div>
@@ -130,6 +155,7 @@ const ProductModal = ({
                 variant="default"
                 size="sm"
                 onClick={() => onPurchase?.(product)}
+                disabled={isLoading}
               >
                 <Gift className="mr-1.5 h-4 w-4" />
                 Get Free Access
@@ -137,11 +163,13 @@ const ProductModal = ({
             ) : (
               <Button
                 variant="gold"
-                size="sm"
+                size="lg"
+                className="font-bold"
                 onClick={() => onPurchase?.(product)}
+                disabled={isLoading}
               >
                 <ShoppingCart className="mr-1.5 h-4 w-4" />
-                Purchase
+                {isLoading ? "Processing…" : "Buy Now"}
               </Button>
             )}
           </div>
