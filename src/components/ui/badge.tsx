@@ -16,6 +16,7 @@ const badgeVariants = cva(
         submitted: "border-transparent bg-status-submitted/15 text-status-submitted",
         interview: "border-transparent bg-status-interview/15 text-status-interview",
         human: "border-primary/30 bg-primary/10 text-primary",
+        gold: "border-gold/30 bg-gold/10 text-gold font-bold",
       },
     },
     defaultVariants: {

@@ -11,6 +11,7 @@ import RefinementEngine from "./pages/RefinementEngine";
 import Profile from "./pages/Profile";
 import Support from "./pages/Support";
 import Settings from "./pages/Settings";
+import CareerAccelerators from "./pages/CareerAccelerators";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
           <Route path="/profile" element={<Profile />} />
           <Route path="/support" element={<Support />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/accelerators" element={<CareerAccelerators />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

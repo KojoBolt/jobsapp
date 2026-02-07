@@ -10,6 +10,7 @@ import {
   Sparkles,
   LifeBuoy,
   FileText,
+  ShoppingBag,
 } from "lucide-react";
 import {
   Sidebar,
@@ -35,6 +36,7 @@ const navItems = [
   { title: "Applications", url: "/dashboard", icon: Activity },
   { title: "Refinement Engine", url: "/refinement", icon: Sparkles },
   { title: "Resume Manager", url: "/profile", icon: FileText },
+  { title: "Career Accelerators", url: "/accelerators", icon: ShoppingBag },
   { title: "Referrals", url: "/referrals", icon: Users },
   { title: "Support", url: "/support", icon: LifeBuoy },
   { title: "Settings", url: "/settings", icon: Settings },
@@ -48,6 +50,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
 
   const getPageTitle = () => {
+    if (location.pathname === "/accelerators") return "Career Accelerators";
     if (location.pathname === "/referrals") return "Referral Network";
     if (location.pathname === "/profile") return "Resume Manager";
     if (location.pathname === "/support") return "Support Hub";
