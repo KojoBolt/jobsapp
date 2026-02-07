@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -10,14 +13,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { ArrowRight, ArrowLeft, Upload, CheckCircle2, Zap, User, FileText, Sliders } from "lucide-react";
+import { ArrowRight, ArrowLeft, Upload, CheckCircle2, Zap, User, FileText, Sliders, Crosshair, Building2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
 const steps = [
   { title: "Personal Info", icon: User },
   { title: "Resume & Links", icon: FileText },
+  { title: "Role Preferences", icon: Building2 },
+  { title: "Custom Targeting", icon: Crosshair },
   { title: "Preferences", icon: Sliders },
 ];
 
@@ -38,6 +42,28 @@ const tones = [
   { value: "technical", label: "Technical", desc: "Data-driven and precise" },
 ];
 
+const jobTitleOptions = [
+  "Senior PM",
+  "Frontend Engineer",
+  "Backend Engineer",
+  "Full Stack Engineer",
+  "Tech Lead",
+  "Staff Engineer",
+  "Data Scientist",
+  "Product Designer",
+  "DevOps Engineer",
+  "Engineering Manager",
+];
+
+const companySizeOptions = [
+  "Pre-Seed / Seed",
+  "Series A Startup",
+  "Series B-C",
+  "Late Stage / Pre-IPO",
+  "Public / Fortune 500",
+  "Government / Non-Profit",
+];
+
 const OnboardingForm = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState({
@@ -48,6 +74,10 @@ const OnboardingForm = () => {
     targetRoles: "",
     industry: "",
     tone: "professional",
+    selectedJobTitles: [] as string[],
+    selectedCompanySizes: [] as string[],
+    priorityLinks: "",
+    aiAfterPriority: true,
   });
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -78,6 +108,28 @@ const OnboardingForm = () => {
     }
   };
 
+  const toggleJobTitle = (title: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      selectedJobTitles: prev.selectedJobTitles.includes(title)
+        ? prev.selectedJobTitles.filter((t) => t !== title)
+        : [...prev.selectedJobTitles, title],
+    }));
+  };
+
+  const toggleCompanySize = (size: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      selectedCompanySizes: prev.selectedCompanySizes.includes(size)
+        ? prev.selectedCompanySizes.filter((s) => s !== size)
+        : [...prev.selectedCompanySizes, size],
+    }));
+  };
+
+  const priorityLinkCount = formData.priorityLinks
+    .split("\n")
+    .filter((line) => line.trim().startsWith("http")).length;
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-20">
       <div className="w-full max-w-xl">
@@ -102,25 +154,25 @@ const OnboardingForm = () => {
         </div>
 
         {/* Step indicator */}
-        <div className="mb-8 flex items-center justify-center gap-2">
+        <div className="mb-8 flex items-center justify-center gap-1">
           {steps.map((step, i) => (
-            <div key={step.title} className="flex items-center gap-2">
+            <div key={step.title} className="flex items-center gap-1">
               <div
-                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors ${
+                className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-medium transition-colors ${
                   i <= currentStep
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground"
                 }`}
               >
                 {i < currentStep ? (
-                  <CheckCircle2 className="h-4 w-4" />
+                  <CheckCircle2 className="h-3.5 w-3.5" />
                 ) : (
                   i + 1
                 )}
               </div>
               {i < steps.length - 1 && (
                 <div
-                  className={`h-px w-8 sm:w-12 transition-colors ${
+                  className={`h-px w-5 sm:w-8 transition-colors ${
                     i < currentStep ? "bg-primary" : "bg-muted"
                   }`}
                 />
@@ -223,10 +275,128 @@ const OnboardingForm = () => {
               </motion.div>
             )}
 
-            {/* Step 3: Preferences */}
+            {/* Step 3: Role Preferences */}
             {currentStep === 2 && (
               <motion.div
                 key="step-2"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-5"
+              >
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-foreground">Role Preferences</h3>
+                  <p className="text-sm text-muted-foreground">Select your target job titles and preferred company sizes.</p>
+                </div>
+
+                {/* Job Titles */}
+                <div className="space-y-3">
+                  <Label>Target Job Titles</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {jobTitleOptions.map((title) => (
+                      <button
+                        key={title}
+                        type="button"
+                        onClick={() => toggleJobTitle(title)}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                          formData.selectedJobTitles.includes(title)
+                            ? "border-primary bg-primary/15 text-primary"
+                            : "border-border/50 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground"
+                        }`}
+                      >
+                        {title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Company Size */}
+                <div className="space-y-3">
+                  <Label>Preferred Company Size</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {companySizeOptions.map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => toggleCompanySize(size)}
+                        className={`rounded-lg border p-2.5 text-left text-xs font-medium transition-all ${
+                          formData.selectedCompanySizes.includes(size)
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border/50 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground"
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Step 4: Custom Targeting (Priority 30) */}
+            {currentStep === 3 && (
+              <motion.div
+                key="step-3"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-5"
+              >
+                <div className="mb-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold text-foreground">Custom Targeting</h3>
+                    <Badge variant="gold" className="text-[10px]">Optional</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">Paste up to 30 job links you want us to prioritize.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="priorityLinks">Priority Applications (Manual Links)</Label>
+                    <span className={`text-xs font-mono ${priorityLinkCount > 30 ? "text-destructive" : "text-muted-foreground"}`}>
+                      {priorityLinkCount}/30 links
+                    </span>
+                  </div>
+                  <Textarea
+                    id="priorityLinks"
+                    placeholder={"https://careers.google.com/jobs/123\nhttps://stripe.com/jobs/456\nhttps://notion.so/careers/789\n\nPaste one link per line..."}
+                    value={formData.priorityLinks}
+                    onChange={(e) => setFormData({ ...formData, priorityLinks: e.target.value })}
+                    className="min-h-[160px] bg-muted/50 font-mono text-xs"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    These are your "dream job" applications. Our team will handle them first with extra care.
+                  </p>
+                </div>
+
+                {/* AI Toggle */}
+                <div className="rounded-lg border border-border/30 bg-muted/20 p-4">
+                  <div className="flex items-start gap-3">
+                    <Switch
+                      checked={formData.aiAfterPriority}
+                      onCheckedChange={(checked) => setFormData({ ...formData, aiAfterPriority: checked })}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        AI + Human Team for remaining roles
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        After these {priorityLinkCount || 30}, use AI + Human Team to find and apply to the remaining{" "}
+                        <span className="font-semibold text-primary">{200 - Math.min(priorityLinkCount || 30, 30)} matched roles</span>.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Step 5: Preferences */}
+            {currentStep === 4 && (
+              <motion.div
+                key="step-4"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
