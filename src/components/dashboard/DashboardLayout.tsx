@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Activity,
-  Users,
+  Gift,
   Settings,
   Zap,
   LogOut,
@@ -37,7 +37,7 @@ const navItems = [
   { title: "Refinement Engine", url: "/refinement", icon: Sparkles },
   { title: "Resume Manager", url: "/profile", icon: FileText },
   { title: "Career Accelerators", url: "/accelerators", icon: ShoppingBag },
-  { title: "Referrals", url: "/referrals", icon: Users },
+  { title: "Invite a Friend", url: "/referrals", icon: Gift },
   { title: "Support", url: "/support", icon: LifeBuoy },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
