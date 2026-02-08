@@ -12,6 +12,7 @@ import {
   LifeBuoy,
   FileText,
   ShoppingBag,
+  Trophy,
 } from "lucide-react";
 import {
   Sidebar,
@@ -41,6 +42,7 @@ const navItems = [
   { title: "Career Accelerators", url: "/accelerators", icon: ShoppingBag },
   { title: "Referrals", url: "/referrals", icon: Users },
   { title: "Invite a Friend", url: "/invite", icon: Gift },
+  { title: "Rewards Center", url: "/rewards", icon: Trophy },
   { title: "Support", url: "/support", icon: LifeBuoy },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
@@ -56,6 +58,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     if (location.pathname === "/accelerators") return "Career Accelerators";
     if (location.pathname === "/referrals") return "Referral Network";
     if (location.pathname === "/invite") return "Invite a Friend";
+    if (location.pathname === "/rewards") return "Rewards Center";
     if (location.pathname === "/profile") return "Resume Manager";
     if (location.pathname === "/support") return "Support Hub";
     if (location.pathname === "/settings") return "Settings";
