@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface JobApplication {
   id: string;
@@ -25,6 +26,16 @@ interface JobApplication {
   updated_at: string;
 }
 
+const getLocalSubscription = () => {
+  try {
+    const raw = localStorage.getItem("job_trackr_subscribed");
+    if (!raw) return null;
+    return JSON.parse(raw) as { tier: string; timestamp: number };
+  } catch {
+    return null;
+  }
+};
+
 const JobTracker = () => {
   const { user, profile, refreshProfile } = useAuth();
   const { toast } = useToast();
@@ -33,11 +44,32 @@ const JobTracker = () => {
   const [editData, setEditData] = useState<JobApplication | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const isSubscribed = profile?.subscription_tier === "plan_1" || profile?.subscription_tier === "plan_2";
-  const isPlan2 = profile?.subscription_tier === "plan_2";
+  // Determine subscription from profile OR localStorage
+  const localSub = getLocalSubscription();
+  const localTier = localSub?.tier || null;
+  const effectiveTier = profile?.subscription_tier || localTier;
+  const isSubscribed = effectiveTier === "plan_1" || effectiveTier === "plan_2";
+  const isPlan2 = effectiveTier === "plan_2";
+  const isGuest = !user;
+
   const monthlyLimit = isPlan2 ? 50 : 10;
   const monthlyUsed = profile?.monthly_usage_count || 0;
   const remainingSlots = Math.max(monthlyLimit - monthlyUsed, 0);
+
+  // Handle subscription callback — store in localStorage
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("subscribed") === "true") {
+      const plan = params.get("plan") || "plan_1";
+      localStorage.setItem(
+        "job_trackr_subscribed",
+        JSON.stringify({ tier: plan, timestamp: Date.now() })
+      );
+      if (user) refreshProfile();
+      toast({ title: "Welcome to Job Trackr!", description: "Your subscription is now active." });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   // Check if usage needs reset (30 days since last reset)
   useEffect(() => {
@@ -69,18 +101,11 @@ const JobTracker = () => {
     fetchApps();
   }, [user, isSubscribed]);
 
-  // Check for subscription callback
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("subscribed") === "true") {
-      refreshProfile();
-      toast({ title: "Welcome to Job Trackr!", description: "Your subscription is now active." });
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, []);
-
   const handleAdd = async (data: any) => {
-    if (!user) return;
+    if (!user) {
+      toast({ title: "Sign up required", description: "Create an account to save applications.", variant: "destructive" });
+      return;
+    }
     if (!editData && remainingSlots <= 0) {
       toast({ title: "Monthly limit reached", description: "Upgrade or wait for reset.", variant: "destructive" });
       return;
@@ -103,7 +128,6 @@ const JobTracker = () => {
         .single();
       if (!error && newApp) {
         setApplications((prev) => [newApp as JobApplication, ...prev]);
-        // Increment usage
         await supabase
           .from("profiles")
           .update({ monthly_usage_count: monthlyUsed + 1 } as any)
@@ -117,6 +141,7 @@ const JobTracker = () => {
   };
 
   const handleDelete = async (id: string) => {
+    if (!user) return;
     const { error } = await supabase.from("job_applications").delete().eq("id", id);
     if (!error) {
       setApplications((prev) => prev.filter((a) => a.id !== id));
@@ -125,6 +150,7 @@ const JobTracker = () => {
   };
 
   const handleEdit = (app: JobApplication) => {
+    if (!user) return;
     setEditData(app);
     setShowAddModal(true);
   };
@@ -142,6 +168,14 @@ const JobTracker = () => {
           <UpgradePaywall />
         ) : (
           <>
+            {isGuest && (
+              <Alert className="border-primary/30 bg-primary/5">
+                <AlertDescription className="text-sm">
+                  🎉 Tracker unlocked! <a href="/auth" className="font-semibold text-primary underline">Sign up</a> to save your applications and track progress.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="flex items-center justify-between">
               <div>
                 <h1
@@ -151,13 +185,13 @@ const JobTracker = () => {
                   Job Trackr
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  {isPlan2 ? "Pro Hunter" : "Tracker"} • {remainingSlots} submissions left this month
+                  {isPlan2 ? "Pro Hunter" : "Tracker"} • {isGuest ? "Sign up to start tracking" : `${remainingSlots} submissions left this month`}
                 </p>
               </div>
               <Button
                 variant="hero"
                 onClick={() => { setEditData(null); setShowAddModal(true); }}
-                disabled={remainingSlots <= 0}
+                disabled={isGuest || remainingSlots <= 0}
               >
                 <Plus className="h-4 w-4" />
                 Add Application
