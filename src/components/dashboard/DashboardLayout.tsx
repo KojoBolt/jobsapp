@@ -2,7 +2,6 @@ import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
-  Activity,
   Users,
   Gift,
   Settings,
@@ -14,7 +13,10 @@ import {
   ShoppingBag,
   Trophy,
   Crown,
+  ShieldCheck,
+  Terminal,
 } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,
@@ -37,19 +39,19 @@ import CurrentStrategy from "@/components/dashboard/CurrentStrategy";
 import MonthlyUsageBar from "@/components/tracker/MonthlyUsageBar";
 import { useAuth } from "@/hooks/useAuth";
 
-const navItems = [
-  { title: "Overview", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Job Trackr", url: "/job-tracker", icon: Crown },
-  { title: "Applications", url: "/dashboard", icon: Activity },
+const mainNavItems = [
+  { title: "Identity Vault", url: "/identity-vault", icon: ShieldCheck },
+  { title: "Rewards Center", url: "/rewards", icon: Trophy },
   { title: "Refinement Engine", url: "/refinement", icon: Sparkles },
-  { title: "Resume Manager", url: "/profile", icon: FileText },
   { title: "Career Accelerators", url: "/accelerators", icon: ShoppingBag },
   { title: "Referrals", url: "/referrals", icon: Users },
   { title: "Invite a Friend", url: "/invite", icon: Gift },
-  { title: "Rewards Center", url: "/rewards", icon: Trophy },
+  { title: "Resume Manager", url: "/profile", icon: FileText },
   { title: "Support", url: "/support", icon: LifeBuoy },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
+
+const trackerNavItem = { title: "Job Trackr", url: "/job-tracker", icon: Crown };
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -65,7 +67,8 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const planName = isPlan2 ? "Pro Hunter" : "Tracker";
 
   const getPageTitle = () => {
-    if (location.pathname === "/job-tracker") return "Job Trackr";
+    if (location.pathname === "/identity-vault") return "Identity Vault";
+    if (location.pathname === "/job-tracker") return "Job Trackr — Command Center";
     if (location.pathname === "/accelerators") return "Career Accelerators";
     if (location.pathname === "/referrals") return "Referral Network";
     if (location.pathname === "/invite") return "Invite a Friend";
@@ -96,14 +99,20 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {navItems.map((item) => (
+                  {mainNavItems.map((item) => (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton asChild>
                         <NavLink
                           to={item.url}
                           end
-                          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                          activeClassName="bg-primary/10 text-primary"
+                          className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all hover:bg-muted hover:text-foreground ${
+                            item.url === "/identity-vault" ? "hover:shadow-[0_0_12px_hsl(270_60%_55%/0.3)]" : ""
+                          }`}
+                          activeClassName={
+                            item.url === "/identity-vault"
+                              ? "bg-[hsl(270_60%_55%/0.12)] text-[hsl(270_60%_70%)] shadow-[0_0_12px_hsl(270_60%_55%/0.25)]"
+                              : "bg-primary/10 text-primary"
+                          }
                         >
                           <item.icon className="h-4 w-4" />
                           <span>{item.title}</span>
@@ -111,6 +120,29 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            {/* Job Trackr — Command Center (special bottom section) */}
+            <SidebarGroup className="mt-2">
+              <SidebarGroupContent>
+                <Separator className="mb-3 bg-border/30" />
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <NavLink
+                        to={trackerNavItem.url}
+                        end
+                        className="flex items-center gap-3 rounded-lg border border-border/20 bg-muted/20 px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-foreground hover:shadow-[0_0_14px_hsl(213_94%_55%/0.2)]"
+                        activeClassName="border-primary/40 bg-primary/10 text-primary shadow-[0_0_14px_hsl(213_94%_55%/0.25)]"
+                      >
+                        <Terminal className="h-4 w-4" />
+                        <span>{trackerNavItem.title}</span>
+                        <span className="ml-auto text-[9px] uppercase tracking-widest text-muted-foreground/60">Command Center</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

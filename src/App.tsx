@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Referrals from "./pages/Referrals";
 import RefinementEngine from "./pages/RefinementEngine";
 import Profile from "./pages/Profile";
+import IdentityVault from "./pages/IdentityVault";
 import Support from "./pages/Support";
 import Settings from "./pages/Settings";
 import CareerAccelerators from "./pages/CareerAccelerators";
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/identity-vault" element={<IdentityVault />} />
             <Route path="/job-tracker" element={<JobTracker />} />
             <Route path="/referrals" element={<Referrals />} />
             <Route path="/refinement" element={<RefinementEngine />} />
