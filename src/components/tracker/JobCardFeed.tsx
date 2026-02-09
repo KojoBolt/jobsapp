@@ -8,7 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   ExternalLink, Pencil, Trash2, Bot, Search, Briefcase,
   Calendar, DollarSign, MapPin, ChevronDown, User, Mail, Phone,
-  StickyNote,
+  StickyNote, ShieldCheck, ClipboardList,
 } from "lucide-react";
 
 interface JobApplication {
@@ -137,8 +137,19 @@ const JobCardFeed = ({ applications, onEdit, onDelete }: JobCardFeedProps) => {
                         >
                           {app.company_name}
                         </h3>
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
                           <span className="text-sm text-gray-600">{app.position_title}</span>
+                          {app.submission_type === "manual" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                              <ClipboardList className="h-2.5 w-2.5" />
+                              Self-Tracked
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary animate-pulse">
+                              <ShieldCheck className="h-2.5 w-2.5" />
+                              JobApp Verified
+                            </span>
+                          )}
                           {app.submission_type === "ai_discovery" && (
                             <Bot className="h-3.5 w-3.5 text-tracker-screening" aria-label="AI Discovery" />
                           )}
@@ -188,7 +199,7 @@ const JobCardFeed = ({ applications, onEdit, onDelete }: JobCardFeedProps) => {
                         className="flex items-center gap-1 text-tracker-applied hover:underline"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
-                        Job Posting
+                        {app.submission_type !== "manual" ? "View Submission Proof" : "Job Posting"}
                       </a>
                     )}
                   </div>
