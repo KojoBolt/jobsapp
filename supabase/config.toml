@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.paystack-checkout]
 verify_jwt = false
+
+[functions.subscription-checkout]
+verify_jwt = false
