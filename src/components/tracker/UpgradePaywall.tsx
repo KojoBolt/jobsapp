@@ -49,7 +49,11 @@ const UpgradePaywall = () => {
   const { toast } = useToast();
 
   const handleSelectPlan = async (planId: string) => {
-    const email = user?.email || guestEmail || `guest_${Date.now()}@jobapp.temp`;
+    const email = user?.email || guestEmail;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast({ title: "Valid email required", description: "Please enter a valid email to proceed to checkout.", variant: "destructive" });
+      return;
+    }
 
     setLoading(planId);
     try {
