@@ -19,30 +19,25 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+    // Try to get user from auth header, but allow anonymous checkout
+    let userId: string | null = null;
+    let userEmail: string | null = null;
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (authHeader) {
+      const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
+      const { data: { user } } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
+      if (user) {
+        userId = user.id;
+        userEmail = user.email || null;
+      }
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-    const { data: { user }, error: authError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
-    
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const { plan, callbackUrl, email: guestEmail } = await req.json();
 
-    const { plan, callbackUrl } = await req.json();
-
-    if (!plan || !callbackUrl) {
+    const checkoutEmail = userEmail || guestEmail;
+    if (!plan || !callbackUrl || !checkoutEmail) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: plan, callbackUrl" }),
+        JSON.stringify({ error: "Missing required fields: plan, callbackUrl, and email (if not signed in)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -67,12 +62,12 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        email: user.email,
+        email: checkoutEmail,
         amount: selected.amount,
         currency: "USD",
         callback_url: callbackUrl,
         metadata: {
-          user_id: user.id,
+          user_id: userId,
           plan,
           plan_name: selected.name,
         },
@@ -85,14 +80,16 @@ serve(async (req) => {
       throw new Error(`Paystack failed [${paystackResponse.status}]: ${JSON.stringify(paystackData)}`);
     }
 
-    // Update profile with subscription tier
-    const now = new Date().toISOString();
-    await supabase.from("profiles").update({
-      subscription_tier: plan,
-      subscription_started_at: now,
-      monthly_usage_count: 0,
-      usage_reset_at: now,
-    }).eq("user_id", user.id);
+    // Update profile with subscription tier (only if user is signed in)
+    if (userId) {
+      const now = new Date().toISOString();
+      await supabase.from("profiles").update({
+        subscription_tier: plan,
+        subscription_started_at: now,
+        monthly_usage_count: 0,
+        usage_reset_at: now,
+      }).eq("user_id", userId);
+    }
 
     return new Response(
       JSON.stringify({
