@@ -55,6 +55,10 @@ serve(async (req) => {
       );
     }
 
+    // Append plan to callback URL so frontend knows which plan was purchased
+    const urlJoiner = callbackUrl.includes("?") ? "&" : "?";
+    const fullCallbackUrl = `${callbackUrl}${urlJoiner}plan=${plan}`;
+
     const paystackResponse = await fetch("https://api.paystack.co/transaction/initialize", {
       method: "POST",
       headers: {
@@ -65,7 +69,7 @@ serve(async (req) => {
         email: checkoutEmail,
         amount: selected.amount,
         currency: "USD",
-        callback_url: callbackUrl,
+        callback_url: fullCallbackUrl,
         metadata: {
           user_id: userId,
           plan,
