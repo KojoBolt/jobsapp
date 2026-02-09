@@ -113,7 +113,7 @@ const AddJobModal = ({ open, onClose, onSubmit, editData, isPlan2, remainingSlot
               Add Application
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Choose how you'd like to add this job
+              Choose how you'd like to add this application
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">
@@ -127,7 +127,7 @@ const AddJobModal = ({ open, onClose, onSubmit, editData, isPlan2, remainingSlot
               </div>
               <div>
                 <p className="font-semibold text-foreground">Manual Entry</p>
-                <p className="text-xs text-muted-foreground">Track a job yourself — unlimited entries, no credits used</p>
+                <p className="text-xs text-muted-foreground">Add your job application here manually — unlimited entries, no credits used</p>
                 <span className="mt-1 inline-block rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-green-700">
                   Unlimited
                 </span>
@@ -147,8 +147,8 @@ const AddJobModal = ({ open, onClose, onSubmit, editData, isPlan2, remainingSlot
                 <Rocket className="h-5 w-5 text-white" />
               </div>
               <div>
-                <p className="font-semibold text-foreground">Deploy JobApp Service</p>
-                <p className="text-xs text-muted-foreground">Our team handles the application for you</p>
+                <p className="font-semibold text-foreground">Deploy Professional Submission (1 Credit)</p>
+                <p className="text-xs text-muted-foreground">Our AI + Human team drafts and submits the application for you</p>
                 <span className="mt-1 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
                   {remainingSlots} of {isPlan2 ? 50 : 10} credits remaining
                 </span>
@@ -172,11 +172,11 @@ const AddJobModal = ({ open, onClose, onSubmit, editData, isPlan2, remainingSlot
             )}
             <div>
               <DialogTitle style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-                {editData ? "Edit Application" : mode === "manual" ? "Manual Entry" : "Deploy JobApp Service"}
+                {editData ? "Edit Application" : mode === "manual" ? "Manual Entry" : "Deploy Professional Submission (1 Credit)"}
               </DialogTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {mode === "manual"
-                  ? "For tracking only — unlimited entries"
+                  ? "Add your job application here manually — unlimited entries, no credits used"
                   : `Uses 1 service credit • ${remainingSlots} remaining`}
               </p>
             </div>
@@ -231,7 +231,7 @@ const AddJobModal = ({ open, onClose, onSubmit, editData, isPlan2, remainingSlot
           {mode === "deploy" && (
             <>
               <div className="space-y-2">
-                <Label>Job Posting URL *</Label>
+                <Label>Paste Job Link *</Label>
                 <Input value={url} onChange={(e) => setUrl(e.target.value)} type="url" placeholder="https://..." required maxLength={500} />
               </div>
 
@@ -311,7 +311,7 @@ const AddJobModal = ({ open, onClose, onSubmit, editData, isPlan2, remainingSlot
           </div>
 
           <Button type="submit" className="w-full bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white hover:opacity-90 hover:-translate-y-0.5 transition-all">
-            {editData ? "Save Changes" : mode === "manual" ? "Track Application" : "Deploy Application"}
+            {editData ? "Save Changes" : mode === "manual" ? "Add Application" : "Deploy Professional Submission"}
           </Button>
         </form>
       </DialogContent>
