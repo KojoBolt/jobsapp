@@ -107,8 +107,10 @@ const JobTracker = () => {
       toast({ title: "Sign up required", description: "Create an account to save applications.", variant: "destructive" });
       return;
     }
-    if (!editData && remainingSlots <= 0) {
-      toast({ title: "Monthly limit reached", description: "Upgrade or wait for reset.", variant: "destructive" });
+    const isServiceSubmission = data.submission_type !== "manual";
+
+    if (!editData && isServiceSubmission && remainingSlots <= 0) {
+      toast({ title: "Monthly credits exhausted", description: "Manual tracking is still unlimited.", variant: "destructive" });
       return;
     }
 
@@ -129,12 +131,15 @@ const JobTracker = () => {
         .single();
       if (!error && newApp) {
         setApplications((prev) => [newApp as JobApplication, ...prev]);
-        await supabase
-          .from("profiles")
-          .update({ monthly_usage_count: monthlyUsed + 1 } as any)
-          .eq("user_id", user.id);
-        refreshProfile();
-        toast({ title: "Application added" });
+        // Only increment usage for service submissions
+        if (isServiceSubmission) {
+          await supabase
+            .from("profiles")
+            .update({ monthly_usage_count: monthlyUsed + 1 } as any)
+            .eq("user_id", user.id);
+          refreshProfile();
+        }
+        toast({ title: isServiceSubmission ? "Application deployed" : "Application tracked" });
       }
     }
     setShowAddModal(false);
@@ -187,13 +192,13 @@ const JobTracker = () => {
                     Job Trackr
                   </h1>
                   <p className="text-sm text-white/60">
-                    {isPlan2 ? "Pro Hunter" : "Tracker"} • {isGuest ? "Sign up to start tracking" : `${remainingSlots} submissions left this month`}
+                    {isPlan2 ? "Pro Hunter" : "Tracker"} • {isGuest ? "Sign up to start tracking" : "Unlimited manual tracking"}
                   </p>
                 </div>
                 <Button
                   className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white hover:opacity-90 hover:-translate-y-0.5 transition-all"
                   onClick={() => { setEditData(null); setShowAddModal(true); }}
-                  disabled={isGuest || remainingSlots <= 0}
+                  disabled={isGuest}
                 >
                   <Plus className="h-4 w-4" />
                   Add Application
@@ -220,6 +225,7 @@ const JobTracker = () => {
                 editData={editData}
                 isPlan2={isPlan2}
                 remainingSlots={remainingSlots}
+                isSubscribed={isSubscribed}
               />
 
               <CrossSellBanner variant="deployment" />
