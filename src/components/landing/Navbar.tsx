@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Zap } from "lucide-react";
+import { Zap, BarChart3, Rocket } from "lucide-react";
 import { motion } from "framer-motion";
 
 const Navbar = () => {
@@ -32,19 +32,26 @@ const Navbar = () => {
           <span className="text-lg font-bold text-foreground">JobApp</span>
         </Link>
 
-        <div className="hidden items-center gap-8 md:flex">
+        <div className="hidden items-center gap-6 md:flex">
           <a href="#process" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
             How It Works
           </a>
           <a href="#pricing" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
             Pricing
           </a>
-          <Link to="/refinement" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-            Refinement Engine
-          </Link>
+
+          <div className="mx-2 h-5 w-px bg-border/50" />
+
           <Link to="/dashboard">
-            <Button variant="ghost" size="sm">
-              Dashboard
+            <Button variant="ghost" size="sm" className="gap-1.5">
+              <Rocket className="h-3.5 w-3.5" />
+              Deployment Status
+            </Button>
+          </Link>
+          <Link to="/job-tracker">
+            <Button variant="heroOutline" size="sm" className="gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5" />
+              Login to Tracker
             </Button>
           </Link>
           <Link to="/onboarding">
@@ -54,11 +61,18 @@ const Navbar = () => {
           </Link>
         </div>
 
-        <Link to="/onboarding" className="md:hidden">
-          <Button variant="hero" size="sm">
-            Get Started
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2 md:hidden">
+          <Link to="/job-tracker">
+            <Button variant="ghost" size="sm">
+              <BarChart3 className="h-4 w-4" />
+            </Button>
+          </Link>
+          <Link to="/onboarding">
+            <Button variant="hero" size="sm">
+              Get Started
+            </Button>
+          </Link>
+        </div>
       </div>
     </motion.nav>
   );

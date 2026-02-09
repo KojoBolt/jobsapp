@@ -5,6 +5,7 @@ import UpgradePaywall from "@/components/tracker/UpgradePaywall";
 import TrackerStats from "@/components/tracker/TrackerStats";
 import JobCardFeed from "@/components/tracker/JobCardFeed";
 import AddJobModal from "@/components/tracker/AddJobModal";
+import CrossSellBanner from "@/components/dashboard/CrossSellBanner";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -184,6 +185,8 @@ const JobTracker = () => {
               isPlan2={isPlan2}
               remainingSlots={remainingSlots}
             />
+
+            <CrossSellBanner variant="deployment" />
           </>
         )}
       </div>
