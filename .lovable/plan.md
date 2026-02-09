@@ -1,70 +1,100 @@
 
 
-## Fix: Unlock Job Trackr After Payment
+## Enhanced Job Trackr Dashboard
 
-### The Problem
-The Tracker dashboard is fully built but never unlocks after payment because:
-1. **Guest users**: After Paystack redirects back to `/job-tracker?subscribed=true`, the callback calls `refreshProfile()` which needs a signed-in user -- guests have no profile to refresh, so `isSubscribed` stays `false`.
-2. **Signed-in users**: The edge function sets `subscription_tier` at checkout initialization (before payment), which is unreliable. But the redirect callback does work if the user stays signed in.
-3. **No webhook**: There's no Paystack webhook to confirm payment actually succeeded.
+A comprehensive upgrade to the Job Tracker with new data fields, search/filter functionality, expanded statuses, a refreshed visual design, and collapsible contact sections.
 
-### The Solution
-Since this is a **temporary measure** allowing guest checkout, we'll use a simple approach: store the subscription state in `localStorage` after Paystack redirects back, so the Tracker unlocks immediately -- even for guests.
+---
 
-### Changes
+### 1. Database Migration
 
-**1. `src/pages/JobTracker.tsx`**
-- Add `localStorage`-based subscription fallback: check both `profile?.subscription_tier` AND a `localStorage` key (`job_trackr_subscribed`)
-- On the `?subscribed=true` callback, set the localStorage key with the plan info
-- Update `isSubscribed` logic: `profile?.subscription_tier === "plan_1" || ... || localStorage.getItem("job_trackr_subscribed")`
-- For guest users (no `user`), still show the Tracker UI but disable database operations (add/edit/delete) and show a message prompting them to sign up to save applications
-- Parse the `plan` from URL params or localStorage to determine tier limits
+Add new columns to the `job_applications` table:
 
-**2. `supabase/functions/subscription-checkout/index.ts`**
-- Move the profile update to happen only for signed-in users (already done)
-- Add the `plan` to the callback URL as a query param so the frontend knows which plan was purchased: `callbackUrl + "?subscribed=true&plan=" + plan`
-- Wait -- actually Paystack uses its own callback_url and appends `?trxref=...&reference=...`. We should append our plan info differently.
-- Better approach: encode the plan in the Paystack metadata and pass it via the callback URL. Update the callback_url to include `&plan={plan}` so the frontend can read it.
+- `salary_range` (text, nullable) -- e.g. "$80k - $100k"
+- `location` (text, nullable) -- e.g. "Remote", "New York, NY"
+- `contact_name` (text, nullable)
+- `contact_email` (text, nullable)
+- `contact_phone` (text, nullable)
 
-**3. Updated callback URL flow**
-- Edge function sets callback_url to: `{callbackUrl}&plan={plan}` (or `?plan={plan}` if no existing params)  
-- After Paystack payment, user lands on `/job-tracker?subscribed=true&plan=plan_1`
-- Frontend reads both params, stores in localStorage, unlocks UI
+No new tables needed. Existing data is unaffected since all new columns are nullable.
 
-### What the user sees after paying
-- **Guest user**: Tracker UI unlocks. They see stats, can browse the empty dashboard, but adding jobs requires sign-up (since database operations need auth). A banner says "Sign up to save your applications."
-- **Signed-in user**: Tracker UI unlocks fully with all CRUD functionality.
+---
 
-### Technical Details
+### 2. Status System Update
 
-```text
-Payment Flow:
-  User clicks plan -> Edge function -> Paystack checkout
-  -> Paystack redirects to /job-tracker?subscribed=true&plan=plan_1
-  -> Frontend stores { tier: "plan_1", timestamp } in localStorage
-  -> isSubscribed checks profile OR localStorage -> Tracker UI shows
-```
+Replace the current 6 statuses with 7 color-coded statuses using the specified palette:
 
-**localStorage schema:**
-```json
-{
-  "tier": "plan_1",
-  "timestamp": 1234567890
-}
-```
+| Status | Text Color | Background |
+|--------|-----------|------------|
+| Applied | #4A90E2 | #E8F4FD |
+| Screening | #9B59B6 | #F4ECFF |
+| Interview | #F39C12 | #FFF4E6 |
+| Offer | #27AE60 | #E8F8F0 |
+| Rejected | #E74C3C | #FFEBEE |
+| Accepted | #16A085 | #E0F2F1 |
+| Declined | #95A5A6 | #F5F5F5 |
 
-**Updated isSubscribed logic:**
-```typescript
-const localSub = localStorage.getItem("job_trackr_subscribed");
-const localTier = localSub ? JSON.parse(localSub).tier : null;
-const isSubscribed = profile?.subscription_tier === "plan_1" 
-  || profile?.subscription_tier === "plan_2" 
-  || localTier === "plan_1" 
-  || localTier === "plan_2";
-```
+---
 
-### Files to modify
-1. `supabase/functions/subscription-checkout/index.ts` -- append `plan` param to callback URL
-2. `src/pages/JobTracker.tsx` -- add localStorage fallback for subscription state, handle guest mode
-3. `src/components/tracker/UpgradePaywall.tsx` -- pass plan ID in callback URL
+### 3. Component Changes
+
+**`TrackerStats.tsx`** -- Update stat definitions:
+- Total Applications, Active Applications (applied + screening + interview + offer), Interviews, Offers
+
+**`JobCardFeed.tsx`** -- Major rewrite:
+- Add search bar (company/position) and status filter dropdown at the top
+- Redesign cards: white background with rounded corners, hover lift effect, soft shadows
+- Show calendar icon + date, dollar icon + salary, map pin + location on each card
+- Add collapsible section for contact info (name, email, phone) and notes
+- Clickable job URL with external link icon
+- Color-coded status badge pills using the new palette
+- Empty states: friendly message with briefcase icon when no apps exist; "No applications found" when filters return empty
+- Sort by most recent `applied_at` first
+
+**`AddJobModal.tsx`** -- Expand form:
+- Add fields: salary range, location, contact name, contact email, contact phone
+- Use 2-column grid layout for related fields (e.g. company + position, contact name + email)
+- Update status dropdown with all 7 statuses
+- Add date picker for `applied_at` (default to today)
+
+**`JobTracker.tsx`** -- Minor updates:
+- Pass search/filter state down or let `JobCardFeed` manage it internally
+- Update active applications filter to include the new "accepted" status where relevant
+- Update heading font to use "Cormorant Garamond" (loaded via Google Fonts in `index.html`)
+
+---
+
+### 4. Design Implementation
+
+- Background: purple-blue gradient (`from #1e3c72 through #2a5298 to #7e22ce at 135deg`) applied to the tracker page content area
+- Heading font: "Cormorant Garamond" serif for company names and main title
+- Body font: "Inter" sans-serif (already in use)
+- Cards: white/light background with 16px border radius, soft shadow, hover lift with deeper shadow
+- Primary buttons: purple gradient (`#667eea` to `#764ba2`) with hover lift
+- Status badges: rounded pills, uppercase text, color-coded per the table above
+- Smooth framer-motion animations on cards and stats (already partially in place)
+- Add Google Font link for "Cormorant Garamond" in `index.html`
+
+---
+
+### 5. Files to Create/Modify
+
+| File | Action |
+|------|--------|
+| `index.html` | Add Google Font link for Cormorant Garamond |
+| Database migration | Add 5 new columns to `job_applications` |
+| `src/components/tracker/TrackerStats.tsx` | Update stat labels and active filter logic |
+| `src/components/tracker/JobCardFeed.tsx` | Full rewrite with search, filter, new card design, collapsible sections, empty states |
+| `src/components/tracker/AddJobModal.tsx` | Add new form fields, 2-column grid, all 7 statuses, date picker |
+| `src/pages/JobTracker.tsx` | Update active apps filter, pass new props, apply gradient background |
+
+---
+
+### Technical Notes
+
+- The `job_applications` table type in `types.ts` will auto-update after the migration runs
+- Until auto-update, we use `as any` casts for new columns (consistent with existing pattern in the codebase)
+- The collapsible contact section will use `@radix-ui/react-collapsible` (already installed)
+- Search and status filter will be client-side filtering on the already-fetched applications array
+- All animations use framer-motion (already installed)
 
