@@ -14,7 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      job_applications: {
+        Row: {
+          applied_at: string
+          company_name: string
+          created_at: string
+          id: string
+          job_url: string | null
+          notes: string | null
+          position_title: string
+          status: string
+          submission_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          applied_at?: string
+          company_name: string
+          created_at?: string
+          id?: string
+          job_url?: string | null
+          notes?: string | null
+          position_title: string
+          status?: string
+          submission_type?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          applied_at?: string
+          company_name?: string
+          created_at?: string
+          id?: string
+          job_url?: string | null
+          notes?: string | null
+          position_title?: string
+          status?: string
+          submission_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          monthly_usage_count: number
+          subscription_started_at: string | null
+          subscription_tier: string | null
+          updated_at: string
+          usage_reset_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          monthly_usage_count?: number
+          subscription_started_at?: string | null
+          subscription_tier?: string | null
+          updated_at?: string
+          usage_reset_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          monthly_usage_count?: number
+          subscription_started_at?: string | null
+          subscription_tier?: string | null
+          updated_at?: string
+          usage_reset_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
