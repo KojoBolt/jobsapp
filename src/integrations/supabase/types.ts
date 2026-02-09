@@ -18,11 +18,16 @@ export type Database = {
         Row: {
           applied_at: string
           company_name: string
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
           created_at: string
           id: string
           job_url: string | null
+          location: string | null
           notes: string | null
           position_title: string
+          salary_range: string | null
           status: string
           submission_type: string
           updated_at: string
@@ -31,11 +36,16 @@ export type Database = {
         Insert: {
           applied_at?: string
           company_name: string
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
           created_at?: string
           id?: string
           job_url?: string | null
+          location?: string | null
           notes?: string | null
           position_title: string
+          salary_range?: string | null
           status?: string
           submission_type?: string
           updated_at?: string
@@ -44,11 +54,16 @@ export type Database = {
         Update: {
           applied_at?: string
           company_name?: string
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
           created_at?: string
           id?: string
           job_url?: string | null
+          location?: string | null
           notes?: string | null
           position_title?: string
+          salary_range?: string | null
           status?: string
           submission_type?: string
           updated_at?: string

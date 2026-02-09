@@ -24,6 +24,11 @@ interface JobApplication {
   applied_at: string;
   created_at: string;
   updated_at: string;
+  salary_range?: string | null;
+  location?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
 }
 
 const getLocalSubscription = () => {
@@ -44,7 +49,6 @@ const JobTracker = () => {
   const [editData, setEditData] = useState<JobApplication | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Determine subscription from profile OR localStorage
   const localSub = getLocalSubscription();
   const localTier = localSub?.tier || null;
   const effectiveTier = profile?.subscription_tier || localTier;
@@ -56,22 +60,19 @@ const JobTracker = () => {
   const monthlyUsed = profile?.monthly_usage_count || 0;
   const remainingSlots = Math.max(monthlyLimit - monthlyUsed, 0);
 
-  // Handle subscription callback — store in localStorage
+  // Handle subscription callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("subscribed") === "true") {
       const plan = params.get("plan") || "plan_1";
-      localStorage.setItem(
-        "job_trackr_subscribed",
-        JSON.stringify({ tier: plan, timestamp: Date.now() })
-      );
+      localStorage.setItem("job_trackr_subscribed", JSON.stringify({ tier: plan, timestamp: Date.now() }));
       if (user) refreshProfile();
       toast({ title: "Welcome to Job Trackr!", description: "Your subscription is now active." });
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
 
-  // Check if usage needs reset (30 days since last reset)
+  // Usage reset check
   useEffect(() => {
     if (!profile?.usage_reset_at || !user) return;
     const resetDate = new Date(profile.usage_reset_at);
@@ -155,74 +156,76 @@ const JobTracker = () => {
     setShowAddModal(true);
   };
 
-  // Compute stats
+  // Stats
   const totalApps = applications.length;
-  const activeMissions = applications.filter((a) => ["screening", "applied"].includes(a.status)).length;
+  const activeApps = applications.filter((a) => ["applied", "screening", "interview", "offer"].includes(a.status)).length;
   const interviews = applications.filter((a) => a.status === "interview").length;
   const offers = applications.filter((a) => a.status === "offer").length;
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {!isSubscribed ? (
-          <UpgradePaywall />
-        ) : (
-          <>
-            {isGuest && (
-              <Alert className="border-primary/30 bg-primary/5">
-                <AlertDescription className="text-sm">
-                  🎉 Tracker unlocked! <a href="/auth" className="font-semibold text-primary underline">Sign up</a> to save your applications and track progress.
-                </AlertDescription>
-              </Alert>
-            )}
+      <div className={isSubscribed ? "min-h-screen rounded-2xl p-6" : ""} style={isSubscribed ? { background: "var(--tracker-gradient)" } : {}}>
+        <div className="space-y-6">
+          {!isSubscribed ? (
+            <UpgradePaywall />
+          ) : (
+            <>
+              {isGuest && (
+                <Alert className="border-white/20 bg-white/10 text-white">
+                  <AlertDescription className="text-sm">
+                    🎉 Tracker unlocked! <a href="/auth" className="font-semibold underline">Sign up</a> to save your applications and track progress.
+                  </AlertDescription>
+                </Alert>
+              )}
 
-            <div className="flex items-center justify-between">
-              <div>
-                <h1
-                  className="text-2xl font-bold text-foreground"
-                  style={{ fontFamily: "'Playfair Display', serif" }}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1
+                    className="text-3xl font-bold text-white"
+                    style={{ fontFamily: "'Cormorant Garamond', serif" }}
+                  >
+                    Job Trackr
+                  </h1>
+                  <p className="text-sm text-white/60">
+                    {isPlan2 ? "Pro Hunter" : "Tracker"} • {isGuest ? "Sign up to start tracking" : `${remainingSlots} submissions left this month`}
+                  </p>
+                </div>
+                <Button
+                  className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white hover:opacity-90 hover:-translate-y-0.5 transition-all"
+                  onClick={() => { setEditData(null); setShowAddModal(true); }}
+                  disabled={isGuest || remainingSlots <= 0}
                 >
-                  Job Trackr
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  {isPlan2 ? "Pro Hunter" : "Tracker"} • {isGuest ? "Sign up to start tracking" : `${remainingSlots} submissions left this month`}
-                </p>
+                  <Plus className="h-4 w-4" />
+                  Add Application
+                </Button>
               </div>
-              <Button
-                variant="hero"
-                onClick={() => { setEditData(null); setShowAddModal(true); }}
-                disabled={isGuest || remainingSlots <= 0}
-              >
-                <Plus className="h-4 w-4" />
-                Add Application
-              </Button>
-            </div>
 
-            <TrackerStats
-              totalApps={totalApps}
-              activeMissions={activeMissions}
-              interviews={interviews}
-              offers={offers}
-            />
+              <TrackerStats
+                totalApps={totalApps}
+                activeApps={activeApps}
+                interviews={interviews}
+                offers={offers}
+              />
 
-            <JobCardFeed
-              applications={applications}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-            />
+              <JobCardFeed
+                applications={applications}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
 
-            <AddJobModal
-              open={showAddModal}
-              onClose={() => { setShowAddModal(false); setEditData(null); }}
-              onSubmit={handleAdd}
-              editData={editData}
-              isPlan2={isPlan2}
-              remainingSlots={remainingSlots}
-            />
+              <AddJobModal
+                open={showAddModal}
+                onClose={() => { setShowAddModal(false); setEditData(null); }}
+                onSubmit={handleAdd}
+                editData={editData}
+                isPlan2={isPlan2}
+                remainingSlots={remainingSlots}
+              />
 
-            <CrossSellBanner variant="deployment" />
-          </>
-        )}
+              <CrossSellBanner variant="deployment" />
+            </>
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );

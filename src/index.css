@@ -55,6 +55,25 @@
     --status-submitted: 213 94% 55%;
     --status-interview: 142 71% 45%;
 
+    /* Job Tracker status colors */
+    --tracker-applied: 213 72% 59%;
+    --tracker-applied-bg: 207 73% 95%;
+    --tracker-screening: 282 44% 53%;
+    --tracker-screening-bg: 270 100% 97%;
+    --tracker-interview: 37 90% 51%;
+    --tracker-interview-bg: 36 100% 95%;
+    --tracker-offer: 145 58% 42%;
+    --tracker-offer-bg: 146 53% 94%;
+    --tracker-rejected: 4 74% 57%;
+    --tracker-rejected-bg: 0 100% 96%;
+    --tracker-accepted: 170 72% 36%;
+    --tracker-accepted-bg: 174 41% 93%;
+    --tracker-declined: 204 8% 62%;
+    --tracker-declined-bg: 0 0% 96%;
+
+    /* Tracker gradient */
+    --tracker-gradient: linear-gradient(135deg, hsl(216 57% 28%) 0%, hsl(218 52% 37%) 50%, hsl(271 76% 47%) 100%);
+
     /* Premium gold */
     --gold: 43 96% 56%;
     --gold-foreground: 0 0% 8%;
