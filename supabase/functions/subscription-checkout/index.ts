@@ -82,6 +82,7 @@ serve(async (req) => {
 
     // Update profile with subscription tier (only if user is signed in)
     if (userId) {
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
       const now = new Date().toISOString();
       await supabase.from("profiles").update({
         subscription_tier: plan,

@@ -49,11 +49,7 @@ const UpgradePaywall = () => {
   const { toast } = useToast();
 
   const handleSelectPlan = async (planId: string) => {
-    const email = user?.email || guestEmail;
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      toast({ title: "Valid email required", description: "Please enter a valid email to proceed to checkout.", variant: "destructive" });
-      return;
-    }
+    const email = user?.email || guestEmail || `checkout-${Date.now()}@jobstack-ai.lovable.app`;
 
     setLoading(planId);
     try {
@@ -91,23 +87,6 @@ const UpgradePaywall = () => {
         </p>
       </motion.div>
 
-      {/* Guest email input */}
-      {!user && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="mx-auto max-w-sm"
-        >
-          <Input
-            type="email"
-            placeholder="Enter your email to get started"
-            value={guestEmail}
-            onChange={(e) => setGuestEmail(e.target.value)}
-            className="text-center"
-          />
-        </motion.div>
-      )}
 
       {/* Pricing Cards */}
       <div className="mx-auto grid max-w-3xl gap-6 md:grid-cols-2">
