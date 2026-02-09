@@ -4,6 +4,7 @@ import ApplicationFeed from "@/components/dashboard/ApplicationFeed";
 import PowerUpWidget from "@/components/dashboard/PowerUpWidget";
 import DeployButton from "@/components/dashboard/DeployButton";
 import RecommendedProducts from "@/components/accelerators/RecommendedProducts";
+import CrossSellBanner from "@/components/dashboard/CrossSellBanner";
 
 const Dashboard = () => {
   return (
@@ -15,6 +16,7 @@ const Dashboard = () => {
             Track your application campaign in real-time.
           </p>
         </div>
+        <CrossSellBanner variant="tracker" />
         <DeployButton />
         <PowerUpWidget />
         <StatsCards />
