@@ -13,6 +13,7 @@ import {
   FileText,
   ShoppingBag,
   Trophy,
+  Crown,
 } from "lucide-react";
 import {
   Sidebar,
@@ -33,9 +34,12 @@ import LegalModal from "@/components/legal/LegalModal";
 import TermsOfService from "@/components/legal/TermsOfService";
 import PrivacyPolicy from "@/components/legal/PrivacyPolicy";
 import CurrentStrategy from "@/components/dashboard/CurrentStrategy";
+import MonthlyUsageBar from "@/components/tracker/MonthlyUsageBar";
+import { useAuth } from "@/hooks/useAuth";
 
 const navItems = [
   { title: "Overview", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Job Trackr", url: "/job-tracker", icon: Crown },
   { title: "Applications", url: "/dashboard", icon: Activity },
   { title: "Refinement Engine", url: "/refinement", icon: Sparkles },
   { title: "Resume Manager", url: "/profile", icon: FileText },
@@ -53,8 +57,15 @@ interface DashboardLayoutProps {
 
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
+  const { profile } = useAuth();
+
+  const isSubscribed = profile?.subscription_tier === "plan_1" || profile?.subscription_tier === "plan_2";
+  const isPlan2 = profile?.subscription_tier === "plan_2";
+  const monthlyLimit = isPlan2 ? 50 : 10;
+  const planName = isPlan2 ? "Pro Hunter" : "Tracker";
 
   const getPageTitle = () => {
+    if (location.pathname === "/job-tracker") return "Job Trackr";
     if (location.pathname === "/accelerators") return "Career Accelerators";
     if (location.pathname === "/referrals") return "Referral Network";
     if (location.pathname === "/invite") return "Invite a Friend";
@@ -103,6 +114,19 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
+
+            {/* Monthly Usage (Subscribed users) */}
+            {isSubscribed && (
+              <SidebarGroup className="mt-4">
+                <SidebarGroupContent>
+                  <MonthlyUsageBar
+                    used={profile?.monthly_usage_count || 0}
+                    limit={monthlyLimit}
+                    planName={planName}
+                  />
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
 
             {/* Current Strategy */}
             <SidebarGroup className="mt-4">
