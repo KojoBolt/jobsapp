@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Crown, Zap, Check, Lock, Sparkles, BarChart3, Users, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -43,19 +44,21 @@ const plans = [
 
 const UpgradePaywall = () => {
   const [loading, setLoading] = useState<string | null>(null);
+  const [guestEmail, setGuestEmail] = useState("");
   const { user } = useAuth();
   const { toast } = useToast();
 
   const handleSelectPlan = async (planId: string) => {
-    if (!user) {
-      toast({ title: "Sign in required", description: "Please sign in to subscribe.", variant: "destructive" });
+    const email = user?.email || guestEmail;
+    if (!email) {
+      toast({ title: "Email required", description: "Please enter your email to proceed.", variant: "destructive" });
       return;
     }
 
     setLoading(planId);
     try {
       const { data, error } = await supabase.functions.invoke("subscription-checkout", {
-        body: { plan: planId, callbackUrl: `${window.location.origin}/job-tracker?subscribed=true` },
+        body: { plan: planId, callbackUrl: `${window.location.origin}/job-tracker?subscribed=true`, email },
       });
 
       if (error) throw error;
@@ -87,6 +90,24 @@ const UpgradePaywall = () => {
           Take control of your job search with an interactive tracking dashboard, smart limits, and AI-powered discovery.
         </p>
       </motion.div>
+
+      {/* Guest email input */}
+      {!user && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="mx-auto max-w-sm"
+        >
+          <Input
+            type="email"
+            placeholder="Enter your email to get started"
+            value={guestEmail}
+            onChange={(e) => setGuestEmail(e.target.value)}
+            className="text-center"
+          />
+        </motion.div>
+      )}
 
       {/* Pricing Cards */}
       <div className="mx-auto grid max-w-3xl gap-6 md:grid-cols-2">
