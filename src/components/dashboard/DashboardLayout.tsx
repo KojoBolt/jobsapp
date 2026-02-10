@@ -15,6 +15,7 @@ import {
   Crown,
   ShieldCheck,
   Terminal,
+  CheckCircle2,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -38,6 +39,8 @@ import PrivacyPolicy from "@/components/legal/PrivacyPolicy";
 import CurrentStrategy from "@/components/dashboard/CurrentStrategy";
 import MonthlyUsageBar from "@/components/tracker/MonthlyUsageBar";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect } from "react";
 
 const mainNavItems = [
   { title: "Campaign Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -60,12 +63,36 @@ interface DashboardLayoutProps {
 
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const [hasInterview, setHasInterview] = useState(false);
 
   const isSubscribed = profile?.subscription_tier === "plan_1" || profile?.subscription_tier === "plan_2";
   const isPlan2 = profile?.subscription_tier === "plan_2";
   const monthlyLimit = isPlan2 ? 50 : 10;
   const planName = isPlan2 ? "Pro Hunter" : "Tracker";
+
+  // Check if vault is complete
+  const vaultData = profile?.identity_vault_data;
+  const isVaultComplete = !!(
+    vaultData?.personalInfo?.name?.trim() &&
+    vaultData?.personalInfo?.email?.trim() &&
+    vaultData?.personalInfo?.linkedinUrl?.trim() &&
+    vaultData?.targeting?.industries && vaultData.targeting.industries.length > 0 &&
+    vaultData?.targeting?.targetRoles && vaultData.targeting.targetRoles.length > 0 &&
+    vaultData?.targeting?.toneOfVoice
+  );
+
+  // Check for active interviews
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("job_applications")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("status", "interview")
+      .limit(1)
+      .then(({ data }) => setHasInterview(!!(data && data.length > 0)));
+  }, [user]);
 
   const getPageTitle = () => {
     if (location.pathname === "/dashboard") return "Campaign Dashboard";
@@ -118,6 +145,9 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                         >
                           <item.icon className="h-4 w-4" />
                           <span>{item.title}</span>
+                          {item.url === "/identity-vault" && isVaultComplete && (
+                            <CheckCircle2 className="ml-auto h-3.5 w-3.5 text-emerald-400" />
+                          )}
                         </NavLink>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -136,10 +166,10 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                       <NavLink
                         to={trackerNavItem.url}
                         end
-                        className="flex items-center gap-3 rounded-lg border border-border/20 bg-muted/20 px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-foreground hover:shadow-[0_0_14px_hsl(213_94%_55%/0.2)]"
+                        className="flex items-center gap-3 rounded-lg border border-[hsl(220_20%_25%/0.4)] bg-[hsl(220_20%_15%/0.05)] px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary/30 hover:bg-[hsl(213_94%_55%/0.08)] hover:text-foreground hover:shadow-[0_0_14px_hsl(213_94%_55%/0.2)]"
                         activeClassName="border-primary/40 bg-primary/10 text-primary shadow-[0_0_14px_hsl(213_94%_55%/0.25)]"
                       >
-                        <Terminal className="h-4 w-4" />
+                        <Terminal className={`h-4 w-4 ${hasInterview ? "animate-pulse text-primary" : ""}`} />
                         <span>{trackerNavItem.title}</span>
                         <span className="ml-auto text-[9px] uppercase tracking-widest text-muted-foreground/60">Command Center</span>
                       </NavLink>

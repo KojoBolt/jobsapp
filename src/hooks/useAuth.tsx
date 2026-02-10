@@ -2,6 +2,26 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 
+interface VaultData {
+  personalInfo?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    linkedinUrl?: string;
+  };
+  targeting?: {
+    industries?: string[];
+    roleTypes?: string[];
+    targetRoles?: string[];
+    toneOfVoice?: string;
+    targetJobTitles?: string[];
+    companySizes?: string[];
+    mustHaves?: string;
+    salaryMin?: string;
+    salaryMax?: string;
+  };
+}
+
 interface Profile {
   id: string;
   user_id: string;
@@ -10,7 +30,10 @@ interface Profile {
   subscription_started_at: string | null;
   monthly_usage_count: number;
   usage_reset_at: string | null;
+  identity_vault_data: VaultData | null;
 }
+
+export type { VaultData };
 
 interface AuthContextType {
   user: User | null;
