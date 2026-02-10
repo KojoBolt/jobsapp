@@ -19,6 +19,7 @@ import InviteFriend from "./pages/InviteFriend";
 import RewardsCenter from "./pages/RewardsCenter";
 import AuthPage from "./pages/AuthPage";
 import JobTracker from "./pages/JobTracker";
+import DeployMission from "./pages/DeployMission";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,6 +38,7 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/identity-vault" element={<IdentityVault />} />
             <Route path="/job-tracker" element={<JobTracker />} />
+            <Route path="/job-tracker/deploy" element={<DeployMission />} />
             <Route path="/referrals" element={<Referrals />} />
             <Route path="/refinement" element={<RefinementEngine />} />
             <Route path="/profile" element={<Profile />} />

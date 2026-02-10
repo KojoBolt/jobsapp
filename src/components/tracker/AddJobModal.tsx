@@ -188,13 +188,8 @@ const AddJobModal = ({ open, onClose, onSubmit, editData, isPlan2, remainingSlot
             <button
               onClick={() => {
                 if (remainingSlots <= 0) return;
-                if (!isVaultUsable) {
-                  toast.error("Please complete your DNA profile to enable professional deployment.");
-                  onClose();
-                  navigate("/identity-vault");
-                  return;
-                }
-                setMode("deploy");
+                onClose();
+                navigate("/job-tracker/deploy");
               }}
               disabled={remainingSlots <= 0}
               className="group flex items-start gap-4 rounded-xl border border-border/50 p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed"
