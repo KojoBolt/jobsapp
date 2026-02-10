@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Bot, Link2, ClipboardList, Rocket, ArrowLeft, Crown } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 
 interface AddJobModalProps {
   open: boolean;
@@ -58,6 +61,9 @@ const statuses = [
 type Mode = "choose" | "manual" | "deploy";
 
 const AddJobModal = ({ open, onClose, onSubmit, editData, isPlan2, remainingSlots, isSubscribed }: AddJobModalProps) => {
+  const navigate = useNavigate();
+  const { profile } = useAuth();
+  const vaultData = profile?.identity_vault_data;
   const [mode, setMode] = useState<Mode>(editData ? (editData.submission_type === "manual" ? "manual" : "deploy") : "choose");
   const [company, setCompany] = useState(editData?.company_name || "");
   const [position, setPosition] = useState(editData?.position_title || "");
@@ -138,6 +144,14 @@ const AddJobModal = ({ open, onClose, onSubmit, editData, isPlan2, remainingSlot
             <button
               onClick={() => {
                 if (remainingSlots <= 0) return;
+                const hasLinkedIn = !!(vaultData?.personalInfo?.linkedinUrl?.trim());
+                const hasName = !!(vaultData?.personalInfo?.name?.trim());
+                if (!hasLinkedIn || !hasName) {
+                  toast.error("Please complete your DNA profile to enable professional deployment.");
+                  onClose();
+                  navigate("/identity-vault");
+                  return;
+                }
                 setMode("deploy");
               }}
               disabled={remainingSlots <= 0}
