@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Send, CheckCircle2, MessageSquare, TrendingUp } from "lucide-react";
+import { Send, CheckCircle2 } from "lucide-react";
 
 interface StatCard {
   label: string;
@@ -24,25 +24,11 @@ const stats: StatCard[] = [
     icon: CheckCircle2,
     positive: true,
   },
-  {
-    label: "Interview Requests",
-    value: "12",
-    change: "+3 this week",
-    icon: MessageSquare,
-    positive: true,
-  },
-  {
-    label: "Response Rate",
-    value: "8.2%",
-    change: "+1.4% vs avg",
-    icon: TrendingUp,
-    positive: true,
-  },
 ];
 
 const StatsCards = () => {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
       {stats.map((stat, i) => (
         <motion.div
           key={stat.label}

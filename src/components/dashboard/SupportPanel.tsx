@@ -35,7 +35,11 @@ const faqs = [
   },
   {
     q: "How do I request a refund?",
-    a: "We offer a 7-day satisfaction guarantee from your first application batch. Contact our support team through this panel or email refunds@jobapp.com within the refund window.",
+    a: "We offer a 'Human-Touch' Quality Guarantee: if you aren't satisfied with your first 5 applications, we'll stop the mission and give you a 100% refund. See our full Refund & Satisfaction Policy for details.",
+  },
+  {
+    q: "Is there a money-back guarantee?",
+    a: "We offer a 'Human-Touch' Quality Guarantee: If you aren't satisfied with the quality of your first 5 applications, we'll stop the mission and give you a 100% refund. Because our career specialists begin manual work immediately, missions are non-refundable once the 10th application is deployed. We also offer full refunds if our team determines your initial resume isn't yet ready for a professional launch.",
   },
   {
     q: "Is my data secure?",

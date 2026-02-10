@@ -11,7 +11,7 @@ const features = [
   "Real-time tracking dashboard",
   "HR contact referral list",
   "Insider email templates",
-  "7-day money-back guarantee",
+  "Human-Touch Quality Guarantee",
 ];
 
 const PricingSection = () => {
@@ -52,7 +52,7 @@ const PricingSection = () => {
                   Human-Reviewed
                 </Badge>
                 <Badge variant="outline" className="text-muted-foreground">
-                  7-Day Refund
+                  Quality Guarantee
                 </Badge>
               </div>
 
@@ -86,7 +86,7 @@ const PricingSection = () => {
               </Link>
 
               <p className="mt-4 text-center text-xs text-muted-foreground">
-                No subscription. No hidden fees. Cancel within 7 days for a full refund.
+                No subscription. No hidden fees. See our <a href="/refund-policy" className="underline hover:text-foreground">Refund & Satisfaction Policy</a>.
               </p>
             </div>
           </div>

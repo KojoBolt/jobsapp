@@ -41,6 +41,7 @@ import MonthlyUsageBar from "@/components/tracker/MonthlyUsageBar";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
+import OnboardingTour from "@/components/onboarding/OnboardingTour";
 
 const mainNavItems = [
   { title: "Campaign Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -65,6 +66,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
   const { profile, user } = useAuth();
   const [hasInterview, setHasInterview] = useState(false);
+  const [showTour, setShowTour] = useState(false);
 
   const isSubscribed = profile?.subscription_tier === "plan_1" || profile?.subscription_tier === "plan_2";
   const isPlan2 = profile?.subscription_tier === "plan_2";
@@ -92,6 +94,23 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
       .eq("status", "interview")
       .limit(1)
       .then(({ data }) => setHasInterview(!!(data && data.length > 0)));
+  }, [user]);
+
+  // Onboarding tour trigger
+  useEffect(() => {
+    if (!user) return;
+    const tourCompleted = localStorage.getItem("onboarding_tour_completed");
+    if (tourCompleted) return;
+    supabase
+      .from("job_applications")
+      .select("id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .then(({ data }) => {
+        if (!data || data.length === 0) {
+          setShowTour(true);
+        }
+      });
   }, [user]);
 
   const getPageTitle = () => {
@@ -134,6 +153,11 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                         <NavLink
                           to={item.url}
                           end
+                          id={
+                            item.url === "/identity-vault"
+                              ? "sidebar-identity-vault"
+                              : undefined
+                          }
                           className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all hover:bg-muted hover:text-foreground ${
                             item.url === "/identity-vault" ? "hover:shadow-[0_0_12px_hsl(270_60%_55%/0.3)]" : ""
                           }`}
@@ -166,6 +190,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                       <NavLink
                         to={trackerNavItem.url}
                         end
+                        id="sidebar-tracker"
                         className="flex items-center gap-3 rounded-lg border border-[hsl(220_20%_25%/0.4)] bg-[hsl(220_20%_15%/0.05)] px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary/30 hover:bg-[hsl(213_94%_55%/0.08)] hover:text-foreground hover:shadow-[0_0_14px_hsl(213_94%_55%/0.2)]"
                         activeClassName="border-primary/40 bg-primary/10 text-primary shadow-[0_0_14px_hsl(213_94%_55%/0.25)]"
                       >
@@ -193,7 +218,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
             )}
 
             {/* Current Strategy */}
-            <SidebarGroup className="mt-4">
+            <SidebarGroup className="mt-4" id="sidebar-strategy">
               <SidebarGroupLabel className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
                 Strategy
               </SidebarGroupLabel>
@@ -264,6 +289,9 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
           </header>
           <div className="p-6">{children}</div>
         </main>
+
+        {/* Onboarding Tour */}
+        {showTour && <OnboardingTour onComplete={() => setShowTour(false)} />}
 
         {/* Floating Support Button */}
         <SupportPanel />

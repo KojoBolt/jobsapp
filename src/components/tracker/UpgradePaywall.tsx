@@ -137,6 +137,12 @@ const UpgradePaywall = () => {
                 >
                   {loading === plan.id ? "Processing..." : plan.cta}
                 </Button>
+                <p className="mt-2 text-center text-[10px] text-muted-foreground">
+                  By subscribing, you agree to our{" "}
+                  <a href="/refund-policy" className="underline text-primary hover:text-primary/80">
+                    Refund & Satisfaction Policy
+                  </a>
+                </p>
               </CardContent>
             </Card>
           </motion.div>

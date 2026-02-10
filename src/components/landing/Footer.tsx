@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import LegalModal from "@/components/legal/LegalModal";
 import TermsOfService from "@/components/legal/TermsOfService";
 import PrivacyPolicy from "@/components/legal/PrivacyPolicy";
+import RefundPolicyContent from "@/components/legal/RefundPolicyContent";
 
 const Footer = () => {
   return (
@@ -16,7 +17,7 @@ const Footer = () => {
             <span className="text-sm font-semibold text-foreground">JobApp</span>
           </div>
 
-          <div className="flex items-center gap-6 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
             <a href="#process" className="transition-colors hover:text-foreground">How It Works</a>
             <a href="#pricing" className="transition-colors hover:text-foreground">Pricing</a>
             <Link to="/dashboard" className="transition-colors hover:text-foreground">Dashboard</Link>
@@ -35,6 +36,14 @@ const Footer = () => {
               }
             >
               <PrivacyPolicy />
+            </LegalModal>
+            <LegalModal
+              title="Refund & Satisfaction Policy"
+              trigger={
+                <button className="transition-colors hover:text-foreground">Refund Policy</button>
+              }
+            >
+              <RefundPolicyContent />
             </LegalModal>
           </div>
 

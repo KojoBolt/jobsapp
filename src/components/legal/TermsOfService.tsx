@@ -62,9 +62,10 @@ const TermsOfService = () => (
     <section>
       <h2 className="text-base font-semibold text-foreground">6. Payment & Refund Policy</h2>
       <p>
-        All payments are processed securely. We offer a 7-day satisfaction guarantee. If you are not
-        satisfied with the service within 7 days of your first application batch, you may request a
-        full refund.
+        All payments are processed securely. Refunds and satisfaction claims are governed by our
+        dedicated <a href="/refund-policy" className="underline text-primary hover:text-primary/80">Refund & Satisfaction Policy</a>,
+        which includes our Human-Touch Quality Guarantee. Please review the full policy for eligibility
+        details, timelines, and how to submit a quality review request.
       </p>
     </section>
 
