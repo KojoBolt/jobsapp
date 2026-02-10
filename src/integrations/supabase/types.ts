@@ -76,6 +76,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          identity_vault_data: Json | null
           monthly_usage_count: number
           subscription_started_at: string | null
           subscription_tier: string | null
@@ -87,6 +88,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          identity_vault_data?: Json | null
           monthly_usage_count?: number
           subscription_started_at?: string | null
           subscription_tier?: string | null
@@ -98,6 +100,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          identity_vault_data?: Json | null
           monthly_usage_count?: number
           subscription_started_at?: string | null
           subscription_tier?: string | null

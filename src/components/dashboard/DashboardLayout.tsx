@@ -40,6 +40,7 @@ import MonthlyUsageBar from "@/components/tracker/MonthlyUsageBar";
 import { useAuth } from "@/hooks/useAuth";
 
 const mainNavItems = [
+  { title: "Campaign Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Identity Vault", url: "/identity-vault", icon: ShieldCheck },
   { title: "Rewards Center", url: "/rewards", icon: Trophy },
   { title: "Refinement Engine", url: "/refinement", icon: Sparkles },
@@ -67,6 +68,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const planName = isPlan2 ? "Pro Hunter" : "Tracker";
 
   const getPageTitle = () => {
+    if (location.pathname === "/dashboard") return "Campaign Dashboard";
     if (location.pathname === "/identity-vault") return "Identity Vault";
     if (location.pathname === "/job-tracker") return "Job Trackr — Command Center";
     if (location.pathname === "/accelerators") return "Career Accelerators";
