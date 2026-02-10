@@ -1,100 +1,57 @@
 
 
-## Enhanced Job Trackr Dashboard
+# Service Deployment Dashboard
 
-A comprehensive upgrade to the Job Tracker with new data fields, search/filter functionality, expanded statuses, a refreshed visual design, and collapsible contact sections.
+## What Changes
 
----
+When a user clicks **"Deploy Professional Submission"** from the Add Application chooser, instead of staying in the small modal, they will be taken to a **dedicated full-page deployment dashboard** with a clean, spacious layout.
 
-### 1. Database Migration
+## The Deployment Page Layout
 
-Add new columns to the `job_applications` table:
+### Top Section: Identity Vault Sync Toggle
+- A prominent toggle switch: **"Use Identity Vault details for this application"**
+- **Toggle ON**: Shows a clean summary card with the user's Name, Email, LinkedIn, Resume info, Target Roles, Industries, Tone of Voice, and Salary Range -- all pulled from the Identity Vault. Redundant form fields are hidden.
+- **Toggle OFF**: Expands the full form with all fields (name, email, LinkedIn, targeting preferences, role type, salary, etc.) so the user can manually fill everything for a one-time custom application.
 
-- `salary_range` (text, nullable) -- e.g. "$80k - $100k"
-- `location` (text, nullable) -- e.g. "Remote", "New York, NY"
-- `contact_name` (text, nullable)
-- `contact_email` (text, nullable)
-- `contact_phone` (text, nullable)
+### Middle Section: Application Details
+- Company Name and Position Title (always visible)
+- Job Link field (hidden if "Find for me" AI Discovery is selected)
+- Plan 2 users: "Find a job for me" toggle for AI + Human discovery
+- Plan 1 users: Upgrade nudge for discovery feature
 
-No new tables needed. Existing data is unaffected since all new columns are nullable.
+### Mission Logic Section
+- Targeting Preferences (role type, salary minimum, industry focus) -- shown only when vault toggle is OFF
+- Special Instructions textarea: "Anything specific you want us to mention to this recruiter?"
 
----
+### Bottom Section: Credit Info and Submit
+- Shows remaining credits (e.g., "7 of 10 credits remaining")
+- Submit button: "Deploy Professional Submission"
 
-### 2. Status System Update
+## Navigation Flow
 
-Replace the current 6 statuses with 7 color-coded statuses using the specified palette:
+1. User clicks "Add Application" in Job Tracker
+2. Chooser modal appears (Manual Entry vs Deploy)
+3. Clicking "Deploy Professional Submission" **navigates to `/job-tracker/deploy`** instead of opening a form in the modal
+4. After successful submission, user is redirected back to `/job-tracker`
 
-| Status | Text Color | Background |
-|--------|-----------|------------|
-| Applied | #4A90E2 | #E8F4FD |
-| Screening | #9B59B6 | #F4ECFF |
-| Interview | #F39C12 | #FFF4E6 |
-| Offer | #27AE60 | #E8F8F0 |
-| Rejected | #E74C3C | #FFEBEE |
-| Accepted | #16A085 | #E0F2F1 |
-| Declined | #95A5A6 | #F5F5F5 |
-
----
-
-### 3. Component Changes
-
-**`TrackerStats.tsx`** -- Update stat definitions:
-- Total Applications, Active Applications (applied + screening + interview + offer), Interviews, Offers
-
-**`JobCardFeed.tsx`** -- Major rewrite:
-- Add search bar (company/position) and status filter dropdown at the top
-- Redesign cards: white background with rounded corners, hover lift effect, soft shadows
-- Show calendar icon + date, dollar icon + salary, map pin + location on each card
-- Add collapsible section for contact info (name, email, phone) and notes
-- Clickable job URL with external link icon
-- Color-coded status badge pills using the new palette
-- Empty states: friendly message with briefcase icon when no apps exist; "No applications found" when filters return empty
-- Sort by most recent `applied_at` first
-
-**`AddJobModal.tsx`** -- Expand form:
-- Add fields: salary range, location, contact name, contact email, contact phone
-- Use 2-column grid layout for related fields (e.g. company + position, contact name + email)
-- Update status dropdown with all 7 statuses
-- Add date picker for `applied_at` (default to today)
-
-**`JobTracker.tsx`** -- Minor updates:
-- Pass search/filter state down or let `JobCardFeed` manage it internally
-- Update active applications filter to include the new "accepted" status where relevant
-- Update heading font to use "Cormorant Garamond" (loaded via Google Fonts in `index.html`)
+## Validation Guards (preserved)
+- Credit check: blocks if no remaining credits
+- Vault check: if toggle is ON but vault is incomplete, shows warning with link to Identity Vault
+- Name + LinkedIn required for vault-based deployment
 
 ---
 
-### 4. Design Implementation
+## Technical Details
 
-- Background: purple-blue gradient (`from #1e3c72 through #2a5298 to #7e22ce at 135deg`) applied to the tracker page content area
-- Heading font: "Cormorant Garamond" serif for company names and main title
-- Body font: "Inter" sans-serif (already in use)
-- Cards: white/light background with 16px border radius, soft shadow, hover lift with deeper shadow
-- Primary buttons: purple gradient (`#667eea` to `#764ba2`) with hover lift
-- Status badges: rounded pills, uppercase text, color-coded per the table above
-- Smooth framer-motion animations on cards and stats (already partially in place)
-- Add Google Font link for "Cormorant Garamond" in `index.html`
+### New Files
+- **`src/pages/DeployMission.tsx`** -- Full-page deployment dashboard using `DashboardLayout`, styled with the same purple-blue gradient and serif typography. Contains the toggle, vault summary, form fields, and submission logic.
 
----
+### Modified Files
+- **`src/components/tracker/AddJobModal.tsx`** -- The "Deploy Professional Submission" button in the chooser modal will call `navigate("/job-tracker/deploy")` and close the modal, instead of setting `mode` to `"deploy"`.
+- **`src/App.tsx`** -- Add route for `/job-tracker/deploy` pointing to `DeployMission`.
 
-### 5. Files to Create/Modify
-
-| File | Action |
-|------|--------|
-| `index.html` | Add Google Font link for Cormorant Garamond |
-| Database migration | Add 5 new columns to `job_applications` |
-| `src/components/tracker/TrackerStats.tsx` | Update stat labels and active filter logic |
-| `src/components/tracker/JobCardFeed.tsx` | Full rewrite with search, filter, new card design, collapsible sections, empty states |
-| `src/components/tracker/AddJobModal.tsx` | Add new form fields, 2-column grid, all 7 statuses, date picker |
-| `src/pages/JobTracker.tsx` | Update active apps filter, pass new props, apply gradient background |
-
----
-
-### Technical Notes
-
-- The `job_applications` table type in `types.ts` will auto-update after the migration runs
-- Until auto-update, we use `as any` casts for new columns (consistent with existing pattern in the codebase)
-- The collapsible contact section will use `@radix-ui/react-collapsible` (already installed)
-- Search and status filter will be client-side filtering on the already-fetched applications array
-- All animations use framer-motion (already installed)
+### Data Flow
+- `DeployMission` page reads `profile.identity_vault_data` from `useAuth()` for the vault toggle.
+- On submit, it inserts directly into the `job_applications` table via Supabase, increments `monthly_usage_count`, and navigates back to `/job-tracker`.
+- All existing credit validation, vault completeness checks, and Plan 2 AI Discovery logic are preserved and moved to the new page.
 
