@@ -20,6 +20,7 @@ import RewardsCenter from "./pages/RewardsCenter";
 import AuthPage from "./pages/AuthPage";
 import JobTracker from "./pages/JobTracker";
 import DeployMission from "./pages/DeployMission";
+import RefundPolicy from "./pages/RefundPolicy";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +49,7 @@ const App = () => (
             <Route path="/purchase-success" element={<PurchaseSuccess />} />
             <Route path="/invite" element={<InviteFriend />} />
             <Route path="/rewards" element={<RewardsCenter />} />
+            <Route path="/refund-policy" element={<RefundPolicy />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

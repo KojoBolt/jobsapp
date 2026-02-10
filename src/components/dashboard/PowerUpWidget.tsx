@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Zap, CreditCard, ShieldCheck, Lock, CheckCircle2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 
 const PowerUpWidget = () => {
@@ -18,6 +20,7 @@ const PowerUpWidget = () => {
   const [showCheckout, setShowCheckout] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const { toast } = useToast();
 
   const handleCheckout = () => {
@@ -117,7 +120,7 @@ const PowerUpWidget = () => {
                   </div>
                   <div className="mt-3 flex items-center gap-1.5 text-xs text-status-interview">
                     <ShieldCheck className="h-3.5 w-3.5" />
-                    7-day satisfaction guarantee included
+                    Human-Touch Quality Guarantee included
                   </div>
                 </div>
 
@@ -139,11 +142,27 @@ const PowerUpWidget = () => {
                   </div>
                 </div>
 
+                {/* Refund Policy Consent */}
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="refund-consent"
+                    checked={agreedToPolicy}
+                    onCheckedChange={(v) => setAgreedToPolicy(!!v)}
+                    className="mt-0.5"
+                  />
+                  <label htmlFor="refund-consent" className="text-xs text-muted-foreground cursor-pointer">
+                    I have read and agree to the{" "}
+                    <Link to="/refund-policy" className="underline text-primary hover:text-primary/80" target="_blank">
+                      Refund & Satisfaction Policy
+                    </Link>
+                  </label>
+                </div>
+
                 <Button
                   variant="hero"
                   className="w-full gap-2"
                   onClick={handleCheckout}
-                  disabled={processing}
+                  disabled={processing || !agreedToPolicy}
                 >
                   {processing ? (
                     <>

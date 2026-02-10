@@ -59,7 +59,7 @@ const Hero = () => {
                 The 200-App Blitz
               </h2>
               <p className="mb-6 text-base leading-relaxed text-muted-foreground">
-                One-time deployment. AI speed. Human quality. Get 200 apps out in 72 hours.
+                One-time deployment. AI speed. Human quality. Get 200 apps out in 7 days.
               </p>
 
               {/* Trust badge */}
@@ -73,7 +73,7 @@ const Hero = () => {
               <ul className="mb-8 space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <Clock className="h-3.5 w-3.5 text-primary" />
-                  72-hour turnaround
+                  7-day turnaround
                 </li>
                 <li className="flex items-center gap-2">
                   <Bot className="h-3.5 w-3.5 text-primary" />
@@ -81,7 +81,7 @@ const Hero = () => {
                 </li>
                 <li className="flex items-center gap-2">
                   <Shield className="h-3.5 w-3.5 text-primary" />
-                  7-day money-back guarantee
+                  Human-Touch Quality Guarantee
                 </li>
               </ul>
             </div>

@@ -41,7 +41,7 @@ const CrossSellBanner = ({ variant }: CrossSellBannerProps) => {
         </div>
         <div>
           <p className="text-sm font-semibold text-foreground">
-            Low on leads?
+            Low on Job Applications?
           </p>
           <p className="text-xs text-muted-foreground">
             Deploy a fresh 200-App Blitz for $99. AI + Human quality guaranteed.
