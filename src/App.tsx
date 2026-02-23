@@ -17,11 +17,15 @@ import CareerAccelerators from "./pages/CareerAccelerators";
 import PurchaseSuccess from "./pages/PurchaseSuccess";
 import InviteFriend from "./pages/InviteFriend";
 import RewardsCenter from "./pages/RewardsCenter";
-import AuthPage from "./pages/AuthPage";
+// import AuthPage from "./pages/AuthPage";
 import JobTracker from "./pages/JobTracker";
 import DeployMission from "./pages/DeployMission";
 import RefundPolicy from "./pages/RefundPolicy";
 import NotFound from "./pages/NotFound";
+import Login from "./components/Auth/Login";
+import Signup from "./components/Auth/Signup";
+import AdminDashboard from "./components/admin/dashboard";
+import EmailConfirmation from "./components/Auth/EmailConfirmation";
 
 const queryClient = new QueryClient();
 
@@ -31,10 +35,17 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/auth" element={<AuthPage />} />
+            {/* <Route path="/auth" element={<AuthPage />} /> */}
+            <Route path="/login" element={<Login />} />
+            <Route path ="/sign-up" element={<Signup/>} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/identity-vault" element={<IdentityVault />} />
@@ -50,6 +61,10 @@ const App = () => (
             <Route path="/invite" element={<InviteFriend />} />
             <Route path="/rewards" element={<RewardsCenter />} />
             <Route path="/refund-policy" element={<RefundPolicy />} />
+            <Route path="/email-confirmation" element={<EmailConfirmation/>}/>
+            {/* admin route */}
+                <Route path="/admin/dashboard" element={<AdminDashboard />} />
+
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
