@@ -42,6 +42,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
 import OnboardingTour from "@/components/onboarding/OnboardingTour";
+import { toast } from "@/components/ui/use-toast";
+
 
 const mainNavItems = [
   { title: "Campaign Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -64,9 +66,10 @@ interface DashboardLayoutProps {
 
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
-  const { profile, user } = useAuth();
+  const { profile, user, signOut } = useAuth();
   const [hasInterview, setHasInterview] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const isSubscribed = profile?.subscription_tier === "plan_1" || profile?.subscription_tier === "plan_2";
   const isPlan2 = profile?.subscription_tier === "plan_2";
@@ -88,10 +91,10 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   useEffect(() => {
     if (!user) return;
     supabase
-      .from("job_applications")
+      .from("applications")
       .select("id")
       .eq("user_id", user.id)
-      .eq("status", "interview")
+      .in("status", ["pending_review", "approved"])
       .limit(1)
       .then(({ data }) => setHasInterview(!!(data && data.length > 0)));
   }, [user]);
@@ -102,7 +105,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     const tourCompleted = localStorage.getItem("onboarding_tour_completed");
     if (tourCompleted) return;
     supabase
-      .from("job_applications")
+      .from("applications")
       .select("id")
       .eq("user_id", user.id)
       .limit(1)
@@ -125,6 +128,17 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     if (location.pathname === "/support") return "Support Hub";
     if (location.pathname === "/settings") return "Settings";
     return "Campaign Dashboard";
+  };
+
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await signOut();
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
@@ -264,15 +278,37 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
               </SidebarGroupContent>
             </SidebarGroup>
 
-            <div className="mt-auto pt-4">
+            <div className="mt-auto pt-4 border-t border-border/50">
               <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    onClick={handleLogout}
+                    disabled={isLoggingOut}
+                    className="cursor-pointer"
+                  >
+                    <button
+                        onClick={async () => {
+                          await signOut();
+                          toast({
+                            title: "Signed out successfully",
+                            description: "You have been logged out of your account.",
+                          });
+                          window.location.href = '/login';
+                        }}
+                        className="..."
+                      >
+            <LogOut className="h-4 w-4" />
+     <span>Sign Out</span>
+</button>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild>
                     <Link
                       to="/"
                       className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     >
-                      <LogOut className="h-4 w-4" />
                       <span>Back to Site</span>
                     </Link>
                   </SidebarMenuButton>

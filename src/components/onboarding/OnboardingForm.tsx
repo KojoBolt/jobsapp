@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,9 +13,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowRight, ArrowLeft, Upload, CheckCircle2, Zap, User, FileText, Sliders, Crosshair, Building2 } from "lucide-react";
+import { ArrowRight, ArrowLeft, Upload, CheckCircle2, Zap, User, FileText, Sliders, Crosshair, Building2, Loader2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { extractTextFromPDF } from "@/lib/pdfExtractor";
+import { uploadToCloudinary } from "@/lib/cloudinaryUpload";
 
 const steps = [
   { title: "Personal Info", icon: User },
@@ -66,6 +70,7 @@ const companySizeOptions = [
 
 const OnboardingForm = () => {
   const [currentStep, setCurrentStep] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -81,6 +86,18 @@ const OnboardingForm = () => {
   });
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, profile, loading } = useAuth();
+
+  // Fetch user data from Supabase profile on component mount
+  useEffect(() => {
+  if (user && profile && !loading) {
+    setFormData((prev) => ({
+      ...prev,
+      fullName: profile.full_name || "",
+      email: user.email || "",
+    }));
+  }
+}, [profile, user, loading]);
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
@@ -94,17 +111,342 @@ const OnboardingForm = () => {
     }
   };
 
-  const handleSubmit = () => {
-    toast({
-      title: "Profile Complete! 🚀",
-      description: "Your Identity Vault is set. We're preparing your applications now.",
+  const handleSubmit = async () => {
+    try {
+      setUploading(true);
+      console.log("1) submit started");
+
+      // 1. Get current user from context
+      if (!user) {
+        console.error("No user found in context");
+        throw new Error("You must be logged in to complete onboarding");
+      }
+
+      console.log("2) user ok", { user_id: user.id, email: user.email });
+
+      // 2a. Verify Supabase session is active
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log("2b) Supabase session check:", { 
+        hasSession: !!session,
+        sessionUserId: session?.user?.id,
+        matches: session?.user?.id === user.id,
+        error: sessionError?.message 
+      });
+
+      // 2. Upload resume to Supabase Storage (if file exists)
+      let fileUrl = "";
+      let extractedText = "";
+
+//   if (formData.resumeFile) {
+//   console.log("3) uploading file...");
+  
+//   // Validate file
+//   if (!formData.resumeFile.type.includes('pdf')) {
+//     throw new Error('Only PDF files are allowed');
+//   }
+
+//   if (formData.resumeFile.size > 10 * 1024 * 1024) {
+//     throw new Error('File size must be less than 10MB');
+//   }
+
+//   // Create unique filename
+//   const timestamp = Date.now();
+//   const sanitizedName = formData.resumeFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+//   const filePath = `${user.id}/${timestamp}-${sanitizedName}`;
+
+//   console.log("About to upload file:", filePath);
+
+//   // Upload to storage with timeout
+//   const uploadWithTimeout = async () => {
+//     const uploadPromise = supabase.storage
+//       .from("resumes")
+//       .upload(filePath, formData.resumeFile!, { 
+//         upsert: true,
+//         cacheControl: '3600'
+//       });
+
+//     const timeoutPromise = new Promise<never>((_, reject) =>
+//       setTimeout(() => reject(new Error("Upload timed out after 30s")), 30000)
+//     );
+
+//     return await Promise.race([uploadPromise, timeoutPromise]);
+//   };
+
+//   console.log("Starting upload...");
+//   const { data: uploadData, error: uploadError } = await uploadWithTimeout();
+  
+//   console.log("4) upload done", { uploadData, uploadError });
+
+//   if (uploadError) {
+//     console.error("Upload error:", uploadError);
+//     throw new Error(`Upload failed: ${uploadError.message}`);
+//   }
+
+//   console.log("5) Upload successful, getting file URL...");
+
+//   // Get file URL
+//   const { data: { publicUrl } } = supabase
+//     .storage
+//     .from('resumes')
+//     .getPublicUrl(filePath);
+
+//   fileUrl = publicUrl;
+//   console.log("File URL:", fileUrl);
+
+//   // Extract text from PDF
+//   console.log("6) Extracting PDF text...");
+//   try {
+//     extractedText = await extractTextFromPDF(formData.resumeFile);
+//     console.log("7) Extraction done. length:", extractedText?.length);
+//   } catch (pdfError) {
+//     console.error("PDF extraction error:", pdfError);
+//     extractedText = "PDF text extraction failed - file uploaded successfully";
+//   }
+
+//   // Save resume to database
+//   console.log("8) Inserting resume row...");
+//   const { error: resumeError } = await supabase
+//     .from('resumes')
+//     .insert({
+//       user_id: user.id,
+//       file_name: formData.resumeFile.name,
+//       file_url: fileUrl,
+//       extracted_text: extractedText,
+//       job_title: formData.targetRoles || '',
+//       location: '',
+//       salary_expectation: '',
+//       tone_preference: formData.tone,
+//     });
+
+//   console.log("9) Resume insert done", resumeError);
+
+//   if (resumeError) {
+//     console.error("Resume insert error:", resumeError);
+//     throw new Error(`Failed to save resume: ${resumeError.message}`);
+//   }
+// }
+
+      if (formData.resumeFile) {
+  console.log("3) uploading file to Cloudinary...");
+  
+  // Validate file
+  if (!formData.resumeFile.type.includes('pdf')) {
+    throw new Error('Only PDF files are allowed');
+  }
+
+  if (formData.resumeFile.size > 10 * 1024 * 1024) {
+    throw new Error('File size must be less than 10MB');
+  }
+
+  console.log("Starting Cloudinary upload...");
+  
+  // Upload to Cloudinary
+  const { url: cloudinaryUrl, publicId } = await uploadToCloudinary(
+    formData.resumeFile,
+    import.meta.env.VITE_CLOUDINARY_CLOUD_NAME,
+    import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+  );
+  
+  fileUrl = cloudinaryUrl;
+  console.log("4) Upload successful, URL:", fileUrl);
+
+  // Extract text from PDF
+  console.log("5) Extracting PDF text...");
+  try {
+    extractedText = await extractTextFromPDF(formData.resumeFile);
+    console.log("6) Extraction done. length:", extractedText?.length);
+  } catch (pdfError) {
+    console.error("PDF extraction error:", pdfError);
+    extractedText = "PDF text extraction failed - file uploaded successfully";
+  }
+
+  // Save resume to database (with Cloudinary URL)
+  console.log("7) Inserting resume row...");
+  const resumePayload = {
+    user_id: user.id,
+    file_name: formData.resumeFile.name,
+    file_url: fileUrl,
+    cloudinary_public_id: publicId,
+    extracted_text: extractedText,
+    extracted_text_length: extractedText?.length,
+    job_title: formData.targetRoles || '',
+    location: '',
+    salary_expectation: '',
+    tone_preference: formData.tone,
+  };
+  console.log("Resume insert payload:", resumePayload);
+
+  try {
+    // 7a. Test if RLS is working by doing a simple SELECT first
+    console.log("7a) Testing RLS with SELECT query...");
+    const { data: testData, error: testError } = await supabase
+      .from('resumes')
+      .select('id')
+      .limit(1);
+    console.log("7b) RLS SELECT test result:", { 
+      success: !testError, 
+      dataCount: testData?.length,
+      error: testError?.message 
     });
-    navigate("/dashboard");
+
+    // 7c. Now attempt the insert
+    console.log("8a) Starting resume insert...");
+    const { data: insertData, error: resumeError } = await supabase
+      .from('resumes')
+      .insert({
+        user_id: resumePayload.user_id,
+        file_name: resumePayload.file_name,
+        file_url: resumePayload.file_url,
+        cloudinary_public_id: resumePayload.cloudinary_public_id,
+        extracted_text: resumePayload.extracted_text,
+        job_title: resumePayload.job_title,
+        location: resumePayload.location,
+        salary_expectation: resumePayload.salary_expectation,
+        tone_preference: resumePayload.tone_preference,
+      })
+      .select();
+
+    console.log("8b) Resume insert result:", { 
+      success: !resumeError, 
+      dataId: insertData ? insertData[0]?.id : undefined,
+      error: resumeError 
+    });
+
+    if (resumeError) {
+      console.error("8c) Resume insert error details:", {
+        message: resumeError.message,
+        code: resumeError.code,
+        details: resumeError.details,
+        hint: resumeError.hint,
+        status: (resumeError as any).status,
+      });
+      throw new Error(
+        `Failed to save resume to database: ${resumeError.message || JSON.stringify(resumeError)}`
+      );
+    }
+
+    console.log("8d) Resume insert succeeded with ID:", insertData?.[0]?.id);
+  } catch (resumeError: any) {
+    console.error("8g) Resume insert exception caught:", {
+      message: resumeError.message,
+      code: resumeError.code,
+      stack: resumeError.stack?.split('\n').slice(0, 3).join('\n'),
+    });
+    throw resumeError;
+  }
+}
+
+      // 4. Update profile with onboarding data (only full_name, email already comes from profile)
+      console.log("9) updating profile...");
+      console.log("Profile update payload:", {
+        user_id: user.id,
+        full_name: formData.fullName,
+      });
+
+      try {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            full_name: formData.fullName,
+          })
+          .eq('id', user.id)
+          .select();
+
+        console.log("10) Profile update response:", { dataLength: profileData?.length, error: profileError?.message });
+
+        if (profileError) {
+          console.error("Profile update error details:", {
+            message: profileError.message,
+            code: profileError.code,
+            details: profileError.details,
+            hint: profileError.hint,
+          });
+          throw new Error(
+            `Failed to update profile: ${profileError.message || JSON.stringify(profileError)}`
+          );
+        }
+
+        if (!profileData || profileData.length === 0) {
+          console.warn("Profile update returned no data");
+        } else {
+          console.log("Profile successfully updated");
+        }
+      } catch (profileError: any) {
+        console.error("Profile update exception:", {
+          message: profileError.message,
+          code: profileError.code,
+        });
+        throw profileError;
+      }
+
+      // Success!
+      toast({
+        title: "Profile Complete! 🚀",
+        description: "Your Identity Vault is set. We're preparing your applications now.",
+      });
+
+      navigate("/dashboard");
+      
+    } catch (error: any) {
+      console.error('Onboarding error:', {
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        details: error.details,
+        hint: error.hint,
+        stack: error.stack,
+        fullError: JSON.stringify(error),
+      });
+      
+      // Provide more specific error messages
+      let errorMessage = error.message || "Failed to complete onboarding. Please try again.";
+      
+      if (error.code === 'TIMEOUT') {
+        errorMessage = "Resume insert timed out - possible RLS policy issue. Ensure your account has permission to upload resumes. Please refresh and try again.";
+      } else if (error.code === 'PGRST116') {
+        errorMessage = "The resumes table doesn't exist or you don't have permission to access it. Please contact support.";
+      } else if (error.code === '42P01') {
+        errorMessage = "Database table doesn't exist. Please contact support.";
+      } else if (error.message?.includes('RLS') || error.message?.includes('Permission denied')) {
+        errorMessage = "Permission denied: RLS policy prevents this operation. Ensure you're logged in and have the latest database schema.";
+      }
+      
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      console.log("11) finally: setUploading(false)");
+      setUploading(false);
+    }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
-      setFormData({ ...formData, resumeFile: e.target.files[0] });
+      const file = e.target.files[0];
+      
+      // Validate file type
+      if (!file.type.includes('pdf')) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a PDF file",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate file size
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "Opps File too large",
+          description: "File size must be less than 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setFormData({ ...formData, resumeFile: file });
     }
   };
 
@@ -129,6 +471,19 @@ const OnboardingForm = () => {
   const priorityLinkCount = formData.priorityLinks
     .split("\n")
     .filter((line) => line.trim().startsWith("http")).length;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 py-20">
+        <div className="w-full max-w-xl text-center">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Initializing...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-20">
@@ -205,7 +560,8 @@ const OnboardingForm = () => {
                     placeholder="John Doe"
                     value={formData.fullName}
                     onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    className="bg-muted/50"
+                    disabled
+                    className="bg-muted/50 cursor-not-allowed opacity-70"
                   />
                 </div>
                 <div className="space-y-2">
@@ -216,7 +572,8 @@ const OnboardingForm = () => {
                     placeholder="john@example.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="bg-muted/50"
+                    disabled
+                    className="bg-muted/50 cursor-not-allowed opacity-70"
                   />
                 </div>
               </motion.div>
@@ -464,7 +821,7 @@ const OnboardingForm = () => {
           {/* Navigation buttons */}
           <div className="mt-8 flex items-center justify-between">
             {currentStep > 0 ? (
-              <Button variant="ghost" onClick={handleBack} className="gap-1">
+              <Button variant="ghost" onClick={handleBack} className="gap-1" disabled={uploading}>
                 <ArrowLeft className="h-4 w-4" />
                 Back
               </Button>
@@ -477,9 +834,18 @@ const OnboardingForm = () => {
                 <ArrowRight className="h-4 w-4" />
               </Button>
             ) : (
-              <Button variant="hero" onClick={handleSubmit} className="gap-1">
-                Launch Campaign
-                <ArrowRight className="h-4 w-4" />
+              <Button variant="hero" onClick={handleSubmit} className="gap-1" disabled={uploading}>
+                {uploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    Launch Campaign
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </Button>
             )}
           </div>

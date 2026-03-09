@@ -10,47 +10,55 @@ import {
 } from "@/components/ui/tooltip";
 import VerifiedHumanBadge from "@/components/dashboard/VerifiedHumanBadge";
 import PrepBotSheet from "@/components/dashboard/PrepBotSheet";
+import {Application} from "@/hooks/useDashboardData"
 
-export interface Application {
-  id: string;
-  company: string;
-  role: string;
-  link: string;
-  status: "Reviewing" | "Submitted" | "Interview";
-  date: string;
-  humanNote: string;
-  resumeUsed: string;
-}
 
-const sampleApplications: Application[] = [
-  { id: "1", company: "Google", role: "Senior Software Engineer", link: "https://careers.google.com", status: "Interview", date: "Feb 5, 2026", humanNote: "Highlighted your distributed systems experience from your last role. Emphasized leadership in paragraph 2.", resumeUsed: "Tech Resume" },
-  { id: "2", company: "Stripe", role: "Full Stack Engineer", link: "https://stripe.com/jobs", status: "Submitted", date: "Feb 4, 2026", humanNote: "Personalized paragraph 2 to highlight your SQL and payments experience. Added fintech keywords.", resumeUsed: "Tech Resume" },
-  { id: "3", company: "Meta", role: "Product Engineer", link: "https://metacareers.com", status: "Submitted", date: "Feb 4, 2026", humanNote: "Focused on your React expertise and scale. Referenced Meta's infrastructure blog in closing.", resumeUsed: "Tech Resume" },
-  { id: "4", company: "Notion", role: "Frontend Engineer", link: "https://notion.so/careers", status: "Reviewing", date: "Feb 3, 2026", humanNote: "Emphasized your passion for productivity tools and collaborative editing experience.", resumeUsed: "Creative Resume" },
-  { id: "5", company: "Vercel", role: "Developer Experience", link: "https://vercel.com/careers", status: "Interview", date: "Feb 3, 2026", humanNote: "Connected your open-source contributions to their developer platform mission.", resumeUsed: "Tech Resume" },
-  { id: "6", company: "Linear", role: "Software Engineer", link: "https://linear.app/careers", status: "Submitted", date: "Feb 2, 2026", humanNote: "Highlighted your experience with real-time collaboration and WebSocket systems.", resumeUsed: "Tech Resume" },
-  { id: "7", company: "Figma", role: "Systems Engineer", link: "https://figma.com/careers", status: "Submitted", date: "Feb 2, 2026", humanNote: "Focused on your C++ background and performance optimization case studies.", resumeUsed: "Tech Resume" },
-  { id: "8", company: "Datadog", role: "Backend Engineer", link: "https://datadog.com/careers", status: "Reviewing", date: "Feb 1, 2026", humanNote: "Tailored to their observability stack. Mentioned your monitoring pipeline project.", resumeUsed: "Tech Resume" },
-  { id: "9", company: "Plaid", role: "API Engineer", link: "https://plaid.com/careers", status: "Submitted", date: "Feb 1, 2026", humanNote: "Emphasized API design patterns and your experience with financial data integrations.", resumeUsed: "PM Resume" },
-  { id: "10", company: "Airbnb", role: "Staff Engineer", link: "https://airbnb.com/careers", status: "Interview", date: "Jan 31, 2026", humanNote: "Highlighted your microservices migration leadership and system design expertise.", resumeUsed: "Tech Resume" },
-  { id: "11", company: "Coinbase", role: "Security Engineer", link: "https://coinbase.com/careers", status: "Submitted", date: "Jan 30, 2026", humanNote: "Focused on your cryptography background and secure architecture experience.", resumeUsed: "Tech Resume" },
-  { id: "12", company: "Shopify", role: "Full Stack Developer", link: "https://shopify.com/careers", status: "Reviewing", date: "Jan 30, 2026", humanNote: "Connected your e-commerce side projects to their merchant platform mission.", resumeUsed: "Creative Resume" },
-];
+// export interface Application {
+//   id: string;
+//   company_name: string;  // Changed from 'company'
+//   job_title: string;     // Changed from 'role'
+//   job_url: string;       // Changed from 'link'
+//   status: 'queued' | 'drafting' | 'pending_review' | 'approved' | 'submitted' | 'interview' | 'completed' | 'failed';
+//   created_at: string;    // Changed from 'date'
+//   human_note?: string;
+//   resume_used?: string;
+// }
 
 const statusVariant: Record<string, "reviewing" | "submitted" | "interview"> = {
-  Reviewing: "reviewing",
-  Submitted: "submitted",
-  Interview: "interview",
+ queued: "reviewing",
+ drafting: "reviewing",
+ pending_review: "reviewing",
+ approved: "reviewing",
+submitted: "submitted",
+ interview: "interview",
+ completed: "submitted",
+ failed: "submitted",
 };
 
-const ApplicationFeed = () => {
+interface ApplicationFeedProps {
+  applications: Application[];
+}
+
+const ApplicationFeed = ({ applications }: ApplicationFeedProps) => {
   const [showAll, setShowAll] = useState(false);
   const [prepBot, setPrepBot] = useState<{ open: boolean; company: string; role: string }>({
     open: false,
     company: "",
     role: "",
   });
-  const displayed = showAll ? sampleApplications : sampleApplications.slice(0, 8);
+
+ if (!applications || applications.length === 0) {
+    return (
+      <div className="glass-card rounded-xl p-12 text-center">
+        <p className="text-lg font-medium text-foreground">No applications yet</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Submit your first job application to get started!
+        </p>
+      </div>
+    );
+  }
+
+  const displayed = showAll ? applications : applications.slice(0, 8);
 
   const openPrepBot = (company: string, role: string) => {
     setPrepBot({ open: true, company, role });
@@ -69,7 +77,7 @@ const ApplicationFeed = () => {
         <div className="flex items-center justify-between border-b border-border/50 px-6 py-4">
           <h3 className="text-sm font-semibold text-foreground">Application Feed</h3>
           <Badge variant="outline" className="text-muted-foreground">
-            {sampleApplications.length} total
+            {applications.length} total
           </Badge>
         </div>
 
@@ -97,50 +105,52 @@ const ApplicationFeed = () => {
                 >
                   <td className="px-6 py-4">
                     <a
-                      href={app.link}
+                      href={app.job_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="group inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-primary"
                     >
-                      {app.company}
+                      {app.company_name || 'Unknown Company'}
                       <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                     </a>
                   </td>
                   <td className="px-6 py-4">
                     <a
-                      href={app.link}
+                      href={app.job_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="group inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
                     >
-                      {app.role}
+                      {app.job_title || 'Unknown Role'}
                       <ExternalLink className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
                     </a>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-1.5">
                       <Badge variant={statusVariant[app.status]}>{app.status}</Badge>
-                      {(app.status === "Submitted" || app.status === "Interview") && (
-                        <VerifiedHumanBadge variant={app.status === "Interview" ? "emerald" : "gold"} />
+                      {(app.status === "submitted" || app.status === "interview") && (
+                        <VerifiedHumanBadge variant={app.status === "interview" ? "emerald" : "gold"} />
                       )}
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <Badge variant="human" className="text-[10px]">{app.resumeUsed}</Badge>
+                    <Badge variant="human" className="text-[10px]">
+                      {app.resume_id ? `Resume #${app.resume_id.slice(0, 8)}` : 'Default'}
+                    </Badge>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-sm text-muted-foreground">{app.date}</span>
+                    <span className="text-sm text-muted-foreground">{new Date(app.created_at).toLocaleDateString()}</span>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      {(app.status === "Submitted" || app.status === "Interview") && (
+                      {(app.status === "submitted" || app.status === "interview") && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
-                              onClick={() => openPrepBot(app.company, app.role)}
+                              onClick={() => openPrepBot(app.company_name || 'Company', app.job_title || 'Role')}
                             >
                               <Brain className="h-3.5 w-3.5 text-accent" />
                             </Button>
@@ -158,10 +168,12 @@ const ApplicationFeed = () => {
                         </TooltipTrigger>
                         <TooltipContent side="left" className="max-w-xs text-sm">
                           <p className="font-medium text-primary">Human Touch Note:</p>
-                          <p className="mt-1 text-muted-foreground">{app.humanNote}</p>
+                          <p className="mt-1 text-muted-foreground">
+                            No notes available yet
+                          </p>
                         </TooltipContent>
                       </Tooltip>
-                      <a href={app.link} target="_blank" rel="noopener noreferrer">
+                      <a href={app.job_url} target="_blank" rel="noopener noreferrer">
                         <Button variant="ghost" size="icon" className="h-8 w-8">
                           <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
@@ -187,16 +199,16 @@ const ApplicationFeed = () => {
               <div className="mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <a
-                    href={app.link}
+                    href={app.job_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 font-medium text-foreground transition-colors hover:text-primary"
                   >
-                    {app.company}
+                    {app.company_name || 'Unknown Company'}
                     <ExternalLink className="h-3 w-3 text-muted-foreground" />
                   </a>
-                  {(app.status === "Submitted" || app.status === "Interview") && (
-                    <VerifiedHumanBadge variant={app.status === "Interview" ? "emerald" : "gold"} size="sm" />
+                  {(app.status === "submitted" || app.status === "interview") && (
+                    <VerifiedHumanBadge variant={app.status === "interview" ? "emerald" : "gold"} size="sm" />
                   )}
                 </div>
                 <Badge variant={statusVariant[app.status]} className="text-xs">
@@ -204,25 +216,25 @@ const ApplicationFeed = () => {
                 </Badge>
               </div>
               <a
-                href={app.link}
+                href={app.job_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mb-2 block text-sm text-muted-foreground transition-colors hover:text-primary"
               >
-                {app.role}
+                {app.job_title || 'Unknown Role'}
               </a>
               <div className="mb-2">
-                <Badge variant="human" className="text-[10px]">{app.resumeUsed}</Badge>
+                <Badge variant="human" className="text-[10px]">{app.resume_id || 'Default Resume'}</Badge>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">{app.date}</span>
+                <span className="text-xs text-muted-foreground">{new Date(app.created_at).toLocaleDateString()}</span>
                 <div className="flex items-center gap-1">
-                  {(app.status === "Submitted" || app.status === "Interview") && (
+                  {(app.status === "submitted" || app.status === "interview") && (
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-7 gap-1 text-xs text-accent"
-                      onClick={() => openPrepBot(app.company, app.role)}
+                      onClick={() => openPrepBot(app.company_name || 'Company', app.job_title || 'Role')}
                     >
                       <Brain className="h-3 w-3" />
                       Prep
@@ -237,7 +249,7 @@ const ApplicationFeed = () => {
                     </TooltipTrigger>
                     <TooltipContent side="top" className="max-w-xs text-sm">
                       <p className="font-medium text-primary">Human Touch Note:</p>
-                      <p className="mt-1 text-muted-foreground">{app.humanNote}</p>
+                      <p className="mt-1 text-muted-foreground">No notes available yet</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -247,7 +259,7 @@ const ApplicationFeed = () => {
         </div>
 
         {/* Show More */}
-        {sampleApplications.length > 8 && (
+        {applications.length > 8 && (
           <div className="border-t border-border/30 p-4 text-center">
             <Button
               variant="ghost"
@@ -258,7 +270,7 @@ const ApplicationFeed = () => {
               {showAll ? (
                 <>Show Less <ChevronUp className="h-3 w-3" /></>
               ) : (
-                <>Show All ({sampleApplications.length}) <ChevronDown className="h-3 w-3" /></>
+                <>Show All ({applications.length}) <ChevronDown className="h-3 w-3" /></>
               )}
             </Button>
           </div>

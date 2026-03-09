@@ -15,20 +15,43 @@ import { Zap, CreditCard, ShieldCheck, Lock, CheckCircle2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 
-const PowerUpWidget = () => {
-  const [remaining] = useState(53);
+// Add interface for props
+interface PowerUpWidgetProps {
+  remaining?: number;
+  status?: 'Active' | 'Depleted';
+  plan?: 'free' | 'starter' | 'pro';
+}
+
+// Update component to accept props
+const PowerUpWidget = ({ 
+  remaining = 0, 
+  status = 'Active', 
+  plan = 'free' 
+}: PowerUpWidgetProps) => {
   const [showCheckout, setShowCheckout] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const { toast } = useToast();
 
+  // Pricing based on plan
+  const packageInfo = {
+    free: { quantity: 100, price: 29 },
+    starter: { quantity: 100, price: 49 },
+    pro: { quantity: 200, price: 99 }
+  };
+
+  const { quantity, price } = packageInfo[plan];
+
   const handleCheckout = () => {
     setProcessing(true);
     setTimeout(() => {
       setProcessing(false);
       setSuccess(true);
-      toast({ title: "Purchase Complete! 🎉", description: "200 applications added to your balance." });
+      toast({ 
+        title: "Purchase Complete! 🎉", 
+        description: `${quantity} applications added to your balance.` 
+      });
       setTimeout(() => {
         setShowCheckout(false);
         setSuccess(false);
@@ -50,7 +73,7 @@ const PowerUpWidget = () => {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-foreground">Application Balance</span>
-              <Badge variant="human" className="text-[10px]">Active</Badge>
+              <Badge variant="human" className="text-[10px]">{status}</Badge>
             </div>
             <p className="text-2xl font-bold text-foreground">
               {remaining}
@@ -71,7 +94,7 @@ const PowerUpWidget = () => {
           >
             Most Popular
           </Badge>
-          Buy 200 More for $99
+          Buy {quantity} More for ${price}
         </Button>
       </motion.div>
 
@@ -98,7 +121,7 @@ const PowerUpWidget = () => {
                 </div>
                 <div>
                   <p className="text-lg font-bold text-foreground">Payment Successful!</p>
-                  <p className="text-sm text-muted-foreground">200 applications have been added to your account.</p>
+                  <p className="text-sm text-muted-foreground">{quantity} applications have been added to your account.</p>
                 </div>
               </motion.div>
             ) : (
@@ -113,10 +136,10 @@ const PowerUpWidget = () => {
                 <div className="rounded-lg border border-border/30 bg-muted/20 p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-foreground">200 Applications</p>
+                      <p className="text-sm font-medium text-foreground">{quantity} Applications</p>
                       <p className="text-xs text-muted-foreground">Human-reviewed & AI-optimized</p>
                     </div>
-                    <p className="text-xl font-bold text-foreground">$99</p>
+                    <p className="text-xl font-bold text-foreground">${price}</p>
                   </div>
                   <div className="mt-3 flex items-center gap-1.5 text-xs text-status-interview">
                     <ShieldCheck className="h-3.5 w-3.5" />
@@ -176,7 +199,7 @@ const PowerUpWidget = () => {
                   ) : (
                     <>
                       <Lock className="h-4 w-4" />
-                      Pay $99 Securely
+                      Pay ${price} Securely
                     </>
                   )}
                 </Button>

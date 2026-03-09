@@ -1,6 +1,7 @@
--- Create a storage bucket for resume PDFs
+-- Create a storage bucket for resume PDFs (ignore if already exists)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('resumes', 'resumes', false, 10485760, ARRAY['application/pdf']);
+VALUES ('resumes', 'resumes', false, 10485760, ARRAY['application/pdf'])
+ON CONFLICT (id) DO NOTHING;
 
 -- Allow authenticated users to upload their own resumes
 CREATE POLICY "Users can upload their own resumes"
