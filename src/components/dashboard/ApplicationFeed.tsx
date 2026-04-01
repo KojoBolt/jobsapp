@@ -40,12 +40,18 @@ interface ApplicationFeedProps {
 }
 
 const ApplicationFeed = ({ applications }: ApplicationFeedProps) => {
-  const [showAll, setShowAll] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const [prepBot, setPrepBot] = useState<{ open: boolean; company: string; role: string }>({
     open: false,
     company: "",
     role: "",
   });
+
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(applications.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const displayed = applications.slice(startIndex, endIndex);
 
  if (!applications || applications.length === 0) {
     return (
@@ -57,8 +63,6 @@ const ApplicationFeed = ({ applications }: ApplicationFeedProps) => {
       </div>
     );
   }
-
-  const displayed = showAll ? applications : applications.slice(0, 8);
 
   const openPrepBot = (company: string, role: string) => {
     setPrepBot({ open: true, company, role });
@@ -258,21 +262,77 @@ const ApplicationFeed = ({ applications }: ApplicationFeedProps) => {
           ))}
         </div>
 
-        {/* Show More */}
-        {applications.length > 8 && (
-          <div className="border-t border-border/30 p-4 text-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowAll(!showAll)}
-              className="gap-1 text-xs text-muted-foreground"
-            >
-              {showAll ? (
-                <>Show Less <ChevronUp className="h-3 w-3" /></>
-              ) : (
-                <>Show All ({applications.length}) <ChevronDown className="h-3 w-3" /></>
+        {/* Pagination */}
+        {applications.length > 0 && (
+          <div className="border-t border-border/30 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="text-xs text-muted-foreground">
+                Showing {startIndex + 1} - {Math.min(endIndex, applications.length)} of {applications.length}
+              </div>
+              {totalPages > 1 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="h-8 w-8 p-0 text-xs"
+                    title="First page"
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="h-8 px-3 text-xs"
+                  >
+                    <ChevronDown className="h-4 w-4 rotate-180" />
+                  </Button>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                      if (totalPages <= 5) return i + 1;
+                      if (currentPage <= 3) return i + 1;
+                      if (currentPage >= totalPages - 2) return totalPages - 4 + i;
+                      return currentPage - 2 + i;
+                    }).map((page) => (
+                      <Button
+                        key={page}
+                        variant={page === currentPage ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => setCurrentPage(page)}
+                        className="h-8 w-8 p-0 text-xs font-medium"
+                      >
+                        {page}
+                      </Button>
+                    ))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="h-8 px-3 text-xs"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="h-8 w-8 p-0 text-xs"
+                    title="Last page"
+                  >
+                    <ChevronUp className="h-4 w-4 rotate-180" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                </div>
               )}
-            </Button>
+            </div>
           </div>
         )}
       </div>

@@ -38,7 +38,7 @@ const PowerUpWidget = ({
   const packageInfo = {
     free: { quantity: 100, price: 29 },
     starter: { quantity: 100, price: 49 },
-    pro: { quantity: 200, price: 99 }
+    pro: { quantity: 200, price: 299 }
   };
 
   const { quantity, price } = packageInfo[plan];
@@ -86,7 +86,7 @@ const PowerUpWidget = ({
           variant="gold"
           size="lg"
           onClick={() => setShowCheckout(true)}
-          className="relative gap-2 animate-pulse-gold"
+          className="relative gap-2"
         >
           <Badge
             variant="interview"

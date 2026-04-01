@@ -185,7 +185,7 @@ const ResumeManager = () => {
                 ) : (
                   <>
                     <span className="text-sm text-foreground">Drop your resume here</span>
-                    <span className="text-xs text-muted-foreground">PDF, up to 10MB</span>
+                    <span className="text-xs text-muted-foreground">PDF, up to 5MB</span>
                   </>
                 )}
               </label>

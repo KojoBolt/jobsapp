@@ -1,57 +1,20 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
-const terminalLines = [
-  "Syncing Identity Vault...",
-  "Checking Proxy Nodes...",
-  "Human Reviewers Online...",
-  "Loading Resume Variants...",
-  "Connecting to Job Boards...",
-  "Encrypting Application Data...",
-  "Verifying LinkedIn OAuth...",
-  "Calibrating AI Match Engine...",
-  "Scanning Priority Links...",
-  "Establishing Secure Channels...",
-  "Deploying Cover Letter Templates...",
-  "Running Compliance Checks...",
-  "Initializing Human Review Queue...",
-  "System Ready — Launching...",
-];
+interface DeployTerminalProps {
+  logs?: string[];
+}
 
-const DeployTerminal = () => {
-  const [lines, setLines] = useState<string[]>([]);
+const DeployTerminal = ({ logs = [] }: DeployTerminalProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let idx = 0;
-    const timer = setInterval(() => {
-      if (idx < terminalLines.length) {
-        setLines((prev) => [...prev, terminalLines[idx]]);
-        idx++;
-      } else {
-        // Loop through randomized status lines
-        const extras = [
-          "Heartbeat OK — All systems nominal",
-          "Queue processing — batch 0x3FA2",
-          "Human specialist #4 assigned",
-          "Cover letter variant B selected",
-          "AI confidence: 94.7%",
-          "Proxy node latency: 12ms",
-        ];
-        setLines((prev) => [
-          ...prev.slice(-12),
-          extras[Math.floor(Math.random() * extras.length)],
-        ]);
-      }
-    }, 400);
-
-    return () => clearInterval(timer);
-  }, []);
-
+  // Auto scroll to bottom when new logs come in
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [lines]);
+  }, [logs]);
+
+  const displayLines = logs.length > 0 ? logs : ["Waiting to initialize..."];
 
   return (
     <div className="w-full rounded-lg border border-border/30 bg-background/80 overflow-hidden">
@@ -67,7 +30,7 @@ const DeployTerminal = () => {
         ref={containerRef}
         className="h-28 overflow-y-auto px-3 py-2 font-mono text-[10px] leading-relaxed"
       >
-        {lines.map((line, i) => (
+        {displayLines.map((line, i) => (
           <div key={i} className="flex items-center gap-2">
             <span className="text-status-interview">›</span>
             <span className="text-primary/80">[{String(i).padStart(3, "0")}]</span>

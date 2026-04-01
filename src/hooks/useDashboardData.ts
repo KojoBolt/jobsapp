@@ -102,7 +102,7 @@ export function useDashboardData(userId: string | undefined) {
           sent_this_week: sentThisWeek,
           total_confirmations: confirmations,
           confirmation_rate: confirmationRate,
-          applications: allApplications.slice(0, 12), // Show latest 12
+          applications: allApplications, 
         };
 
         console.log('Dashboard data loaded:', dashboardData);

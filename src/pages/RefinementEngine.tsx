@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,9 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { HoverBorderGradient } from "@/components/ui/hover-border-gradient";
+import Logo from "@/assets/images/job-logo.png";
 
 type Tone = "technical" | "creative" | "executive";
 
@@ -33,134 +36,315 @@ const RefinementEngine = () => {
   const [humanScore, setHumanScore] = useState(0);
   const [scanPhase, setScanPhase] = useState<"idle" | "scanning" | "done">("idle");
   const { toast } = useToast();
+  const scoreRafRef = useRef<number | null>(null);
+  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
-  const humanize = useCallback(async () => {
-    if (!rawText.trim()) {
-      toast({ title: "Empty text", description: "Please enter some text to humanize.", variant: "destructive" });
+  useEffect(() => {
+  return () => {
+    if (scoreRafRef.current !== null) {
+      cancelAnimationFrame(scoreRafRef.current);
+    }
+
+    if (readerRef.current) {
+      readerRef.current.cancel().catch(() => {});
+    }
+  };
+}, []);
+  const animateScore = useCallback((target: number) => {
+  if (scoreRafRef.current !== null) {
+    cancelAnimationFrame(scoreRafRef.current);
+  }
+
+  let current = 0;
+
+  const step = () => {
+    current += 1;
+
+    if (current >= target) {
+      setHumanScore(target);
+      scoreRafRef.current = null;
       return;
     }
 
-    setIsProcessing(true);
-    setScanPhase("scanning");
-    setHumanizedText("");
-    setHumanScore(0);
-
-    let accumulated = "";
-
-    try {
-      const resp = await fetch(HUMANIZE_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({ text: rawText, tone }),
-      });
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: "Processing failed" }));
-        throw new Error(err.error || "Processing failed");
-      }
-
-      if (!resp.body) throw new Error("No response body");
-
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let streamDone = false;
-
-      // Start score animation after first token
-      let scoreStarted = false;
-
-      while (!streamDone) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        let newlineIndex: number;
-        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, newlineIndex);
-          buffer = buffer.slice(newlineIndex + 1);
-
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
-          if (!line.startsWith("data: ")) continue;
-
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") {
-            streamDone = true;
-            break;
-          }
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) {
-              accumulated += content;
-              setHumanizedText(accumulated);
-
-              if (!scoreStarted) {
-                scoreStarted = true;
-                setScanPhase("done");
-              }
-            }
-          } catch {
-            buffer = line + "\n" + buffer;
-            break;
-          }
-        }
-      }
-
-      // Final flush
-      if (buffer.trim()) {
-        for (let raw of buffer.split("\n")) {
-          if (!raw) continue;
-          if (raw.endsWith("\r")) raw = raw.slice(0, -1);
-          if (raw.startsWith(":") || raw.trim() === "") continue;
-          if (!raw.startsWith("data: ")) continue;
-          const jsonStr = raw.slice(6).trim();
-          if (jsonStr === "[DONE]") continue;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) {
-              accumulated += content;
-              setHumanizedText(accumulated);
-            }
-          } catch { /* ignore */ }
-        }
-      }
-
-      // Animate score to 100%
-      animateScore(100);
-
-      toast({ title: "Humanization Complete ✓", description: "Your text has been refined and is undetectable." });
-    } catch (err) {
-      console.error(err);
-      toast({
-        title: "Processing Error",
-        description: err instanceof Error ? err.message : "Something went wrong.",
-        variant: "destructive",
-      });
-      setScanPhase("idle");
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [rawText, tone, toast]);
-
-  const animateScore = (target: number) => {
-    let current = 0;
-    const step = () => {
-      current += 1;
-      if (current > target) {
-        setHumanScore(target);
-        return;
-      }
-      setHumanScore(current);
-      requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
+    setHumanScore(current);
+    scoreRafRef.current = requestAnimationFrame(step);
   };
+
+  scoreRafRef.current = requestAnimationFrame(step);
+}, []);
+
+const humanize = useCallback(async () => {
+  if (!rawText.trim()) {
+    toast({
+      title: "Empty text",
+      description: "Please enter some text to humanize.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  if (scoreRafRef.current !== null) {
+    cancelAnimationFrame(scoreRafRef.current);
+    scoreRafRef.current = null;
+  }
+
+  setIsProcessing(true);
+  setScanPhase("scanning");
+  setHumanizedText("");
+  setHumanScore(0);
+
+  let accumulated = "";
+
+  try {
+    const resp = await fetch(HUMANIZE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ text: rawText, tone }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: "Processing failed" }));
+      throw new Error(err.error || "Processing failed");
+    }
+
+    if (!resp.body) {
+      throw new Error("No response body");
+    }
+
+    const reader = resp.body.getReader();
+    readerRef.current = reader;
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let streamDone = false;
+
+    while (!streamDone) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        streamDone = true;
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+
+      let newlineIndex: number;
+      while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+        let line = buffer.slice(0, newlineIndex);
+        buffer = buffer.slice(newlineIndex + 1);
+
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (line.startsWith(":") || line.trim() === "") continue;
+        if (!line.startsWith("data: ")) continue;
+
+        const jsonStr = line.slice(6).trim();
+
+        if (jsonStr === "[DONE]") {
+          streamDone = true;
+          break;
+        }
+
+        try {
+          const parsed = JSON.parse(jsonStr);
+          const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+
+          if (content) {
+            accumulated += content;
+            setHumanizedText(accumulated);
+          }
+        } catch {
+          buffer = line + "\n" + buffer;
+          break;
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      for (let raw of buffer.split("\n")) {
+        if (!raw) continue;
+        if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+        if (raw.startsWith(":") || raw.trim() === "") continue;
+        if (!raw.startsWith("data: ")) continue;
+
+        const jsonStr = raw.slice(6).trim();
+        if (jsonStr === "[DONE]") continue;
+
+        try {
+          const parsed = JSON.parse(jsonStr);
+          const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+
+          if (content) {
+            accumulated += content;
+            setHumanizedText(accumulated);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    setScanPhase("idle");
+    setIsProcessing(false);
+    animateScore(100);
+
+    toast({
+      title: "Humanization Complete ✓",
+      description: "Your text has been refined.",
+    });
+  } catch (err) {
+    console.error(err);
+    setScanPhase("idle");
+    setIsProcessing(false);
+
+    toast({
+      title: "Processing Error",
+      description: err instanceof Error ? err.message : "Something went wrong.",
+      variant: "destructive",
+    });
+  } finally {
+    if (readerRef.current) {
+      try {
+        await readerRef.current.cancel();
+      } catch {
+        // ignore
+      }
+      readerRef.current = null;
+    }
+  }
+}, [rawText, tone, toast, animateScore]);
+
+  // const humanize = useCallback(async () => {
+  //   if (!rawText.trim()) {
+  //     toast({ title: "Empty text", description: "Please enter some text to humanize.", variant: "destructive" });
+  //     return;
+  //   }
+
+  //   setIsProcessing(true);
+  //   setScanPhase("scanning");
+  //   setHumanizedText("");
+  //   setHumanScore(0);
+
+  //   let accumulated = "";
+
+  //   try {
+  //     const resp = await fetch(HUMANIZE_URL, {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+  //       },
+  //       body: JSON.stringify({ text: rawText, tone }),
+  //     });
+
+  //     if (!resp.ok) {
+  //       const err = await resp.json().catch(() => ({ error: "Processing failed" }));
+  //       throw new Error(err.error || "Processing failed");
+  //     }
+
+  //     if (!resp.body) throw new Error("No response body");
+
+  //     const reader = resp.body.getReader();
+  //     const decoder = new TextDecoder();
+  //     let buffer = "";
+  //     let streamDone = false;
+
+  //     // Start score animation after first token
+  //     let scoreStarted = false;
+
+  //     while (!streamDone) {
+  //       const { done, value } = await reader.read();
+  //       if (done) break;
+  //       buffer += decoder.decode(value, { stream: true });
+
+  //       let newlineIndex: number;
+  //       while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+  //         let line = buffer.slice(0, newlineIndex);
+  //         buffer = buffer.slice(newlineIndex + 1);
+
+  //         if (line.endsWith("\r")) line = line.slice(0, -1);
+  //         if (line.startsWith(":") || line.trim() === "") continue;
+  //         if (!line.startsWith("data: ")) continue;
+
+  //         const jsonStr = line.slice(6).trim();
+  //         if (jsonStr === "[DONE]") {
+  //           streamDone = true;
+  //           break;
+  //         }
+
+  //         try {
+  //           const parsed = JSON.parse(jsonStr);
+  //           const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+  //           if (content) {
+  //             accumulated += content;
+  //             setHumanizedText(accumulated);
+
+  //             if (!scoreStarted) {
+  //               scoreStarted = true;
+  //               setScanPhase("done");
+  //             }
+  //           }
+  //         } catch {
+  //           buffer = line + "\n" + buffer;
+  //           break;
+  //         }
+  //       }
+  //     }
+
+  //     // Final flush
+  //     if (buffer.trim()) {
+  //       for (let raw of buffer.split("\n")) {
+  //         if (!raw) continue;
+  //         if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+  //         if (raw.startsWith(":") || raw.trim() === "") continue;
+  //         if (!raw.startsWith("data: ")) continue;
+  //         const jsonStr = raw.slice(6).trim();
+  //         if (jsonStr === "[DONE]") continue;
+  //         try {
+  //           const parsed = JSON.parse(jsonStr);
+  //           const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+  //           if (content) {
+  //             accumulated += content;
+  //             setHumanizedText(accumulated);
+  //           }
+  //         } catch { /* ignore */ }
+  //       }
+  //     }
+
+  //     // Animate score to 100%
+  //     animateScore(100);
+
+  //     toast({ title: "Humanization Complete ✓", description: "Your text has been refined and is undetectable." });
+  //   } catch (err) {
+  //     console.error(err);
+  //     toast({
+  //       title: "Processing Error",
+  //       description: err instanceof Error ? err.message : "Something went wrong.",
+  //       variant: "destructive",
+  //     });
+  //     setScanPhase("idle");
+  //   } finally {
+  //     setIsProcessing(false);
+  //   }
+  // }, [rawText, tone, toast]);
+
+  // const animateScore = (target: number) => {
+  //   let current = 0;
+  //   const step = () => {
+  //     current += 1;
+  //     if (current > target) {
+  //       setHumanScore(target);
+  //       return;
+  //     }
+  //     setHumanScore(current);
+  //     requestAnimationFrame(step);
+  //   };
+  //   requestAnimationFrame(step);
+  // };
+
+
 
   const getScoreColor = () => {
     if (humanScore < 40) return "text-destructive";
@@ -174,6 +358,8 @@ const RefinementEngine = () => {
     return "bg-status-interview";
   };
 
+  const isDisabled = isProcessing || !rawText.trim();
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -181,10 +367,7 @@ const RefinementEngine = () => {
         <div className="container mx-auto flex h-16 items-center justify-between px-6">
           <div className="flex items-center gap-4">
             <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <Zap className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <span className="text-lg font-bold text-foreground">JobApp</span>
+            <img src={Logo} alt="Job app logo" className="h-8" />
             </Link>
             <span className="text-muted-foreground">/</span>
             <span className="text-sm font-medium text-foreground">Refinement Engine</span>
@@ -252,7 +435,7 @@ const RefinementEngine = () => {
           {/* Left: Raw AI Draft */}
           <div className="glass-card rounded-xl p-5">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-foreground">Raw AI Draft</h3>
+              <h3 className="text-sm font-semibold text-foreground">AI generated text</h3>
               <Badge variant="outline" className="text-muted-foreground">Input</Badge>
             </div>
             <Textarea
@@ -273,7 +456,7 @@ const RefinementEngine = () => {
                   initial={{ top: 0 }}
                   animate={{ top: "100%" }}
                   transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  exit={{ opacity: 0 }}
+                  exit={{ opacity: 0, transition: { duration: 0.3, repeat: 0 } }} 
                   className="pointer-events-none absolute left-0 right-0 z-10 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent"
                   style={{ boxShadow: "0 0 20px 4px hsl(213 94% 55% / 0.5)" }}
                 />
@@ -320,25 +503,31 @@ const RefinementEngine = () => {
           transition={{ delay: 0.3 }}
           className="mb-8 flex justify-center"
         >
-          <Button
-            variant="hero"
-            size="xl"
-            onClick={humanize}
-            disabled={isProcessing || !rawText.trim()}
-            className="group gap-2"
-          >
-            {isProcessing ? (
-              <>
-                <ScanLine className="h-5 w-5 animate-pulse" />
-                Scanning & Humanizing...
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-5 w-5 transition-transform group-hover:rotate-12" />
-                Humanize & Bypass Detectors
-              </>
-            )}
-          </Button>
+
+<HoverBorderGradient
+  onClick={() => {
+    if (isDisabled) return;
+    void humanize();
+  }}
+  containerClassName="rounded-full"
+  className={cn(
+    "flex items-center gap-2 px-8 py-3 text-base font-semibold ",
+    isDisabled && "opacity-50 pointer-events-none cursor-not-allowed"
+  )}
+>
+  {isProcessing ? (
+    <>
+      <ScanLine className="h-5 w-5 animate-pulse" />
+      Scanning & Humanizing...
+    </>
+  ) : (
+    <>
+      <Sparkles className="h-5 w-5 transition-transform group-hover:rotate-12" />
+      Humanize & Bypass Detectors
+    </>
+  )}
+</HoverBorderGradient>
+
         </motion.div>
 
         {/* Human-Score Meter */}

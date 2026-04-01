@@ -2,22 +2,18 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Copy,
-  Check,
-  MessageCircle,
-  Linkedin,
-  Twitter,
-  Mail,
-  Link2,
-} from "lucide-react";
+import { Copy, Check, MessageCircle, Linkedin, Twitter, Mail, Link2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 
-const ReferralTool = () => {
+interface ReferralToolProps {
+  referralLink: string;
+  referralCode: string;
+}
+
+const ReferralTool = ({ referralLink, referralCode }: ReferralToolProps) => {
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
-  const referralLink = "https://jobapp.com/ref/stephen123";
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(referralLink);
@@ -83,20 +79,13 @@ const ReferralTool = () => {
               onClick={handleCopy}
             >
               {copied ? (
-                <>
-                  <Check className="h-4 w-4" />
-                  Copied!
-                </>
+                <><Check className="h-4 w-4" />Copied!</>
               ) : (
-                <>
-                  <Copy className="h-4 w-4" />
-                  Copy Link
-                </>
+                <><Copy className="h-4 w-4" />Copy Link</>
               )}
             </Button>
           </div>
 
-          {/* Share icons row */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-muted-foreground">
               One-Click Share:

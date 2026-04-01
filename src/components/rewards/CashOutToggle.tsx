@@ -5,22 +5,56 @@ import { Badge } from "@/components/ui/badge";
 import { Wallet, RotateCcw, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
+import { supabase } from "@/integrations/supabase/client";
 
-const CashOutToggle = () => {
-  const [mode, setMode] = useState<"reapply" | "cashout">("reapply");
+interface CashOutToggleProps {
+  userId?: string;
+  initialMode?: "reapply" | "cashout";
+  totalCredits?: number;
+}
+
+const CashOutToggle = ({
+  userId,
+  initialMode = "reapply",
+  totalCredits = 0,
+}: CashOutToggleProps) => {
+  const [mode, setMode] = useState<"reapply" | "cashout">(initialMode);
+  const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
-  const handleSelect = (selected: "reapply" | "cashout") => {
+  const handleSelect = async (selected: "reapply" | "cashout") => {
     setMode(selected);
+    if (!userId) return;
+
+    setSaving(true);
+    await supabase
+      .from("profiles")
+      .update({ cashout_preference: selected })
+      .eq("id", userId);
+    setSaving(false);
+
     toast({
-      title:
-        selected === "reapply"
-          ? "Credits will apply to your next pack"
-          : "Cash payout requested",
-      description:
-        selected === "reapply"
-          ? "Your earned credits will automatically discount your next 200-App Pack."
-          : "We'll process your payout via Paystack within 48 hours.",
+      title: selected === "reapply"
+        ? "Credits will apply to your next pack"
+        : "Cash payout requested",
+      description: selected === "reapply"
+        ? "Your earned credits will automatically discount your next 200-App Pack."
+        : "We'll process your payout via Paystack within 48 hours.",
+    });
+  };
+
+  const handleRequestPayout = async () => {
+    if (!userId || totalCredits <= 0) {
+      toast({
+        title: "No credits to cash out",
+        description: "Earn credits by referring friends first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({
+      title: "Payout requested!",
+      description: `$${totalCredits} will be processed via Paystack within 48 hours.`,
     });
   };
 
@@ -40,9 +74,9 @@ const CashOutToggle = () => {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            {/* Re-Apply option */}
             <button
               onClick={() => handleSelect("reapply")}
+              disabled={saving}
               className={`group relative flex flex-col items-start gap-3 rounded-xl border p-5 text-left transition-all ${
                 mode === "reapply"
                   ? "border-primary/50 bg-primary/5 ring-1 ring-primary/30"
@@ -53,23 +87,19 @@ const CashOutToggle = () => {
                 <RotateCcw className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Apply to Next 200 Pack
-                </p>
+                <p className="text-sm font-semibold text-foreground">Apply to Next 200 Pack</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Credits auto-apply as a discount on your next application pack.
                 </p>
               </div>
               {mode === "reapply" && (
-                <Badge className="absolute right-3 top-3 bg-primary/20 text-primary">
-                  Active
-                </Badge>
+                <Badge className="absolute right-3 top-3 bg-primary/20 text-primary">Active</Badge>
               )}
             </button>
 
-            {/* Cash Out option */}
             <button
               onClick={() => handleSelect("cashout")}
+              disabled={saving}
               className={`group relative flex flex-col items-start gap-3 rounded-xl border p-5 text-left transition-all ${
                 mode === "cashout"
                   ? "border-gold/50 bg-gold/5 ring-1 ring-gold/30"
@@ -80,25 +110,27 @@ const CashOutToggle = () => {
                 <Wallet className="h-5 w-5 text-gold" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Request Cash Payout
-                </p>
+                <p className="text-sm font-semibold text-foreground">Request Cash Payout</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Withdraw your earnings directly via Paystack.
                 </p>
               </div>
               {mode === "cashout" && (
-                <Badge className="absolute right-3 top-3 bg-gold/20 text-gold">
-                  Active
-                </Badge>
+                <Badge className="absolute right-3 top-3 bg-gold/20 text-gold">Active</Badge>
               )}
             </button>
           </div>
 
           {mode === "cashout" && (
-            <Button variant="gold" size="lg" className="w-full gap-2">
+            <Button
+              variant="gold"
+              size="lg"
+              className="w-full gap-2"
+              onClick={handleRequestPayout}
+              disabled={totalCredits <= 0}
+            >
               <Wallet className="h-4 w-4" />
-              Request Payout
+              Request Payout {totalCredits > 0 ? `($${totalCredits})` : ""}
               <ArrowRight className="h-4 w-4" />
             </Button>
           )}

@@ -5,9 +5,9 @@ import PowerUpWidget from "@/components/dashboard/PowerUpWidget";
 import DeployButton from "@/components/dashboard/DeployButton";
 import RecommendedProducts from "@/components/accelerators/RecommendedProducts";
 import CrossSellBanner from "@/components/dashboard/CrossSellBanner";
-import { useAuth } from "@/hooks/useAuth";  // ADD THIS
-import { useDashboardData } from "@/hooks/useDashboardData";  // ADD THIS
-import { Loader2 } from "lucide-react";  // ADD THIS
+import { useAuth } from "@/hooks/useAuth";  
+import { useDashboardData } from "@/hooks/useDashboardData";  
+import { Loader2 } from "lucide-react"; 
 
 const Dashboard = () => {
   // ADD THESE 3 LINES ↓

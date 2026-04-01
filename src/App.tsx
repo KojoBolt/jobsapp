@@ -176,7 +176,7 @@ const App = () => (
               }
             />
 
-            {/* ✅ ADMIN ROUTES - PROTECTED */}
+            {/* ADMIN ROUTES - PROTECTED */}
             <Route
               path="/admin"
               element={

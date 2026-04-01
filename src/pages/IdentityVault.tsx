@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,8 +62,136 @@ const fadeUp = {
   animate: { opacity: 1, y: 0 },
 };
 
+// const extractTextFromPDF = async (file: File): Promise<string> => {
+//   return new Promise((resolve) => {
+//     const reader = new FileReader();
+//     reader.onload = async (e) => {
+//       try {
+//         const pdfjsLib = await import('pdfjs-dist');
+//       pdfjsLib.GlobalWorkerOptions.workerSrc = 
+//           'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+//         const typedArray = new Uint8Array(e.target?.result as ArrayBuffer);
+//         const pdf = await pdfjsLib.getDocument(typedArray).promise;
+
+//         let fullText = '';
+//         for (let i = 1; i <= pdf.numPages; i++) {
+//           const page = await pdf.getPage(i);
+//           const textContent = await page.getTextContent();
+//           const pageText = textContent.items
+//             .map((item: any) => item.str)
+//             .join(' ');
+//           fullText += pageText + '\n';
+//         }
+//         resolve(fullText.trim());
+//       } catch (error) {
+//         console.error('PDF extraction failed:', error);
+//         resolve('');
+//       }
+//     };
+//     reader.readAsArrayBuffer(file);
+//   });
+// };
+
+// const extractTextFromPDF = async (file: File): Promise<string> => {
+//   return new Promise((resolve) => {
+//     const reader = new FileReader();
+//     reader.onload = async (e) => {
+//       try {
+//         const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf');
+//         pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+        
+//         const typedArray = new Uint8Array(e.target?.result as ArrayBuffer);
+//         const pdf = await pdfjsLib.getDocument({ 
+//           data: typedArray,
+//           useWorkerFetch: false,
+//           isEvalSupported: false,
+//           useSystemFonts: true,
+//         }).promise;
+
+//         let fullText = '';
+//         for (let i = 1; i <= pdf.numPages; i++) {
+//           const page = await pdf.getPage(i);
+//           const textContent = await page.getTextContent();
+//           const pageText = textContent.items
+//             .map((item: any) => item.str)
+//             .join(' ');
+//           fullText += pageText + '\n';
+//         }
+//         resolve(fullText.trim());
+//       } catch (error) {
+//         console.error('PDF extraction failed:', error);
+//         resolve('');
+//       }
+//     };
+//     reader.readAsArrayBuffer(file);
+//   });
+// };
+// const extractTextFromPDF = async (file: File): Promise<string> => {
+//   try {
+//     const formData = new FormData();
+//     formData.append("file", file);
+
+//     const response = await fetch(
+//       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-resume`,
+//       {
+//         method: "POST",
+//         headers: {
+//           "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+//         },
+//         body: formData,
+//       }
+//     );
+
+//     const data = await response.json();
+//     if (!response.ok) throw new Error(data.error);
+    
+//     console.log("Extracted text length:", data.extractedText.length);
+//     return data.extractedText;
+//   } catch (error) {
+//     console.error("PDF extraction failed:", error);
+//     return "";
+//   }
+// };
+const extractTextFromPDF = async (file: File): Promise<string> => {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-resume`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: formData,
+      }
+    );
+
+    // Log raw response for debugging
+    const data = await response.json();
+    console.log("Edge Function response:", data);
+
+    if (!response.ok) {
+      console.error("Edge function error:", data.error);
+      throw new Error(data.error || "Extraction failed");
+    }
+
+    // Correct — Edge Function returns { extractedText }
+    if (!data.extractedText) {
+      throw new Error("No text returned");
+    }
+
+    return data.extractedText;
+  } catch (error) {
+    console.error("PDF extraction failed:", error);
+    return "";
+  }
+};
+
 const IdentityVault = () => {
   const { user } = useAuth();
+  const location = useLocation();
   const [saving, setSaving] = useState(false);
   const [personalInfo, setPersonalInfo] = useState({
     name: "", email: "", phone: "", linkedinUrl: "",
@@ -81,130 +210,87 @@ const IdentityVault = () => {
   });
 
   const [currentResume, setCurrentResume] = useState<{
-  fileName: string;
-  fileUrl: string;
-  uploadedAt: string;
-} | null>(null);
+    fileName: string;
+    fileUrl: string;
+    uploadedAt: string;
+  } | null>(null);
   const [currentResumeId, setCurrentResumeId] = useState<string | null>(null);
- 
-  // Load saved data from BOTH profiles and resumes
-useEffect(() => {
-  if (!user) return;
-  
-  const load = async () => {
-    console.log('🚀 Loading Identity Vault data for user:', user.id);
-    
-    // 1. Fetch data from profiles table (full_name, email)
-    console.log('📋 Fetching profile data...');
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .select("full_name, email, identity_vault_data")
-      .eq("id", user.id)
-      .single();
-    
-    if (profileError) {
-      console.error('❌ Error fetching profile data:', profileError.message);
-    } else {
-      console.log('✅ Profile data fetched successfully:', { 
-        full_name: profileData?.full_name, 
-        email: profileData?.email
-      });
-    }
 
-    // 2. Fetch latest resume from resumes table (user_id equals user.id, ordered by created_at desc)
-    console.log('📄 Fetching latest resume...');
-    const { data: resumeData, error: resumeError } = await supabase
-      .from("resumes")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    
-    if (resumeError) {
-      console.error('❌ Error fetching resume data:', resumeError.message);
-    } else if (resumeData) {
-      console.log('✅ Resume data fetched successfully:', { 
-        job_title: resumeData.job_title,
-        tone_preference: resumeData.tone_preference,
-        created_at: resumeData.created_at,
-        file_url: resumeData.file_url,
-        file_name: resumeData.file_name
-      });
-      // Load the saved resume file info
-      if (resumeData.file_url && resumeData.file_name) {
-        console.log('📁 Setting currentResume:', {
-          fileName: resumeData.file_name,
-          uploadedAt: resumeData.created_at
-        });
+  // Extract fetch logic into a reusable, memoized function
+  const loadVaultData = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("full_name, email, identity_vault_data")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) console.error('Error fetching profile:', profileError.message);
+
+      const { data: resumeData, error: resumeError } = await supabase
+        .from("resumes")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (resumeError) console.error('Error fetching resume:', resumeError.message);
+
+      // Update resume state with safe defaults
+      if (resumeData?.file_url && resumeData?.file_name) {
         setCurrentResume({
           fileName: resumeData.file_name,
           fileUrl: resumeData.file_url,
-          uploadedAt: resumeData.created_at,
+          uploadedAt: resumeData.created_at || new Date().toISOString(),
         });
         setCurrentResumeId(resumeData.id);
+      } else {
+        setCurrentResume(null);
+        setCurrentResumeId(null);
       }
-    } else {
-      console.log('ℹ️ No resume found for user');
-    }
 
-    // 3. If identity_vault_data exists, populate personalInfo and targeting from it
-    if (profileData?.identity_vault_data) {
-      console.log('💾 Load strategy: Using identity_vault_data from profiles table');
-      const vault = profileData.identity_vault_data as Record<string, unknown>;
-      
-      if (vault.personalInfo) {
-        console.log('📝 Setting personalInfo from vault:', vault.personalInfo);
-        setPersonalInfo(vault.personalInfo as typeof personalInfo);
-      }
-      
-      if (vault.targeting) {
-        console.log('🎯 Setting targeting from vault:', vault.targeting);
-        setTargeting(vault.targeting as typeof targeting);
-      }
-    } 
-    // 4. If identity_vault_data doesn't exist, populate personalInfo from profiles table and targeting from resumes table
-    else {
-      console.log('💾 Load strategy: Using profiles table (personalInfo) and resumes table (targetRoles, toneOfVoice)');
-      
-      // Populate personalInfo from profiles table
-      const loadedPersonalInfo = {
-        name: profileData?.full_name || "",
-        email: profileData?.email || user.email || "",
-        phone: "",
-        linkedinUrl: "",
-      };
-      console.log('📝 Setting personalInfo from profile:', loadedPersonalInfo);
-      setPersonalInfo(loadedPersonalInfo);
+      // Update personal info and targeting with safe defaults
+      if (profileData?.identity_vault_data) {
+        const vault = profileData.identity_vault_data as Record<string, unknown>;
+        if (vault.personalInfo) setPersonalInfo(vault.personalInfo as typeof personalInfo);
+        if (vault.targeting) setTargeting(vault.targeting as typeof targeting);
+      } else {
+        setPersonalInfo({
+          name: profileData?.full_name || "",
+          email: profileData?.email || user.email || "",
+          phone: "",
+          linkedinUrl: "",
+        });
 
-      // Populate targeting.targetRoles and targeting.toneOfVoice from resumes table
-      if (resumeData) {
-        const updatedTargeting = {
-          industries: [] as string[],
-          roleTypes: [] as string[],
+        setTargeting({
+          industries: [],
+          roleTypes: [],
           salaryMin: "",
           salaryMax: "",
-          targetRoles: resumeData.job_title ? [resumeData.job_title] : [],
-          toneOfVoice: resumeData.tone_preference || "",
-          targetJobTitles: [] as string[],
-          companySizes: [] as string[],
+          targetRoles: resumeData?.job_title ? [resumeData.job_title] : [],
+          toneOfVoice: resumeData?.tone_preference || "",
+          targetJobTitles: [],
+          companySizes: [],
           mustHaves: "",
-        };
-        console.log(' Setting targeting from resume:', { 
-          targetRoles: updatedTargeting.targetRoles,
-          toneOfVoice: updatedTargeting.toneOfVoice 
         });
-        setTargeting(updatedTargeting);
-      } else {
-        console.log('No resume data available, targeting preferences remain empty');
       }
+    } catch (error) {
+      console.error('Unexpected error loading vault:', error);
     }
-    
-    console.log('Identity Vault load complete');
-  };
-  
-  load();
-}, [user]);
+  }, [user]);
+
+  // Fetch data on component mount (when user changes)
+  useEffect(() => {
+    loadVaultData();
+  }, [user, loadVaultData]);
+
+  // Re-fetch data when navigating back to this route (SPA navigation)
+  useEffect(() => {
+    loadVaultData();
+  }, [location.pathname, loadVaultData]);
 
   const getVaultStrength = useCallback(() => {
     let score = 0;
@@ -221,139 +307,109 @@ useEffect(() => {
   }, [personalInfo, resumeFile, currentResume, targeting]);
 
   const handleSave = async () => {
-    if (!user) {
-      console.error("❌ No user found");
-      return;
-    }
-    
+    if (!user) return;
     setSaving(true);
-    
+
     try {
-      // Save the vault data (personalInfo and targeting)
+      // 1. Save vault data to profiles
       const vaultData = { personalInfo, targeting };
-      
-      console.log('💾 Saving Identity Vault data for user:', user.id);
-      console.log('📦 Vault data to save:', vaultData);
-      
-      // Try to update with a timeout
-      const updatePromise = supabase
+      const { error: vaultError } = await supabase
         .from("profiles")
         .update({ identity_vault_data: vaultData })
         .eq("id", user.id);
-      
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Update timeout")), 10000)
-      );
-      
-      const { error: vaultError, data: updateData } = await Promise.race([
-        updatePromise,
-        timeoutPromise
-      ]) as any;
-      
+
       if (vaultError) {
-        console.error('❌ Error saving vault data:', vaultError);
-        console.error('Error details:', JSON.stringify(vaultError));
         toast.error(`Failed to save: ${vaultError.message}`);
         setSaving(false);
         return;
       }
-      
-      console.log('✅ Vault data saved successfully', updateData);
-      toast.success("Vault data saved successfully");
 
-      // Handle resume file upload if a new file was selected
+      // 2. Handle resume upload
       if (resumeFile) {
-        console.log('📤 Uploading resume file:', resumeFile.name);
-        
-        try {
-          // Upload file to Supabase Storage
-          const fileExt = resumeFile.name.split('.').pop();
-          const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-          const filePath = `resumes/${fileName}`;
+        toast.info("Extracting resume text...");
 
-          const { error: uploadError } = await supabase.storage
-            .from("resumes")
-            .upload(filePath, resumeFile, { upsert: true });
+        // Actually extract text from PDF
+        const extractedText = await extractTextFromPDF(resumeFile);
+        console.log("Extracted text length:", extractedText.length);
+        console.log("Extracted text preview:", extractedText.slice(0, 200));
 
-          if (uploadError) {
-            console.error('❌ Error uploading resume:', uploadError);
-            toast.error("Failed to upload resume file");
-            setSaving(false);
-            return;
-          }
+        if (!extractedText) {
+          toast.warning("Could not extract text from PDF. Please ensure it's a text-based PDF.");
+        }
 
-          console.log('✅ Resume file uploaded successfully');
+        // Upload file to storage
+        const fileExt = resumeFile.name.split('.').pop();
+        const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+        const filePath = `resumes/${fileName}`;
 
-          // Get the public URL for the uploaded file
-          const { data: { publicUrl } } = supabase.storage
-            .from("resumes")
-            .getPublicUrl(filePath);
+        const { error: uploadError } = await supabase.storage
+          .from("resumes")
+          .upload(filePath, resumeFile, { upsert: true });
 
-          // Update or insert resume record in resumes table
-          console.log('📝 Saving resume metadata to database...');
-          
-          if (currentResume && currentResumeId) {
-            // Update existing resume
-            const { error: updateError } = await supabase
-              .from("resumes")
-              .update({
-                file_name: resumeFile.name,
-                file_url: publicUrl,
-                file_path: filePath,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", currentResumeId);
-
-            if (updateError) {
-              console.error('❌ Error updating resume metadata:', updateError);
-              toast.error("Failed to update resume metadata");
-              setSaving(false);
-              return;
-            }
-            console.log('✅ Resume metadata updated successfully');
-          } else {
-            // Insert new resume
-            const { error: insertError } = await supabase
-              .from("resumes")
-              .insert([{
-                user_id: user.id,
-                file_name: resumeFile.name,
-                file_url: publicUrl,
-                file_path: filePath,
-                created_at: new Date().toISOString(),
-              }]);
-
-            if (insertError) {
-              console.error('❌ Error inserting resume metadata:', insertError);
-              toast.error("Failed to save resume metadata");
-              setSaving(false);
-              return;
-            }
-            console.log('✅ Resume metadata inserted successfully');
-          }
-
-          // Update currentResume state
-          setCurrentResume({
-            fileName: resumeFile.name,
-            fileUrl: publicUrl,
-            uploadedAt: new Date().toISOString(),
-          });
-
-          // Clear the resumeFile state
-          setResumeFile(null);
-          toast.success("Resume uploaded successfully");
-        } catch (uploadError) {
-          console.error('❌ Unexpected error during resume upload:', uploadError);
-          toast.error("An error occurred while uploading the resume");
+        if (uploadError) {
+          toast.error("Failed to upload resume file");
           setSaving(false);
           return;
         }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from("resumes")
+          .getPublicUrl(filePath);
+
+        if (currentResume && currentResumeId) {
+          // ✅ Update existing — include extracted_text
+          const { error: updateError } = await supabase
+            .from("resumes")
+            .update({
+              file_name: resumeFile.name,
+              file_url: publicUrl,
+              file_path: filePath,
+              extracted_text: extractedText, // ✅ Key addition
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", currentResumeId);
+
+          if (updateError) {
+            toast.error("Failed to update resume");
+            setSaving(false);
+            return;
+          }
+        } else {
+          //  Insert new — include extracted_text
+          const { error: insertError } = await supabase
+            .from("resumes")
+            .insert([{
+              user_id: user.id,
+              file_name: resumeFile.name,
+              file_url: publicUrl,
+              file_path: filePath,
+              extracted_text: extractedText, //  Key addition
+              created_at: new Date().toISOString(),
+            }]);
+
+          if (insertError) {
+            toast.error("Failed to save resume");
+            setSaving(false);
+            return;
+          }
+        }
+
+        setCurrentResume({
+          fileName: resumeFile.name,
+          fileUrl: publicUrl,
+          uploadedAt: new Date().toISOString(),
+        });
+        setResumeFile(null);
+        toast.success("Resume uploaded and text extracted successfully");
       }
 
       setSaving(false);
       toast.success("Identity Vault saved successfully");
+
+      //  Re-fetch latest data from Supabase after successful save
+      await loadVaultData();
     } catch (error) {
-      console.error('❌ Unexpected error during save:', error);
+      console.error('Unexpected error:', error);
       toast.error("An unexpected error occurred");
       setSaving(false);
     }
@@ -363,31 +419,23 @@ useEffect(() => {
     if (!user || !currentResumeId || !currentResume) return;
     setSaving(true);
     try {
-      console.log('🗑️ Deleting resume file from storage:', currentResume.fileName);
-      
-      // Delete from database first
       const { error: deleteError } = await supabase
         .from("resumes")
         .delete()
         .eq("id", currentResumeId);
-      
+
       if (deleteError) {
-        console.error('❌ Error deleting resume from database:', deleteError);
         toast.error("Failed to delete resume");
         setSaving(false);
         return;
       }
-      
-      console.log('✅ Resume deleted from database successfully');
-      
-      // Clear the state
+
       setCurrentResume(null);
       setCurrentResumeId(null);
       setSaving(false);
       toast.success("Resume deleted successfully");
     } catch (error) {
-      console.error('❌ Error deleting resume file:', error);
-      toast.error("Failed to delete resume file");
+      toast.error("Failed to delete resume");
       setSaving(false);
     }
   };
@@ -399,17 +447,15 @@ useEffect(() => {
   return (
     <DashboardLayout>
       <div className="space-y-8 max-w-4xl">
-        {/* Header */}
         <motion.div {...fadeUp} transition={{ duration: 0.4 }}>
-          <h1 className="text-3xl font-bold text-foreground" style={{ fontFamily: "'Playfair Display', serif" }}>
-            Identity Vault: <span className="gradient-text">Your Professional DNA</span>
+          <h1 className="text-3xl font-bold text-foreground font-poppins" style={{ fontFamily: "'Playfair Display', font-poppins" }}>
+            Identity Vault: <span className="gradient-text font-poppins">Your Professional DNA</span>
           </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="mt-2 text-sm text-muted-foreground font-poppins">
             Centralize your professional profile. The stronger your vault, the better your applications.
           </p>
         </motion.div>
 
-        {/* Vault Strength */}
         <motion.div {...fadeUp} transition={{ duration: 0.4, delay: 0.05 }}>
           <VaultStrengthMeter strength={getVaultStrength()} />
         </motion.div>
@@ -419,14 +465,14 @@ useEffect(() => {
           <Card className="border-border/30 bg-card/60 backdrop-blur-sm">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-lg" style={{ fontFamily: "'Playfair Display', serif" }}>
-                <User className="h-5 w-5 text-primary" /> Personal Information
+                <User className="h-5 w-5 text-primary font-poppins" /> Personal Information
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="vault-name" className="flex items-center gap-1.5 text-xs">
-                    <User className="h-3 w-3" /> Full Name
+                    <User className="h-3 w-3 font-poppins" /> Full Name
                   </Label>
                   <Input id="vault-name" placeholder="Jane Doe" value={personalInfo.name}
                     onChange={(e) => setPersonalInfo({ ...personalInfo, name: e.target.value })} className="bg-muted/40" />
@@ -466,7 +512,6 @@ useEffect(() => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Display current saved resume */}
               {currentResume && (
                 <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
                   <div className="flex items-start justify-between">
@@ -494,7 +539,6 @@ useEffect(() => {
                 </div>
               )}
 
-              {/* Upload new resume */}
               <label htmlFor="vault-resume"
                 className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border/40 bg-muted/20 p-10 text-center transition-all hover:border-primary/40 hover:bg-muted/30">
                 {resumeFile ? (
@@ -529,14 +573,11 @@ useEffect(() => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {/* Industry - Multi-select */}
               <div className="space-y-2">
                 <Label className="text-xs">Industry (select multiple)</Label>
                 <MultiSelectChips options={industries} selected={targeting.industries}
                   onChange={(v) => setTargeting({ ...targeting, industries: v })} />
               </div>
-
-              {/* Role Type - Multi-select */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5 text-xs">
                   <MapPin className="h-3 w-3" /> Role Type (select multiple)
@@ -544,8 +585,6 @@ useEffect(() => {
                 <MultiSelectChips options={roleTypes} selected={targeting.roleTypes}
                   onChange={(v) => setTargeting({ ...targeting, roleTypes: v })} />
               </div>
-
-              {/* Target Roles - Multi-select */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5 text-xs">
                   <Target className="h-3 w-3" /> Target Roles (select multiple)
@@ -553,8 +592,6 @@ useEffect(() => {
                 <MultiSelectChips options={targetRoleOptions} selected={targeting.targetRoles}
                   onChange={(v) => setTargeting({ ...targeting, targetRoles: v })} />
               </div>
-
-              {/* Salary */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5 text-xs">
                   <DollarSign className="h-3 w-3" /> Salary Expectations
@@ -566,8 +603,6 @@ useEffect(() => {
                     onChange={(e) => setTargeting({ ...targeting, salaryMax: e.target.value })} className="bg-muted/40" />
                 </div>
               </div>
-
-              {/* Tone of Voice */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5 text-xs">
                   <MessageSquare className="h-3 w-3" /> Tone of Voice
@@ -600,15 +635,12 @@ useEffect(() => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {/* Target Job Titles - free text chips */}
               <div className="space-y-2">
                 <Label className="text-xs">Target Job Titles</Label>
                 <ChipInput values={targeting.targetJobTitles}
                   onChange={(v) => setTargeting({ ...targeting, targetJobTitles: v })}
                   placeholder="Type a title and press Enter (e.g. Senior Product Designer)" />
               </div>
-
-              {/* Company Size - Multi-select */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5 text-xs">
                   <Building2 className="h-3 w-3" /> Preferred Company Size
@@ -616,11 +648,9 @@ useEffect(() => {
                 <MultiSelectChips options={companySizeOptions} selected={targeting.companySizes}
                   onChange={(v) => setTargeting({ ...targeting, companySizes: v })} />
               </div>
-
-              {/* Must-haves */}
               <div className="space-y-2">
                 <Label className="text-xs">Role Preferences / Must-haves</Label>
-                <Textarea placeholder="e.g. Must have health insurance, 4-day work week, no gambling or tobacco industries..."
+                <Textarea placeholder="e.g. Must have health insurance, 4-day work week..."
                   value={targeting.mustHaves}
                   onChange={(e) => setTargeting({ ...targeting, mustHaves: e.target.value })}
                   className="bg-muted/40 min-h-[100px]" />

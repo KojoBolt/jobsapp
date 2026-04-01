@@ -31,8 +31,8 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { NavLink } from "@/components/NavLink";
-import SupportPanel from "@/components/dashboard/SupportPanel";
-import CrispChat from "@/components/dashboard/CrispChat";
+// import SupportPanel from "@/components/dashboard/SupportPanel";
+// import CrispChat from "@/components/dashboard/CrispChat";
 import LegalModal from "@/components/legal/LegalModal";
 import TermsOfService from "@/components/legal/TermsOfService";
 import PrivacyPolicy from "@/components/legal/PrivacyPolicy";
@@ -43,6 +43,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
 import OnboardingTour from "@/components/onboarding/OnboardingTour";
 import { toast } from "@/components/ui/use-toast";
+import Logo from "@/assets/images/job-logo.png";
+import ChatWidget from "@/components/chatbot/ChatWidget";
+
 
 
 const mainNavItems = [
@@ -147,10 +150,11 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
         <Sidebar className="border-r border-border/50">
           <div className="flex h-16 items-center gap-2 border-b border-border/50 px-6">
             <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+              {/* <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                 <Zap className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="text-lg font-bold text-foreground">JobApp</span>
+              <span className="text-lg font-bold text-foreground">JobApp</span> */}
+              <img src={Logo} alt="job app logo" className="h-8 m-auto" />
             </Link>
           </div>
 
@@ -205,11 +209,11 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                         to={trackerNavItem.url}
                         end
                         id="sidebar-tracker"
-                        className="flex items-center gap-3 rounded-lg border border-[hsl(220_20%_25%/0.4)] bg-[hsl(220_20%_15%/0.05)] px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary/30 hover:bg-[hsl(213_94%_55%/0.08)] hover:text-foreground hover:shadow-[0_0_14px_hsl(213_94%_55%/0.2)]"
+                        className="flex items-center gap-3 rounded-lg border border-gray-300 bg-black px-4 py-5 text-sm font-medium text-muted-foreground transition-all hover:border-primary/30 hover:bg-[hsl(213_94%_55%/0.08)] hover:text-foreground hover:shadow-[0_0_14px_hsl(213_94%_55%/0.2)]"
                         activeClassName="border-primary/40 bg-primary/10 text-primary shadow-[0_0_14px_hsl(213_94%_55%/0.25)]"
                       >
                         <Terminal className={`h-4 w-4 ${hasInterview ? "animate-pulse text-primary" : ""}`} />
-                        <span>{trackerNavItem.title}</span>
+                        <span className="text-[12px]">{trackerNavItem.title}</span>
                         <span className="ml-auto text-[9px] uppercase tracking-widest text-muted-foreground/60">Command Center</span>
                       </NavLink>
                     </SidebarMenuButton>
@@ -237,7 +241,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                 Strategy
               </SidebarGroupLabel>
               <SidebarGroupContent>
-                <CurrentStrategy />
+                <CurrentStrategy vaultData={vaultData} />
               </SidebarGroupContent>
             </SidebarGroup>
 
@@ -330,9 +334,9 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
         {showTour && <OnboardingTour onComplete={() => setShowTour(false)} />}
 
         {/* Floating Support Button */}
-        <SupportPanel />
+        {/* <SupportPanel /> */}
         {/* Crisp Live Chat Widget */}
-        <CrispChat />
+          <ChatWidget />
       </div>
     </SidebarProvider>
   );

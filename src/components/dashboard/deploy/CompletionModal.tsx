@@ -1,14 +1,15 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, BarChart3, Brain } from "lucide-react";
+import { ShieldCheck, LayoutDashboard, BadgeCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Confetti from "@/components/accelerators/Confetti";
 
 interface CompletionModalProps {
   onClose: () => void;
+  totalDeployed?: number;
 }
 
-const CompletionModal = ({ onClose }: CompletionModalProps) => {
+const CompletionModal = ({ onClose, totalDeployed = 200 }: CompletionModalProps) => {
   const navigate = useNavigate();
 
   return (
@@ -17,24 +18,24 @@ const CompletionModal = ({ onClose }: CompletionModalProps) => {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="fixed inset-0 z-[60] flex items-center justify-center bg-background/95 backdrop-blur-md"
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm"
       >
         <motion.div
           initial={{ scale: 0.8, opacity: 0, y: 30 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="mx-4 w-full max-w-md rounded-2xl border border-border/30 bg-card p-8 text-center"
-          style={{ boxShadow: "0 0 60px hsl(213 94% 55% / 0.15), 0 0 120px hsl(142 71% 45% / 0.1)" }}
+          className="mx-4 w-full max-w-md rounded-2xl border bg-black p-8 text-center"
+          // style={{ boxShadow: "0 0 60px hsl(213 94% 55% / 0.15), 0 0 120px hsl(142 71% 45% / 0.1)" }}
         >
           {/* Badge */}
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-            className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full border-2 border-gold/30 bg-gold/10"
-            style={{ boxShadow: "0 0 30px hsl(43 96% 56% / 0.3)" }}
+            className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-[#004D61]"
+            style={{ boxShadow: "none" }}
           >
-            <ShieldCheck className="h-12 w-12 text-gold" />
+            < BadgeCheck className="h-12 w-12 text-white" />
           </motion.div>
 
           <motion.div
@@ -43,14 +44,14 @@ const CompletionModal = ({ onClose }: CompletionModalProps) => {
             transition={{ delay: 0.4 }}
           >
             <h2 className="mb-2 text-2xl font-bold text-foreground">
-              Mission Deployed 🚀
+             Congratulations. Your Mission is Deployed
             </h2>
             <p className="mb-1 text-sm text-muted-foreground">
-              All 200 applications have been queued and verified.
+              All {totalDeployed} applications have been queued and verified.
             </p>
-            <div className="mx-auto mb-6 mt-3 inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-gold/10 px-3 py-1">
-              <ShieldCheck className="h-3.5 w-3.5 text-gold" />
-              <span className="text-[11px] font-semibold text-gold">
+            <div className="mx-auto mb-6 mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#3E5641]/30 bg-[#3E5641] px-3 py-1">
+              <ShieldCheck className="h-3.5 w-3.5 text-white" />
+              <span className="text-[11px] font-semibold text-white">
                 Verified by Human Review Team
               </span>
             </div>
@@ -64,15 +65,15 @@ const CompletionModal = ({ onClose }: CompletionModalProps) => {
             className="mb-6 grid grid-cols-3 gap-3"
           >
             <div className="rounded-lg bg-muted/30 p-3">
-              <p className="font-mono text-lg font-bold text-foreground">200</p>
+              <p className="font-mono text-lg font-bold text-foreground">{totalDeployed}</p>
               <p className="text-[9px] uppercase text-muted-foreground">Deployed</p>
             </div>
             <div className="rounded-lg bg-muted/30 p-3">
-              <p className="font-mono text-lg font-bold text-gold">200</p>
+              <p className="font-mono text-lg font-bold text-gold">{Math.floor(totalDeployed * 0.85)}</p>
               <p className="text-[9px] uppercase text-muted-foreground">Human Verified</p>
             </div>
             <div className="rounded-lg bg-muted/30 p-3">
-              <p className="font-mono text-lg font-bold text-status-interview">100h</p>
+              <p className="font-mono text-lg font-bold text-status-interview">{Math.floor((totalDeployed * 30) / 60)}h</p>
               <p className="text-[9px] uppercase text-muted-foreground">Time Saved</p>
             </div>
           </motion.div>
@@ -87,16 +88,16 @@ const CompletionModal = ({ onClose }: CompletionModalProps) => {
             <Button
               variant="hero"
               size="lg"
-              className="flex-1 gap-2"
+              className="flex-1 gap-2 bg-[#004D61] hover:bg-[#004D61]/90"
               onClick={() => {
                 onClose();
                 navigate("/dashboard");
               }}
             >
-              <BarChart3 className="h-4 w-4" />
+              <LayoutDashboard className="h-4 w-4" />
               View Tracking Dashboard
             </Button>
-            <Button
+            {/* <Button
               variant="heroOutline"
               size="lg"
               className="flex-1 gap-2"
@@ -107,7 +108,7 @@ const CompletionModal = ({ onClose }: CompletionModalProps) => {
             >
               <Brain className="h-4 w-4" />
               Prepare for Interviews
-            </Button>
+            </Button> */}
           </motion.div>
         </motion.div>
       </motion.div>

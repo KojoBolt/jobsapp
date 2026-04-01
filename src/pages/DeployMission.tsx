@@ -64,21 +64,188 @@ const DeployMission = () => {
   const [manualIndustry, setManualIndustry] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) { toast.error("Please sign in first."); return; }
-    if (remainingSlots <= 0) { toast.error("Monthly credits exhausted."); return; }
-    if (useVault && !isVaultUsable) {
-      toast.error("Your Identity Vault is incomplete. Please complete your profile or toggle off to fill manually.");
-      return;
-    }
-    if (!useVault && (!manualName.trim() || !manualEmail.trim())) {
-      toast.error("Name and Email are required when not using the Vault.");
-      return;
-    }
+  // const handleSubmit = async (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   if (!user) { toast.error("Please sign in first."); return; }
+  //   if (remainingSlots <= 0) { toast.error("Monthly credits exhausted."); return; }
+  //   if (useVault && !isVaultUsable) {
+  //     toast.error("Your Identity Vault is incomplete. Please complete your profile or toggle off to fill manually.");
+  //     return;
+  //   }
+  //   if (!useVault && (!manualName.trim() || !manualEmail.trim())) {
+  //     toast.error("Name and Email are required when not using the Vault.");
+  //     return;
+  //   }
 
-    setSubmitting(true);
-    const submissionType = aiDiscovery ? "ai_discovery" : "service";
+  //   setSubmitting(true);
+  //   const submissionType = aiDiscovery ? "ai_discovery" : "service";
+  //   const finalNotes = specialInstructions.trim()
+  //     ? `${notes.trim()}\n\n--- Special Instructions ---\n${specialInstructions.trim()}`
+  //     : notes.trim();
+
+  //   const { error } = await supabase
+  //     .from("job_applications")
+  //     .insert({
+  //       user_id: user.id,
+  //       company_name: company.trim() || (aiDiscovery ? "AI Discovery" : "TBD"),
+  //       position_title: position.trim() || (aiDiscovery ? "AI-Matched Role" : "TBD"),
+  //       job_url: url.trim() || null,
+  //       status: "screening",
+  //       submission_type: submissionType,
+  //       notes: finalNotes || null,
+  //       salary_range: useVault && vaultSalaryMin ? `${vaultSalaryMin} - ${vaultSalaryMax}` : manualSalary.trim() || null,
+  //       contact_name: useVault ? vaultName : manualName.trim(),
+  //       contact_email: useVault ? vaultEmail : manualEmail.trim(),
+  //     } as any);
+
+  //   if (error) {
+  //     toast.error("Failed to deploy. Please try again.");
+  //     setSubmitting(false);
+  //     return;
+  //   }
+
+  //   await supabase
+  //     .from("profiles")
+  //     .update({ monthly_usage_count: monthlyUsed + 1 } as any)
+  //     .eq("user_id", user.id);
+  //   refreshProfile();
+  //   toast.success("Application deployed successfully!");
+  //   navigate("/job-tracker");
+  // };
+
+//   const handleSubmit = async (e: React.FormEvent) => {
+//   e.preventDefault();
+
+//   if (!user) {
+//     toast.error("Please sign in first.");
+//     return;
+//   }
+
+//   if (remainingSlots <= 0) {
+//     toast.error("Monthly credits exhausted.");
+//     return;
+//   }
+
+//   if (useVault && !isVaultUsable) {
+//     toast.error("Your Identity Vault is incomplete. Please complete your profile or toggle off to fill manually.");
+//     return;
+//   }
+
+//   if (!useVault && (!manualName.trim() || !manualEmail.trim())) {
+//     toast.error("Name and Email are required when not using the Vault.");
+//     return;
+//   }
+
+//   setSubmitting(true);
+
+//   try {
+//     const submissionType = aiDiscovery ? "ai_discovery" : "service";
+//     const finalNotes = specialInstructions.trim()
+//       ? `${notes.trim()}\n\n--- Special Instructions ---\n${specialInstructions.trim()}`
+//       : notes.trim();
+
+//     const { error: insertError } = await supabase
+//       .from("job_applications")
+//       .insert({
+//         user_id: user.id,
+//         company_name: company.trim() || (aiDiscovery ? "AI Discovery" : "TBD"),
+//         position_title: position.trim() || (aiDiscovery ? "AI-Matched Role" : "TBD"),
+//         job_url: url.trim() || null,
+//         status: "screening",
+//         submission_type: submissionType,
+//         notes: finalNotes || null,
+//         salary_range:
+//           useVault && vaultSalaryMin
+//             ? `${vaultSalaryMin} - ${vaultSalaryMax}`
+//             : manualSalary.trim() || null,
+//         contact_name: useVault ? vaultName : manualName.trim(),
+//         contact_email: useVault ? vaultEmail : manualEmail.trim(),
+//       });
+
+//     if (insertError) {
+//       console.error("job_applications insert error:", insertError);
+//       throw insertError;
+//     }
+
+//     const { error: profileError } = await supabase
+//       .from("profiles")
+//       .update({ monthly_usage_count: monthlyUsed + 1 })
+//       .eq("id", user.id);
+
+//     if (profileError) {
+//       console.error("profiles update error:", profileError);
+//       throw profileError;
+//     }
+
+//     await refreshProfile();
+//     toast.success("Application deployed successfully!");
+//     navigate("/job-tracker");
+//   } catch (error: any) {
+//     console.error("Deploy submission failed:", error);
+//     toast.error(error?.message || "Failed to deploy. Please try again.");
+//   } finally {
+//     setSubmitting(false);
+//   }
+// };
+
+// const handleSubmit = async (e: React.FormEvent) => {
+//   e.preventDefault();
+//   setSubmitting(true);
+
+//   try {
+//     const { data, error } = await supabase
+//       .from("job_applications")
+//       .insert({
+//         user_id: user.id,
+//         company_name: company.trim() || "TBD",
+//         position_title: position.trim() || "TBD",
+//         job_url: url.trim() || null,
+//         status: "screening",
+//         submission_type: aiDiscovery ? "ai_discovery" : "service",
+//         notes: finalNotes || null,
+//         salary_range: useVault && vaultSalaryMin
+//           ? `${vaultSalaryMin} - ${vaultSalaryMax}`
+//           : manualSalary.trim() || null,
+//         contact_name: useVault ? vaultName : manualName.trim(),
+//         contact_email: useVault ? vaultEmail : manualEmail.trim(),
+//       })
+//       .select();
+
+//     if (error) {
+//       console.error("Insert error:", error);
+//       throw error;
+//     }
+
+//     const { error: profileError } = await supabase
+//       .from("profiles")
+//       .update({ monthly_usage_count: monthlyUsed + 1 })
+//       .eq("id", user.id);
+
+//     if (profileError) {
+//       console.error("Profile update error:", profileError);
+//       throw profileError;
+//     }
+
+//     await refreshProfile();
+//     toast.success("Application deployed successfully!");
+//     navigate("/job-tracker");
+//   } catch (err) {
+//     console.error("Submit failed:", err);
+//     toast.error("Failed to deploy. Check console for details.");
+//   } finally {
+//     setSubmitting(false);
+//   }
+// };
+
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  setSubmitting(true);
+
+  try {
+
+    const submissionType = aiDiscovery ? "ai_discovery" : "manual";
+
     const finalNotes = specialInstructions.trim()
       ? `${notes.trim()}\n\n--- Special Instructions ---\n${specialInstructions.trim()}`
       : notes.trim();
@@ -87,31 +254,38 @@ const DeployMission = () => {
       .from("job_applications")
       .insert({
         user_id: user.id,
-        company_name: company.trim() || (aiDiscovery ? "AI Discovery" : "TBD"),
-        position_title: position.trim() || (aiDiscovery ? "AI-Matched Role" : "TBD"),
+        company_name: company.trim() || "TBD",
+        position_title: position.trim() || "TBD",
         job_url: url.trim() || null,
         status: "screening",
         submission_type: submissionType,
         notes: finalNotes || null,
-        salary_range: useVault && vaultSalaryMin ? `${vaultSalaryMin} - ${vaultSalaryMax}` : manualSalary.trim() || null,
+        salary_range: useVault && vaultSalaryMin
+          ? `${vaultSalaryMin} - ${vaultSalaryMax}`
+          : manualSalary.trim() || null,
         contact_name: useVault ? vaultName : manualName.trim(),
         contact_email: useVault ? vaultEmail : manualEmail.trim(),
-      } as any);
+      });
 
-    if (error) {
-      toast.error("Failed to deploy. Please try again.");
-      setSubmitting(false);
-      return;
-    }
+    if (error) throw error;
 
     await supabase
       .from("profiles")
-      .update({ monthly_usage_count: monthlyUsed + 1 } as any)
-      .eq("user_id", user.id);
-    refreshProfile();
+      .update({ monthly_usage_count: monthlyUsed + 1 })
+      .eq("id", user.id);
+
+    await refreshProfile();
+
     toast.success("Application deployed successfully!");
     navigate("/job-tracker");
-  };
+
+  } catch (error) {
+    console.error("Submit failed:", error);
+    toast.error("Failed to deploy. Please try again.");
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   return (
     <DashboardLayout>

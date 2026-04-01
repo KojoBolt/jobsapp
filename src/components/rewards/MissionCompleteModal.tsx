@@ -24,6 +24,7 @@ import Confetti from "@/components/accelerators/Confetti";
 interface MissionCompleteModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+   referralLink?: string;
 }
 
 const MissionCompleteModal = ({
@@ -32,7 +33,7 @@ const MissionCompleteModal = ({
 }: MissionCompleteModalProps) => {
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
-  const referralLink = "https://jobapp.com/ref/stephen123";
+  const referralLink = "https://jobapp.com/ref/loading";
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(referralLink);

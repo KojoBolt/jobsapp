@@ -12,13 +12,14 @@ export default {
         "2xl": "1400px",
       },
     },
+    fontFamily: {
+      sans: ['Poppins', 'sans-serif'],
+      merriweather: ['Merriweather', 'serif'],
+      poppins: ['Poppins', 'sans-serif'],
+    },
     extend: {
       gridTemplateColumns: {
         "20": "repeat(20, minmax(0, 1fr))",
-      },
-      fontFamily: {
-          merriweather: ["Merriweather", "serif"],
-          poppins: ["Poppins", "sans-serif"]
       },
       colors: {
         border: "hsl(var(--border))",
@@ -124,6 +125,10 @@ export default {
           from: { width: "0%" },
           to: { width: "var(--progress-width)" },
         },
+        "marquee": {
+          "0%": { transform: "translateX(0%)" },
+          "100%": { transform: "translateX(-100%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -133,6 +138,7 @@ export default {
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
         "pulse-gold": "pulse-gold 2s ease-in-out infinite",
         "progress-fill": "progress-fill 2s ease-out forwards",
+        "marquee": "marquee 25s linear infinite",
       },
     },
   },
