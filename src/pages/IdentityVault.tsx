@@ -43,9 +43,11 @@ const industries = [
 ];
 const roleTypes = ["Remote", "Hybrid", "On-site"];
 const targetRoleOptions = [
-  "Full-stack", "Backend", "Frontend", "DevOps", "Project Manager",
+  "Full-stack", "Backend", "Frontend", "WordPress Developer", "DevOps", "Project Manager",
   "Product Manager", "Data Analyst", "UX Designer", "UI Designer",
-  "QA Engineer", "Mobile Developer", "Cloud Architect",
+  "QA Engineer", "Mobile Developer", "Cloud Architect", "AI/ML Engineer", "Security Specialist", "Content Writer",
+   "Digital Marketer", "Sales Executive", "Customer Success Manager", 
+   "HR Specialist", "Finance Analyst", "Legal Counsel", "Video Editor", "Other",
 ];
 const companySizeOptions = [
   "Startup (1-10)", "Early Stage (11-50)", "Mid-Market (51-500)", "Enterprise (500+)",

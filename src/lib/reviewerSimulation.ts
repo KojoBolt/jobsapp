@@ -4,7 +4,7 @@
  * MOCK_MODE: When true, generates simulated reviewer activity.
  * Set to false to switch to real backend data.
  */
-export const MOCK_MODE = true;
+export const MOCK_MODE = false;
 
 export type ReviewerSpecialty = "tech" | "finance" | "marketing" | "design" | "operations" | "general";
 

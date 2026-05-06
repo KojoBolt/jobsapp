@@ -59,7 +59,7 @@ const ToastItem = ({ toast, onDismiss }: Props): JSX.Element => {
       className={[
         "relative overflow-hidden",
         "min-w-[320px] max-w-[420px]",
-        "rounded-xl border bg-white shadow-lg",
+        "rounded-xl border bg-white dark:bg-gray-800 shadow-lg",
         "px-4 py-3",
         border,
         "transition-all duration-200",
@@ -81,9 +81,9 @@ const ToastItem = ({ toast, onDismiss }: Props): JSX.Element => {
 
         <div className="flex-1 min-w-0">
           {toast.title ? (
-            <div className="text-sm font-semibold text-slate-900">{toast.title}</div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-white">{toast.title}</div>
           ) : null}
-          <div className="text-sm text-slate-700 break-words">{toast.message}</div>
+          <div className="text-sm text-slate-700 dark:text-slate-300 break-words">{toast.message}</div>
 
           {toast.actionLabel && toast.onAction ? (
             <button

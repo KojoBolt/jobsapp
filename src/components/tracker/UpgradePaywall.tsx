@@ -48,25 +48,51 @@ const UpgradePaywall = () => {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const handleSelectPlan = async (planId: string) => {
-    const email = user?.email || guestEmail || `checkout-${Date.now()}@jobstack-ai.lovable.app`;
+  // const handleSelectPlan = async (planId: string) => {
+  //   const email = user?.email || guestEmail || `checkout-${Date.now()}@jobstack-ai.lovable.app`;
 
-    setLoading(planId);
-    try {
-      const { data, error } = await supabase.functions.invoke("subscription-checkout", {
-        body: { plan: planId, callbackUrl: `${window.location.origin}/job-tracker?subscribed=true`, email },
-      });
+  //   setLoading(planId);
+  //   try {
+  //     const { data, error } = await supabase.functions.invoke("subscription-checkout", {
+  //       body: { plan: planId, callbackUrl: `${window.location.origin}/job-tracker?subscribed=true`, email },
+  //     });
 
-      if (error) throw error;
-      if (data?.authorization_url) {
-        window.location.href = data.authorization_url;
-      }
-    } catch (err: any) {
-      toast({ title: "Checkout failed", description: err.message, variant: "destructive" });
-    } finally {
-      setLoading(null);
-    }
-  };
+  //     if (error) throw error;
+  //     if (data?.authorization_url) {
+  //       window.location.href = data.authorization_url;
+  //     }
+  //   } catch (err: any) {
+  //     toast({ title: "Checkout failed", description: err.message, variant: "destructive" });
+  //   } finally {
+  //     setLoading(null);
+  //   }
+  // };
+
+//   const handleSelectPlan = async (planId: string) => {
+//   if (!user) {
+//     toast({ title: "Please sign in first", description: "Create an account to continue.", variant: "destructive" });
+//     return;
+//   }
+
+//   setLoading(planId);
+//   try {
+//     const { error } = await supabase
+//       .from("profiles")
+//       .update({ subscription_tier: planId } as any)
+//       .eq("user_id", user.id);
+
+//     if (error) throw error;
+
+//     window.location.href = `/job-tracker?subscribed=true&plan=${planId}`;
+//   } catch (err: any) {
+//     toast({ title: "Failed to activate plan", description: err.message, variant: "destructive" });
+//   } finally {
+//     setLoading(null);
+//   }
+// };
+const handleSelectPlan = (planId: string) => {
+  window.location.href = `/job-tracker?subscribed=true&plan=${planId}`;
+};
 
   return (
     <div className="space-y-8">

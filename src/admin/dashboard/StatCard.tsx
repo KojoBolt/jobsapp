@@ -6,7 +6,7 @@ interface CardProps {
 }
 
 const Card = ({ children, className = "" }: CardProps): JSX.Element => (
-  <div className={`bg-white rounded-lg shadow-md p-6 ${className}`}>
+  <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 ${className}`}>
     {children}
   </div>
 );
@@ -31,10 +31,10 @@ const CircularProgress = ({
 
   return (
     <div
-      className="relative inline-flex items-center justify-center"
+      className="relative z-50 inline-flex items-center justify-center"
       style={{ width: size, height: size }}
     >
-      <svg width={size} height={size} className="-rotate-90">
+      <svg width={size} height={size} className="-rotate-90 relative z-0">
         {/* Track */}
         <circle
           stroke="#E2E8F0"
@@ -60,7 +60,7 @@ const CircularProgress = ({
       </svg>
 
       {/* Center label */}
-      <span className="absolute text-sm font-semibold text-slate-800">
+      <span className="absolute z-50 text-sm font-semibold text-slate-800 dark:text-white">
         {v}%
       </span>
     </div>

@@ -274,7 +274,7 @@ const ReviewQueuePage = (): JSX.Element => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#1E293B]">Review Queue</h1>
+          <h1 className="text-2xl font-bold text-[#1E293B] dark:text-white">Review Queue</h1>
           <p className="text-sm text-[#64748B] mt-1">
             {loading ? "Loading..." : `${filtered.length} user${filtered.length !== 1 ? "s" : ""} with pending applications`}
           </p>
@@ -288,7 +288,7 @@ const ReviewQueuePage = (): JSX.Element => {
             placeholder="Search by name or email..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-            className="w-full pl-9 pr-4 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED] text-[#1E293B] placeholder:text-[#94A3B8]"
+            className="w-full pl-9 pr-4 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED] text-[#1E293B] placeholder:text-[#94A3B8] dark:bg-gray-800 dark:border-gray-600 dark:text-white"
           />
         </div>
       </div>
@@ -321,7 +321,7 @@ const ReviewQueuePage = (): JSX.Element => {
           </div>
         </div>
       ) : paginated.length > 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-[#E2E8F0] overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-[#E2E8F0] dark:border-gray-700 overflow-hidden">
           <table className="w-full">
             {/* Purple Header */}
             <thead>
@@ -498,7 +498,7 @@ const ReviewQueuePage = (): JSX.Element => {
           </table>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-[#E2E8F0] p-12 text-center">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-[#E2E8F0] dark:border-gray-700 p-12 text-center">
           <div className="flex justify-center mb-4">
             <div className="w-16 h-16 bg-[#D1FAE5] rounded-full flex items-center justify-center">
               <CheckCircle size={32} className="text-[#10B981]" />

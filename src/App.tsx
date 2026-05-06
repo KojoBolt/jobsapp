@@ -24,20 +24,29 @@ import JobTracker from "./pages/JobTracker";
 import DeployMission from "./pages/DeployMission";
 import RefundPolicy from "./pages/RefundPolicy";
 import NotFound from "./pages/NotFound";
+import PaymentCallback from './pages/PaymentCallback';
+import ResetPassword from "./pages/ResetPassword";
+
 
 import Login from "./components/Auth/Login";
 import Signup from "./components/Auth/Signup";
 import EmailConfirmation from "./components/Auth/EmailConfirmation";
+import Checkout from "./components/checkout/Checkout";
 
 //  ADMIN
 import AdminLayout from "./admin/layout/AdminLayout";
 import AdminDashboardPage from "./admin/dashboard/AdminDashboardPage";
 import ReviewQueuePage from "./admin/pages/ReviewQueuePage";
 import AllApplicationsPage from "./admin/pages/AllApplicationsPage";
+import UserManagementPage from "./admin/pages/UserManagementPage";
+import SubmissionQueuePage from "./admin/pages/SubmissionQueuePage";
+import CampaignMonitorPage from "./admin/pages/CampaignMonitorPage";
 import MyActivityPage from "./admin/pages/MyActivityPage";
 import { SidebarProvider } from "./admin/context/SidebarContext";
 import { ToastProvider } from "@/admin/toast/ToastContext";
 import ToastViewport from "@/admin/toast/ToastViewport";
+import Notifications from '@/admin/Notifications';
+
 
 const queryClient = new QueryClient();
 
@@ -120,6 +129,10 @@ const App = () => (
               }
             />
             <Route
+              path="/reset-password"
+              element={<ResetPassword />}
+            />
+            <Route
               path="/profile"
               element={
                 <ProtectedRoute>
@@ -176,6 +189,24 @@ const App = () => (
               }
             />
 
+            <Route 
+            path="/checkout"
+            element={
+                <ProtectedRoute>
+                  <Checkout />
+                </ProtectedRoute>
+              }
+
+            />
+            <Route 
+            path="/payment/callback"
+            element={
+                <PaymentCallback />
+              }
+
+            />
+
+
             {/* ADMIN ROUTES - PROTECTED */}
             <Route
               path="/admin"
@@ -197,6 +228,10 @@ const App = () => (
               <Route path="review-queue" element={<ReviewQueuePage />} />
               <Route path="applications" element={<AllApplicationsPage />} />
               <Route path="activity" element={<MyActivityPage />} />
+              <Route path="/admin/users" element={<UserManagementPage />} />
+              <Route path="/admin/submission-queue" element={<SubmissionQueuePage />} />
+              <Route path="/admin/campaigns" element={<CampaignMonitorPage />} />
+              <Route path="/admin/notifications" element={<Notifications />} />
             </Route>
 
             {/* 404 */}

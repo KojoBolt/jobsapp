@@ -3,7 +3,7 @@ import StatsCards from "@/components/dashboard/StatsCards";
 import ApplicationFeed from "@/components/dashboard/ApplicationFeed";
 import PowerUpWidget from "@/components/dashboard/PowerUpWidget";
 import DeployButton from "@/components/dashboard/DeployButton";
-import RecommendedProducts from "@/components/accelerators/RecommendedProducts";
+// import RecommendedProducts from "@/components/accelerators/RecommendedProducts";
 import CrossSellBanner from "@/components/dashboard/CrossSellBanner";
 import { useAuth } from "@/hooks/useAuth";  
 import { useDashboardData } from "@/hooks/useDashboardData";  
@@ -12,7 +12,7 @@ import { Loader2 } from "lucide-react";
 const Dashboard = () => {
   // ADD THESE 3 LINES ↓
   const { user } = useAuth();
-  const { data, loading, error } = useDashboardData(user?.id);
+  const { data, loading, error, refetch } = useDashboardData(user?.id);
 
   // ADD LOADING STATE ↓
   if (loading) {
@@ -56,8 +56,8 @@ const Dashboard = () => {
           plan={data?.plan || 'free'}
         />
         <StatsCards data={data} />
-        <ApplicationFeed applications={data?.applications || []} />
-        <RecommendedProducts />
+        <ApplicationFeed applications={data?.applications || []} onApplicationDeleted={refetch} />
+        {/* <RecommendedProducts /> */}
       </div>
     </DashboardLayout>
   );

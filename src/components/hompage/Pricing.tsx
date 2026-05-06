@@ -4,6 +4,7 @@ import Title from './Title';
 import { plansData } from '../../assets/dummy-data';
 import { motion } from 'framer-motion';
 import { useRef } from 'react';
+import { a } from 'vitest/dist/chunks/suite.d.FvehnV49.js';
 
 export default function Pricing() {
     const refs = useRef<(HTMLDivElement | null)[]>([]);
@@ -73,13 +74,17 @@ export default function Pricing() {
 
                             <div>
                                 {plan.popular ? (
+                                    < a href="/sign-up" target="_blank" rel="noopener noreferrer">
                                     <PrimaryButton className="w-full">
                                         Get started
                                     </PrimaryButton>
+                                    </a>
                                 ) : (
+                                    < a href="/sign-up" target="_blank" rel="noopener noreferrer">
                                     <GhostButton className="w-full justify-center">
                                         Get started
                                     </GhostButton>
+                                    </a>
                                 )}
                             </div>
                         </motion.div>

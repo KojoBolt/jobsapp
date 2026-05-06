@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import Logo from "../../assets/images/logo.png";
+import Logo from "../../assets/images/job-black.png";
 import { MdSpaceDashboard } from "react-icons/md";
-import { FaBook } from "react-icons/fa";
+import { FaBook, FaUsers, FaTasks, FaChartLine } from "react-icons/fa";
 import { HiNewspaper } from "react-icons/hi2";
 import { IoMdTrendingUp } from "react-icons/io";
 import { RxDotsHorizontal } from "react-icons/rx";
+import { supabase } from "@/integrations/supabase/client";
+import LogoLightMode from "../../assets/images/job-logo.png";
 
 
 // Keep using your existing icons + context exactly the same
@@ -24,8 +26,7 @@ type NavItem = {
 };
 
 /**
- * ✅ Only the CONTENT changes below (paths + names)
- * UI/logic stays exactly the same.
+ * sidebar nav
  */
 const navItems: NavItem[] = [
   {
@@ -44,22 +45,36 @@ const navItems: NavItem[] = [
     path: "/admin/applications",
   },
   {
+    icon: <FaUsers size={20} />,
+    name: "User Management",
+    path: "/admin/users",
+  },
+  {
+    icon: <FaTasks size={20} />,
+    name: "Submission Queue",
+    path: "/admin/submission-queue",
+  },
+  {
+    icon: <FaChartLine size={20} />,
+    name: "Campaign Monitor",
+    path: "/admin/campaigns",
+  },
+  {
     icon: <IoMdTrendingUp size={30} />,
     name: "My Activity",
     path: "/admin/activity",
   },
 ];
 
-const todayStats ={
-    reviewed: 120,
-    approved: 85,
-    rejected: 35,
-}
-
-
 const AdminSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const location = useLocation();
+
+  const [todayStats, setTodayStats] = useState({
+    reviewed: 0,
+    approved: 0,
+    rejected: 0,
+  });
 
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main" | "others";
@@ -79,7 +94,7 @@ const AdminSidebar: React.FC = () => {
     let submenuMatched = false;
 
     (["main", "others"] as const).forEach((menuType) => {
-      const items = menuType === "main" ? navItems : []; // Add othersNavItems if you have them
+      const items = menuType === "main" ? navItems : []; 
 
       items.forEach((nav, index) => {
         if (nav.subItems) {
@@ -95,6 +110,46 @@ const AdminSidebar: React.FC = () => {
 
     if (!submenuMatched) setOpenSubmenu(null);
   }, [location, isActive]);
+
+  // Fetch today's stats
+  useEffect(() => {
+    const fetchTodayStats = async () => {
+      try {
+        const now = new Date();
+        const todayStart = new Date(now);
+        todayStart.setHours(0, 0, 0, 0);
+
+        const { data, error } = await supabase
+          .from("applications")
+          .select("status")
+          .gte("updated_at", todayStart.toISOString())
+          .in("status", ["approved", "failed"]);
+
+        if (error) {
+          console.error("Error fetching today's stats:", error);
+          return;
+        }
+
+        const apps = data || [];
+        const approved = apps.filter((a) => a.status === "approved").length;
+        const rejected = apps.filter((a) => a.status === "failed").length;
+
+        setTodayStats({
+          reviewed: apps.length,
+          approved,
+          rejected,
+        });
+      } catch (err) {
+        console.error("Unexpected error fetching stats:", err);
+      }
+    };
+
+    fetchTodayStats();
+
+    // Refresh stats every 30 seconds
+    const interval = setInterval(fetchTodayStats, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Measure submenu height for smooth expand/collapse animation
   useEffect(() => {
@@ -123,9 +178,9 @@ const AdminSidebar: React.FC = () => {
           {nav.subItems ? (
             <button
               onClick={() => handleSubmenuToggle(index, menuType)}
-              className={`flex items-center gap-3 px-3 py-2 rounded-xl text-slate-700 hover:bg-slate-100 ${
+              className={`flex items-center gap-3 px-3 py-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-gray-800 ${
                 openSubmenu?.type === menuType && openSubmenu?.index === index
-                  ? "menu-item-active"
+                  ? "bg-slate-100 dark:bg-gray-800"
                   : "menu-item-inactive"
               } cursor-pointer ${
                 !isExpanded && !isHovered ? "lg:justify-center" : "lg:justify-start"
@@ -159,8 +214,8 @@ const AdminSidebar: React.FC = () => {
             nav.path && (
               <Link
                 to={nav.path}
-                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-slate-700 hover:bg-slate-100 ${
-                  isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
+                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-gray-800 ${
+                  isActive(nav.path) ? "bg-slate-100 dark:bg-gray-800" : "menu-item-inactive"
                 }`}
               >
                 <span
@@ -263,32 +318,42 @@ const AdminSidebar: React.FC = () => {
           {isExpanded || isHovered || isMobileOpen ? (
             <>
               <img
-                className="dark:hidden"
+                className="dark:hidden ml-5 mb-0"
                 src={Logo}
                 alt="Logo"
-                width={110}
+                width={130}
                 height={30}
               />
               <img
-                className="hidden dark:block"
-                src={Logo}
+                className="hidden dark:block ml-5 mb-0"
+                src={LogoLightMode}
                 alt="Logo"
-                width={150}
-                height={90}
+                width={130}
+                height={30}
               />
             </>
           ) : (
+            <>
             <img
+              className="dark:hidden"
               src={Logo}
               alt="Logo"
               width={110}
               height={30}
             />
+            <img
+              className="hidden dark:block"
+              src={LogoLightMode}
+              alt="Logo"
+              width={120}
+              height={40}
+            />
+            </>
           )}
         </Link>
       </div>
 
-      <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
+      <div className="flex flex-col overflow-y-hidden duration-300 ease-linear no-scrollbar">
         <nav className="mb-6">
           <div className="flex flex-col gap-4">
             {/* MAIN */}
@@ -323,20 +388,20 @@ const AdminSidebar: React.FC = () => {
                 )}
               </h2>
 
-              <div className={`p-4 border-t border-[#E2E8F0] ${ !isExpanded && !isHovered ? "hidden" : "justify-start"}`}>
-          <div className="bg-[#F8FAFC] rounded-lg p-4">
-            <h4 className="text-sm font-semibold text-[#1E293B] mb-3">Today's Activity</h4>
+              <div className={`p-4 border-t border-[#E2E8F0] dark:border-gray-700 ${ !isExpanded && !isHovered ? "hidden" : "justify-start"}`}>
+          <div className="bg-[#F8FAFC] dark:bg-gray-800 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-[#1E293B] dark:text-gray-200 mb-3">Today's Activity</h4>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-[#64748B]">Reviewed</span>
-                <span className="font-semibold text-[#1E293B]">{todayStats.reviewed}</span>
+                <span className="text-[#64748B] dark:text-gray-400">Reviewed</span>
+                <span className="font-semibold text-[#1E293B] dark:text-white">{todayStats.reviewed}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-[#64748B]">Approved</span>
+                <span className="text-[#64748B] dark:text-gray-400">Approved</span>
                 <span className="font-semibold text-[#10B981]">{todayStats.approved}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-[#64748B]">Rejected</span>
+                <span className="text-[#64748B] dark:text-gray-400">Rejected</span>
                 <span className="font-semibold text-[#EF4444]">{todayStats.rejected}</span>
               </div>
             </div>
@@ -347,7 +412,7 @@ const AdminSidebar: React.FC = () => {
         </nav>
 
         {isExpanded || isHovered || isMobileOpen ? null : (
-          <div className="p-4 text-center text-sm text-gray-500">
+          <div className="p-4 text-center text-sm text-gray-500 hidden">
             <p>Admin Sidebar is collapsed</p>
           </div>
         )}

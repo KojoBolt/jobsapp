@@ -53,15 +53,15 @@ const mainNavItems = [
   { title: "Identity Vault", url: "/identity-vault", icon: ShieldCheck },
   { title: "Rewards Center", url: "/rewards", icon: Trophy },
   { title: "Refinement Engine", url: "/refinement", icon: Sparkles },
-  { title: "Career Accelerators", url: "/accelerators", icon: ShoppingBag },
-  { title: "Referrals", url: "/referrals", icon: Users },
+  // { title: "Career Accelerators", url: "/accelerators", icon: ShoppingBag },
+  // { title: "Referrals", url: "/referrals", icon: Users },
   { title: "Invite a Friend", url: "/invite", icon: Gift },
   { title: "Resume Manager", url: "/profile", icon: FileText },
   { title: "Support", url: "/support", icon: LifeBuoy },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
-const trackerNavItem = { title: "Job Trackr", url: "/job-tracker", icon: Crown };
+// const trackerNavItem = { title: "Job Trackr", url: "/job-tracker", icon: Crown };
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -123,8 +123,8 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     if (location.pathname === "/dashboard") return "Campaign Dashboard";
     if (location.pathname === "/identity-vault") return "Identity Vault";
     if (location.pathname === "/job-tracker") return "Job Trackr — Command Center";
-    if (location.pathname === "/accelerators") return "Career Accelerators";
-    if (location.pathname === "/referrals") return "Referral Network";
+    // if (location.pathname === "/accelerators") return "Career Accelerators";
+    // if (location.pathname === "/referrals") return "Referral Network";
     if (location.pathname === "/invite") return "Invite a Friend";
     if (location.pathname === "/rewards") return "Rewards Center";
     if (location.pathname === "/profile") return "Resume Manager";
@@ -205,7 +205,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton asChild>
-                      <NavLink
+                      {/* <NavLink
                         to={trackerNavItem.url}
                         end
                         id="sidebar-tracker"
@@ -215,7 +215,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                         <Terminal className={`h-4 w-4 ${hasInterview ? "animate-pulse text-primary" : ""}`} />
                         <span className="text-[12px]">{trackerNavItem.title}</span>
                         <span className="ml-auto text-[9px] uppercase tracking-widest text-muted-foreground/60">Command Center</span>
-                      </NavLink>
+                      </NavLink> */}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -298,7 +298,6 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                             title: "Signed out successfully",
                             description: "You have been logged out of your account.",
                           });
-                          window.location.href = '/login';
                         }}
                         className="..."
                       >

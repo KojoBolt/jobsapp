@@ -1,11 +1,13 @@
-import Logo from "../../assets/images/logo.png";
+import Logo from "../../assets/images/job-logo.png";
 import { FcGoogle } from "react-icons/fc";
+import { FiEye, FiEyeOff } from "react-icons/fi";
 import { motion } from "framer-motion";
-import SignUpImage from "../../assets/images/hero1.jpg";
+import SignUpImage from "../../assets/images/signup-front.webp";
 import { useState } from "react";
 import { supabase } from "../../integrations/supabase/client";
 import { z } from "zod";
 import { useNavigate } from "react-router-dom";
+import SoftBackdrop from "../hompage/SoftBackdrop";
 
 const signupSchema = z.object({
   fullName: z
@@ -30,6 +32,7 @@ function Signup() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [serverError, setServerError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -46,18 +49,36 @@ function Signup() {
       const field = issue.path[0] as string;
       if (!fieldErrors[field]) fieldErrors[field] = issue.message;
     }
+    console.log("🚫 [Validation] Errors:", fieldErrors);
     setErrors(fieldErrors);
     return false;
   };
+
+  const signInWithGoogle = async () => {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+    },
+  });
+
+  if (error) setServerError(error.message);
+};
 
   const role = "client";
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("🔍 [Signup] Form submitted");
     setServerError("");
 
-    if (!validateForm({ fullName, email, password })) return;
+    if (!validateForm({ fullName, email, password })) {
+      console.log("❌ [Signup] Form validation failed");
+      return;
+    }
 
+    console.log("✅ [Signup] Form validation passed");
+    console.log("📝 [Signup] Signup data:", { fullName, email, role });
     setIsLoading(true);
 
     const { data, error } = await supabase.auth.signUp({
@@ -72,19 +93,24 @@ function Signup() {
       },
     });
 
+    console.log("📡 [Signup] API Response - Error:", error);
+    console.log("📡 [Signup] API Response - Data:", data);
+
     if (error) {
+      console.error("❌ [Signup] Error during signup:", error.message);
       setServerError(error.message);
       setIsLoading(false);
       return;
     }
 
-    // If email confirmation is disabled in Supabase, user is logged in immediately
-    // If email confirmation is enabled, data.user exists but session is null
+    console.log("🔐 [Signup] Session exists:", !!data.session);
     if (data.session) {
       // Email confirmation is OFF — user is logged in, redirect to dashboard
+      console.log("✨ [Signup] User logged in immediately, redirecting to dashboard");
       navigate("/dashboard", { replace: true });
     } else {
       // Email confirmation is ON — show a message to check their email
+      console.log("📧 [Signup] Email confirmation required, redirecting to confirmation page");
       setServerError(""); 
       setIsLoading(false);
       navigate("/email-confirmation");
@@ -92,7 +118,8 @@ function Signup() {
   };
 
   return (
-    <div className="flex min-h-screen bg-white">
+    <div className="flex min-h-screen  bg-background">
+        <SoftBackdrop />
       {/* Left section */}
       <motion.img
         src={SignUpImage}
@@ -125,7 +152,7 @@ function Signup() {
               fontSize: "2rem",
               fontWeight: "bold",
               textAlign: "center",
-              color: "black",
+              color: "white",
               fontFamily: "Merriweather",
               overflow: "hidden",
               whiteSpace: "nowrap",
@@ -154,7 +181,7 @@ function Signup() {
             )}
 
             <div className="mb-4">
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">Full Name</label>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-200">Full Name</label>
               <input
                 type="text"
                 id="name"
@@ -172,7 +199,7 @@ function Signup() {
             </div>
 
             <div className="mb-4">
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-200">Email</label>
               <input
                 type="email"
                 id="email"
@@ -190,27 +217,36 @@ function Signup() {
             </div>
 
             <div className="mb-4">
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                value={password}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setPassword(v);
-                  if (errors.password) validateForm({ fullName, email, password: v });
-                }}
-                className="mt-1 block w-full px-3 py-3 bg-gray-200 rounded-md focus:outline-none sm:text-sm text-black"
-                required
-              />
+              <label htmlFor="password" className="block text-sm font-medium text-gray-200">Password</label>
+              <div className="relative mt-1">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  id="password"
+                  name="password"
+                  value={password}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setPassword(v);
+                    if (errors.password) validateForm({ fullName, email, password: v });
+                  }}
+                  className="block w-full px-3 py-3 pr-10 bg-gray-200 rounded-md focus:outline-none sm:text-sm text-black"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-600 hover:text-gray-800 focus:outline-none"
+                >
+                  {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                </button>
+              </div>
               {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-black text-white py-3 px-4 rounded-md focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
+              className="w-full bg-blue-800 text-white py-3 px-4 rounded-md focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
             >
               {isLoading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -226,19 +262,20 @@ function Signup() {
             </button>
 
             <div className="mt-4">
-              <button
+              {/* <button
+                onClick={signInWithGoogle}
                 type="button"
                 className="w-full bg-white text-black py-3 border border-gray-200 shadow-sm px-4 rounded-md hover:bg-gray-100 focus:outline-none"
               >
                 <FcGoogle className="inline-block mr-2" size={20} />
-                Login with Google
-              </button>
+                Signup with Google
+              </button> */}
             </div>
           </form>
         </div>
 
         <div className="mt-8 w-full text-center">
-          <p className="text-black text-center">
+          <p className="text-gray-200 text-center">
             Already have an account?{" "}
             <a href="/login" className="text-blue-500 hover:underline">Login</a>
           </p>

@@ -24,10 +24,18 @@ const CrossSellBanner = ({ variant }: CrossSellBannerProps) => {
           </div>
         </div>
         <Link to="/job-tracker">
-          <Button variant="heroOutline" size="sm" className="shrink-0 gap-1.5">
+          {/* <Button variant="heroOutline" size="sm" 
+          className="shrink-0 gap-1.5">
             Open Tracker
             <ArrowRight className="h-3.5 w-3.5" />
-          </Button>
+          </Button> */}
+          <Button
+        variant="outline"
+        disabled
+        className="opacity-60 cursor-not-allowed"
+      >
+        Coming Soon
+        </Button>
         </Link>
       </div>
     );

@@ -1,16 +1,29 @@
-import Logo from "../../assets/images/logo.png";
+import Logo from "../../assets/images/job-logo.png";
 import { FcGoogle } from "react-icons/fc";
+import { FiEye, FiEyeOff } from "react-icons/fi";
 import { motion } from "framer-motion";
-import Hero from "../../assets/images/login.jpg";
+import Hero from "../../assets/images/login-front.webp";
 import { useState } from "react";
 import { supabase } from "../../integrations/supabase/client";
 import { z } from "zod";
 import { useNavigate } from "react-router-dom";
+import SoftBackdrop from "../../components/hompage/SoftBackdrop";
 
 const loginSchema = z.object({
   email: z.string().trim().email("Enter a valid email"),
   password: z.string().min(1, "Password is required"),
 });
+
+const signInWithGoogle = async () => {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+    },
+  });
+
+  if (error) setServerError(error.message);
+};
 
 function Login() {
   const heading = "Welcome back";
@@ -18,10 +31,15 @@ function Login() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [serverError, setServerError] = useState("");
   const [touched, setTouched] = useState({ email: false, password: false });
   const [isLoading, setIsLoading] = useState(false);
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
   const navigate = useNavigate();
 
   const validateForm = (values: { email: string; password: string }) => {
@@ -74,16 +92,47 @@ function Login() {
       // fallback to dashboard if profile fetch fails
       navigate("/dashboard", { replace: true });
       return;
-    
+
     }
-    
+
 
     const role = profile?.role ?? "client";
     navigate(role === "admin" ? "/admin/dashboard" : "/dashboard", { replace: true });
   };
 
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetLoading(true);
+    setResetMessage("");
+
+    if (!resetEmail.trim()) {
+      setResetMessage("Please enter your email address");
+      setResetLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      setResetMessage(`Error: ${error.message}`);
+      setResetLoading(false);
+      return;
+    }
+
+    setResetMessage("Password reset email sent! Check your inbox.");
+    setResetLoading(false);
+    setTimeout(() => {
+      setShowForgotModal(false);
+      setResetEmail("");
+      setResetMessage("");
+    }, 2000);
+  };
+
   return (
-    <div className="flex min-h-screen bg-white">
+    <div className="flex min-h-screen bg-background">
+      <SoftBackdrop />
       {/* Left section */}
       <motion.img
         src={Hero}
@@ -111,7 +160,7 @@ function Login() {
         </div>
         <div className="text-center mt-10">
           <h2
-            style={{ fontSize: "2rem", fontWeight: "bold", textAlign: "center", color: "black", fontFamily: "Merriweather", overflow: "hidden", whiteSpace: "nowrap" }}
+            style={{ fontSize: "2rem", fontWeight: "bold", textAlign: "center", color: "white", fontFamily: "Merriweather", overflow: "hidden", whiteSpace: "nowrap" }}
           >
             {words.map((word, index) => (
               <motion.span
@@ -134,7 +183,7 @@ function Login() {
               </div>
             )}
             <div className="mb-4">
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-200">Email</label>
               <input
                 type="email"
                 id="email"
@@ -152,21 +201,30 @@ function Login() {
               {touched.email && errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
             </div>
             <div className="mb-4">
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                value={password}
-                onBlur={() => setTouched((p) => ({ ...p, password: true }))}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setPassword(v);
-                  validateForm({ email, password: v });
-                }}
-                className="mt-1 block w-full px-3 py-3 bg-gray-200 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-black"
-                required
-              />
+              <label htmlFor="password" className="block text-sm font-medium text-gray-200">Password</label>
+              <div className="relative mt-1">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  id="password"
+                  name="password"
+                  value={password}
+                  onBlur={() => setTouched((p) => ({ ...p, password: true }))}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setPassword(v);
+                    validateForm({ email, password: v });
+                  }}
+                  className="block w-full px-3 py-3 pr-10 bg-gray-200 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-black"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-600 hover:text-gray-800 focus:outline-none"
+                >
+                  {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                </button>
+              </div>
               {touched.password && errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
             </div>
             <div className="flex flex-col md:flex-row md:items-center mb-4">
@@ -177,16 +235,20 @@ function Login() {
                   name="remember"
                   className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                 />
-                <label htmlFor="remember" className="ml-2 text-sm text-gray-900">Remember me</label>
+                <label htmlFor="remember" className="ml-2 text-sm text-gray-200">Remember me</label>
               </div>
-              <a href="#" className="text-blue-800 text-sm font-bold mt-2 md:mt-0 md:ml-auto">
+              <button
+                type="button"
+                onClick={() => setShowForgotModal(true)}
+                className="text-blue-800 text-sm font-bold mt-2 md:mt-0 md:ml-auto hover:underline focus:outline-none"
+              >
                 Forget Password
-              </a>
+              </button>
             </div>
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-black text-white py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
+              className="w-full bg-blue-800 text-white py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
             >
               {isLoading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -203,6 +265,7 @@ function Login() {
             <div className="mt-4">
               <button
                 type="button"
+                onClick={signInWithGoogle}
                 className="w-full bg-white text-black py-3 border border-gray-200 shadow-sm px-4 rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
               >
                 <FcGoogle className="inline-block mr-2" size={20} />
@@ -212,10 +275,98 @@ function Login() {
           </form>
         </div>
         <div className="mt-8 w-full text-center">
-          <p className="text-black text-center">
+          <p className="text-white text-center">
             Do you not have an account? <a href="/sign-up" className="text-blue-500 hover:underline">Sign up</a>
           </p>
         </div>
+
+        {/* Forgot Password Modal */}
+        {showForgotModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.3 }}
+              className="bg-gray-900 rounded-lg p-8 w-96 shadow-xl border border-gray-700"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-white">Reset Password</h3>
+                <button
+                  onClick={() => {
+                    setShowForgotModal(false);
+                    setResetEmail("");
+                    setResetMessage("");
+                  }}
+                  className="text-gray-400 hover:text-white text-2xl leading-none focus:outline-none"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <form onSubmit={handlePasswordReset}>
+                <p className="text-gray-300 text-sm mb-4">
+                  Enter your email address and we'll send you a link to reset your password.
+                </p>
+                
+                <div className="mb-4">
+                  <label htmlFor="reset-email" className="block text-sm font-medium text-gray-200 mb-2">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    id="reset-email"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    className="w-full px-3 py-2 bg-gray-800 text-white rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+
+                {resetMessage && (
+                  <div className={`mb-4 p-3 rounded text-sm ${
+                    resetMessage.includes("Error") 
+                      ? "bg-red-900 text-red-200" 
+                      : "bg-green-900 text-green-200"
+                  }`}>
+                    {resetMessage}
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowForgotModal(false);
+                      setResetEmail("");
+                      setResetMessage("");
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600 focus:outline-none transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={resetLoading}
+                    className="flex-1 px-4 py-2 bg-blue-800 text-white rounded-md hover:bg-blue-700 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  >
+                    {resetLoading ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                        </svg>
+                        Sending...
+                      </>
+                    ) : (
+                      "Send Reset Link"
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
       </div>
     </div>
   );
