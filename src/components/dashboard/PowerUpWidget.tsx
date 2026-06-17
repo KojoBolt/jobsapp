@@ -5,32 +5,29 @@ import { Badge } from "@/components/ui/badge";
 import { Zap } from "lucide-react";
 import UpgradeIcon from '@mui/icons-material/Upgrade';
 
-// Add interface for props
 interface PowerUpWidgetProps {
   remaining?: number;
-  status?: 'Active' | 'Depleted';
+  status?: 'Active' | 'Low-Balance' | 'Depleted';
   plan?: 'free' | 'starter' | 'pro';
   hasPurchase?: boolean;
 }
 
-const planLabels = {
-  free: "basic",
-  starter: "starter",
-  pro: "pro",
-};
-
-// Update component to accept props
 const PowerUpWidget = ({
   remaining = 0,
   status = 'Active',
   plan = 'free',
-  hasPurchase = false
+  hasPurchase = false,
 }: PowerUpWidgetProps) => {
   const navigate = useNavigate();
 
-  // Pricing based on plan
+  const planLabels = {
+    free: "basic",
+    starter: "starter",
+    pro: "pro",
+  };
+
   const packageInfo = {
-    free: { quantity: 200, price: 99.00},
+    free: { quantity: 200, price: 99.00 },
     starter: { quantity: 100, price: 29.00 },
     pro: { quantity: 1000, price: 400.00 },
   };
@@ -38,13 +35,12 @@ const PowerUpWidget = ({
   const { quantity, price } = packageInfo[plan];
   const isFirstPurchase = plan === "free" && !hasPurchase;
   const showMostPopular = plan === "starter";
+
   const buttonText = isFirstPurchase
-  ? "Activate 200 Credits for $99"
-  : `Buy ${quantity} More for $${price}`;
+    ? "Activate 200 Credits for $99"
+    : `Buy ${quantity} More for $${price}`;
 
   const displayPlan = planLabels[plan];
-
-
 
   return (
     <motion.div
@@ -72,14 +68,16 @@ const PowerUpWidget = ({
         variant="gold"
         size="lg"
         onClick={() =>
-            navigate('/checkout', {
+          navigate('/checkout', {
             state: {
-            purchaseType: isFirstPurchase ? 'activation' : 'top-up',
-            selectedPlan: isFirstPurchase ? 'undefined' : plan,
-          },
-        })
-      }s
-              className="relative gap-2"
+              // ✅ Fixed: was 'top-up' (invalid), must match PurchaseType = 'activation' | 'topup'
+              purchaseType: isFirstPurchase ? 'activation' : 'topup',
+              // ✅ Fixed: was string 'undefined', now real undefined so Checkout ignores it
+              selectedPlan: isFirstPurchase ? undefined : plan,
+            },
+          })
+        }
+        className="relative gap-2"
       >
         {showMostPopular && (
           <Badge
@@ -89,9 +87,7 @@ const PowerUpWidget = ({
             Most Popular
           </Badge>
         )}
-        {/* Buy {quantity} More for ${price} */}
         {buttonText} <UpgradeIcon className="w-4 h-4" />
-
       </Button>
     </motion.div>
   );

@@ -55,17 +55,53 @@ function Signup() {
   };
 
   const signInWithGoogle = async () => {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin,
-    },
-  });
-
-  if (error) setServerError(error.message);
-};
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) setServerError(error.message);
+  };
 
   const role = "client";
+
+// The referrer's $15 is granted later by the payment webhook, after THIS user
+// makes their first real purchase (anti-fraud).
+const processReferral = async (userId: string) => {
+  const referralCode = localStorage.getItem("referral_code");
+  if (!referralCode) return;
+
+  try {
+    const { data: referrer } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("referral_code", referralCode)
+      .single();
+
+    if (!referrer || referrer.id === userId) {
+      localStorage.removeItem("referral_code");
+      return;
+    }
+
+    // Set attribution on the new user's own profile.
+    await supabase.from("profiles").update({ referred_by: referrer.id }).eq("id", userId);
+
+    // Record a pending referral (reward happens on first purchase, via webhook).
+    await supabase.from("referrals").insert({
+      referrer_id: referrer.id,
+      referred_user_id: userId,
+      status: "pending",
+      credits_earned: 0,
+    });
+
+    localStorage.removeItem("referral_code");
+  } catch (err) {
+    console.error("[Referral] attribution error:", err);
+    localStorage.removeItem("referral_code");
+    // Never block signup — silently fail.
+  }
+};
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +114,6 @@ function Signup() {
     }
 
     console.log("✅ [Signup] Form validation passed");
-    console.log("📝 [Signup] Signup data:", { fullName, email, role });
     setIsLoading(true);
 
     const { data, error } = await supabase.auth.signUp({
@@ -103,23 +138,26 @@ function Signup() {
       return;
     }
 
+    // ✅ Process referral if user was created successfully
+    if (data.user) {
+      await processReferral(data.user.id);
+    }
+
     console.log("🔐 [Signup] Session exists:", !!data.session);
     if (data.session) {
-      // Email confirmation is OFF — user is logged in, redirect to dashboard
       console.log("✨ [Signup] User logged in immediately, redirecting to dashboard");
       navigate("/dashboard", { replace: true });
     } else {
-      // Email confirmation is ON — show a message to check their email
-      console.log("📧 [Signup] Email confirmation required, redirecting to confirmation page");
-      setServerError(""); 
+      console.log("📧 [Signup] Email confirmation required");
+      setServerError("");
       setIsLoading(false);
       navigate("/email-confirmation");
     }
   };
 
   return (
-    <div className="flex min-h-screen  bg-background">
-        <SoftBackdrop />
+    <div className="flex min-h-screen bg-background">
+      <SoftBackdrop />
       {/* Left section */}
       <motion.img
         src={SignUpImage}

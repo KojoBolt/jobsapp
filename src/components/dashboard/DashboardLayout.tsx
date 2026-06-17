@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Terminal,
   CheckCircle2,
+  IdCard,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -45,6 +46,7 @@ import OnboardingTour from "@/components/onboarding/OnboardingTour";
 import { toast } from "@/components/ui/use-toast";
 import Logo from "@/assets/images/job-logo.png";
 import ChatWidget from "@/components/chatbot/ChatWidget";
+import Notification from "@/components/notification/Notificationbell";
 
 
 
@@ -53,9 +55,10 @@ const mainNavItems = [
   { title: "Identity Vault", url: "/identity-vault", icon: ShieldCheck },
   { title: "Rewards Center", url: "/rewards", icon: Trophy },
   { title: "Refinement Engine", url: "/refinement", icon: Sparkles },
-  // { title: "Career Accelerators", url: "/accelerators", icon: ShoppingBag },
+  { title: "Career Accelerators", url: "/accelerators", icon: ShoppingBag },
   // { title: "Referrals", url: "/referrals", icon: Users },
   { title: "Invite a Friend", url: "/invite", icon: Gift },
+  {title: "Report", url: "/report", icon: IdCard},
   { title: "Resume Manager", url: "/profile", icon: FileText },
   { title: "Support", url: "/support", icon: LifeBuoy },
   { title: "Settings", url: "/settings", icon: Settings },
@@ -123,8 +126,9 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     if (location.pathname === "/dashboard") return "Campaign Dashboard";
     if (location.pathname === "/identity-vault") return "Identity Vault";
     if (location.pathname === "/job-tracker") return "Job Trackr — Command Center";
-    // if (location.pathname === "/accelerators") return "Career Accelerators";
+    if (location.pathname === "/accelerators") return "Career Accelerators";
     // if (location.pathname === "/referrals") return "Referral Network";
+    if (location.pathname === "/report") return "Report";
     if (location.pathname === "/invite") return "Invite a Friend";
     if (location.pathname === "/rewards") return "Rewards Center";
     if (location.pathname === "/profile") return "Resume Manager";
@@ -149,7 +153,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
       <div className="flex min-h-screen w-full">
         <Sidebar className="border-r border-border/50">
           <div className="flex h-16 items-center gap-2 border-b border-border/50 px-6">
-            <Link to="/" className="flex items-center gap-2">
+            <Link to="/dashboard" className="flex items-center gap-2">
               {/* <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                 <Zap className="h-4 w-4 text-primary-foreground" />
               </div>
@@ -322,9 +326,12 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
         </Sidebar>
 
         <main className="flex-1 overflow-auto">
-          <header className="flex h-16 items-center border-b border-border/50 px-6">
-            <SidebarTrigger className="mr-4" />
-            <h2 className="text-sm font-medium text-foreground">{getPageTitle()}</h2>
+          <header className="flex h-16 items-center justify-between border-b border-border/50 px-6">
+            <div className="flex items-center gap-4">
+              <SidebarTrigger className="mr-4" />
+              <h2 className="text-sm font-medium text-foreground">{getPageTitle()}</h2>
+            </div>
+            <Notification />
           </header>
           <div className="p-6">{children}</div>
         </main>

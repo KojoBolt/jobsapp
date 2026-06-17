@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Wallet, RotateCcw, ArrowRight } from "lucide-react";
+import { Wallet, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,48 +12,25 @@ interface CashOutToggleProps {
   totalCredits?: number;
 }
 
-const CashOutToggle = ({
-  userId,
-  initialMode = "reapply",
-  totalCredits = 0,
-}: CashOutToggleProps) => {
-  const [mode, setMode] = useState<"reapply" | "cashout">(initialMode);
+// NOTE: Cash payouts are NOT built yet (no payout infrastructure). For v1 the
+// reward is credits-only. The cash option is shown as "coming soon" and is
+// disabled so we never promise a payout we can't deliver.
+const CashOutToggle = ({ userId, initialMode = "reapply" }: CashOutToggleProps) => {
+  const [mode, setMode] = useState<"reapply" | "cashout">(
+    initialMode === "cashout" ? "reapply" : initialMode
+  );
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
-  const handleSelect = async (selected: "reapply" | "cashout") => {
-    setMode(selected);
+  const handleSelectReapply = async () => {
+    setMode("reapply");
     if (!userId) return;
-
     setSaving(true);
-    await supabase
-      .from("profiles")
-      .update({ cashout_preference: selected })
-      .eq("id", userId);
+    await supabase.from("profiles").update({ cashout_preference: "reapply" }).eq("id", userId);
     setSaving(false);
-
     toast({
-      title: selected === "reapply"
-        ? "Credits will apply to your next pack"
-        : "Cash payout requested",
-      description: selected === "reapply"
-        ? "Your earned credits will automatically discount your next 200-App Pack."
-        : "We'll process your payout via Paystack within 48 hours.",
-    });
-  };
-
-  const handleRequestPayout = async () => {
-    if (!userId || totalCredits <= 0) {
-      toast({
-        title: "No credits to cash out",
-        description: "Earn credits by referring friends first.",
-        variant: "destructive",
-      });
-      return;
-    }
-    toast({
-      title: "Payout requested!",
-      description: `$${totalCredits} will be processed via Paystack within 48 hours.`,
+      title: "Credits will apply to your next pack",
+      description: "Your earned credits automatically discount your next purchase.",
     });
   };
 
@@ -68,14 +44,13 @@ const CashOutToggle = ({
         <CardContent className="space-y-4 p-6">
           <div className="flex items-center gap-2.5">
             <Wallet className="h-5 w-5 text-gold" />
-            <h3 className="text-lg font-bold text-foreground">
-              How Would You Like Your Rewards?
-            </h3>
+            <h3 className="text-lg font-bold text-foreground">How Your Rewards Work</h3>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
+            {/* Reapply — the active, real option */}
             <button
-              onClick={() => handleSelect("reapply")}
+              onClick={handleSelectReapply}
               disabled={saving}
               className={`group relative flex flex-col items-start gap-3 rounded-xl border p-5 text-left transition-all ${
                 mode === "reapply"
@@ -87,9 +62,9 @@ const CashOutToggle = ({
                 <RotateCcw className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Apply to Next 200 Pack</p>
+                <p className="text-sm font-semibold text-foreground">Apply to Your Next Purchase</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Credits auto-apply as a discount on your next application pack.
+                  Earned credits automatically discount your next pack.
                 </p>
               </div>
               {mode === "reapply" && (
@@ -97,43 +72,20 @@ const CashOutToggle = ({
               )}
             </button>
 
-            <button
-              onClick={() => handleSelect("cashout")}
-              disabled={saving}
-              className={`group relative flex flex-col items-start gap-3 rounded-xl border p-5 text-left transition-all ${
-                mode === "cashout"
-                  ? "border-gold/50 bg-gold/5 ring-1 ring-gold/30"
-                  : "border-border/50 bg-card hover:border-gold/30"
-              }`}
-            >
+            {/* Cash — coming soon, disabled */}
+            <div className="relative flex cursor-not-allowed flex-col items-start gap-3 rounded-xl border border-border/50 bg-card/50 p-5 text-left opacity-60">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gold/15">
                 <Wallet className="h-5 w-5 text-gold" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">Request Cash Payout</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Withdraw your earnings directly via Paystack.
+                  Withdraw earnings directly. Coming soon.
                 </p>
               </div>
-              {mode === "cashout" && (
-                <Badge className="absolute right-3 top-3 bg-gold/20 text-gold">Active</Badge>
-              )}
-            </button>
+              <Badge className="absolute right-3 top-3 bg-muted text-muted-foreground">Coming soon</Badge>
+            </div>
           </div>
-
-          {mode === "cashout" && (
-            <Button
-              variant="gold"
-              size="lg"
-              className="w-full gap-2"
-              onClick={handleRequestPayout}
-              disabled={totalCredits <= 0}
-            >
-              <Wallet className="h-4 w-4" />
-              Request Payout {totalCredits > 0 ? `($${totalCredits})` : ""}
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          )}
         </CardContent>
       </Card>
     </motion.div>

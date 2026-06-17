@@ -176,7 +176,7 @@ const CampaignMonitorPage = (): JSX.Element => {
         ].map((stat) => (
           <div key={stat.label} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-[#E2E8F0] dark:border-gray-700 p-4">
             <p className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</p>
-            <p className="text-sm text-[#64748B]">{stat.label}</p>
+            <p className="text-sm text-[#64748B] dark:text-gray-400">{stat.label}</p>
           </div>
         ))}
       </div>
@@ -204,12 +204,12 @@ const CampaignMonitorPage = (): JSX.Element => {
                   <tr className="hover:bg-[#F8FAFC] dark:hover:bg-gray-700 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[#EDE9FE] flex items-center justify-center text-[#7C3AED] text-xs font-bold shrink-0">
+                        <div className="w-9 h-9 rounded-full bg-[#EDE9FE] dark:bg-purple-900 flex items-center justify-center text-[#7C3AED] text-xs font-bold shrink-0">
                           {getInitials(campaign.user_full_name)}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-[#1E293B] dark:text-gray-200">{campaign.user_full_name}</p>
-                          <p className="text-xs text-[#64748B]">{campaign.user_email}</p>
+                          <p className="text-sm font-semibold text-[#1E293B] dark:text-white">{campaign.user_full_name}</p>
+                          <p className="text-xs text-[#64748B] dark:text-gray-400">{campaign.user_email}</p>
                         </div>
                       </div>
                     </td>
@@ -223,7 +223,7 @@ const CampaignMonitorPage = (): JSX.Element => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <div className="w-24 h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
+                        <div className="w-24 h-2 bg-[#E2E8F0] dark:bg-gray-700 rounded-full overflow-hidden">
                           <div
                             className="h-full bg-[#7C3AED] rounded-full transition-all"
                             style={{
@@ -233,7 +233,7 @@ const CampaignMonitorPage = (): JSX.Element => {
                             }}
                           />
                         </div>
-                        <span className="text-xs text-[#64748B]">
+                        <span className="text-xs text-[#64748B] dark:text-gray-400">
                           {campaign.processed_jobs}/{campaign.total_jobs}
                         </span>
                       </div>
@@ -247,7 +247,7 @@ const CampaignMonitorPage = (): JSX.Element => {
                         {campaign.success_rate}%
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-[#64748B]">
+                    <td className="px-6 py-4 text-sm text-[#64748B] dark:text-gray-400">
                       <div>
                         <p>{format(new Date(campaign.created_at), "d MMM yyyy")}</p>
                         <p className="text-xs">{formatDistanceToNow(new Date(campaign.created_at), { addSuffix: true })}</p>
@@ -256,7 +256,7 @@ const CampaignMonitorPage = (): JSX.Element => {
                     <td className="px-6 py-4">
                       <button
                         onClick={() => handleExpand(campaign.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[#7C3AED] border border-[#7C3AED] rounded-lg hover:bg-[#EDE9FE] transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[#7C3AED] border border-[#7C3AED] rounded-lg hover:bg-[#EDE9FE] dark:hover:bg-purple-900 transition-colors"
                       >
                         {expandedCampaign === campaign.id
                           ? <><ChevronUp size={14} /> Hide</>
@@ -270,8 +270,8 @@ const CampaignMonitorPage = (): JSX.Element => {
                   {expandedCampaign === campaign.id && (
                     <tr>
                       <td colSpan={6} className="px-0 py-0">
-                        <div className="bg-[#F8FAFC] border-t border-[#E2E8F0]">
-                          <div className="grid grid-cols-4 px-8 py-2 bg-[#EDE9FE] text-xs font-semibold text-[#7C3AED] uppercase">
+                        <div className="bg-[#F8FAFC] dark:bg-gray-700 border-t border-[#E2E8F0] dark:border-gray-600">
+                          <div className="grid grid-cols-4 px-8 py-2 bg-[#EDE9FE] dark:bg-gray-600 text-xs font-semibold text-[#7C3AED] dark:text-purple-300 uppercase">
                             <span>Company</span>
                             <span>Job Title</span>
                             <span>Status</span>
@@ -283,12 +283,12 @@ const CampaignMonitorPage = (): JSX.Element => {
                                 key={app.id}
                                 className={`grid grid-cols-4 px-8 py-3 text-sm items-center ${
                                   idx !== expandedApps[campaign.id].length - 1
-                                    ? "border-b border-[#E2E8F0]"
+                                    ? "border-b border-[#E2E8F0] dark:border-gray-600"
                                     : ""
-                                } hover:bg-white`}
+                                } hover:bg-white dark:hover:bg-gray-600`}
                               >
-                                <span className="font-medium text-[#1E293B]">{app.company_name}</span>
-                                <span className="text-[#64748B]">{app.job_title}</span>
+                                <span className="font-medium text-[#1E293B] dark:text-white">{app.company_name}</span>
+                                <span className="text-[#64748B] dark:text-gray-300">{app.job_title}</span>
                                 <span className={`text-xs font-semibold capitalize ${
                                   app.status === "approved" || app.status === "submitted" ? "text-[#10B981]" :
                                   app.status === "failed" ? "text-[#EF4444]" :
@@ -296,7 +296,7 @@ const CampaignMonitorPage = (): JSX.Element => {
                                 }`}>
                                   {app.status.replace("_", " ")}
                                 </span>
-                                <span className="text-[#64748B]">
+                                <span className="text-[#64748B] dark:text-gray-400">
                                   {format(new Date(app.created_at), "d MMM yyyy")}
                                 </span>
                               </div>
@@ -317,20 +317,20 @@ const CampaignMonitorPage = (): JSX.Element => {
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-[#E2E8F0] dark:border-gray-700 p-12 text-center">
-          <h3 className="text-xl font-semibold text-[#1E293B] dark:text-gray-200 mb-2">No campaigns yet</h3>
-          <p className="text-sm text-[#64748B]">Campaigns will appear here when users deploy applications.</p>
+          <h3 className="text-xl font-semibold text-[#1E293B] dark:text-white mb-2">No campaigns yet</h3>
+          <p className="text-sm text-[#64748B] dark:text-gray-400">Campaigns will appear here when users deploy applications.</p>
         </div>
       )}
 
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-[#64748B]">Page {currentPage} of {totalPages}</p>
+          <p className="text-sm text-[#64748B] dark:text-gray-400">Page {currentPage} of {totalPages}</p>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg text-[#64748B] hover:bg-[#F8FAFC] disabled:opacity-40"
+              className="px-3 py-1.5 text-sm border border-[#E2E8F0] dark:border-gray-600 rounded-lg text-[#64748B] dark:text-gray-400 hover:bg-[#F8FAFC] dark:hover:bg-gray-700 disabled:opacity-40"
             >
               ← Previous
             </button>
@@ -341,7 +341,7 @@ const CampaignMonitorPage = (): JSX.Element => {
                 className={`px-3 py-1.5 text-sm border rounded-lg ${
                   currentPage === page
                     ? "border-[#7C3AED] bg-[#7C3AED] text-white"
-                    : "border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]"
+                    : "border-[#E2E8F0] dark:border-gray-600 text-[#64748B] dark:text-gray-400 hover:bg-[#F8FAFC] dark:hover:bg-gray-700"
                 }`}
               >
                 {page}
@@ -350,7 +350,7 @@ const CampaignMonitorPage = (): JSX.Element => {
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg text-[#64748B] hover:bg-[#F8FAFC] disabled:opacity-40"
+              className="px-3 py-1.5 text-sm border border-[#E2E8F0] dark:border-gray-600 rounded-lg text-[#64748B] dark:text-gray-400 hover:bg-[#F8FAFC] dark:hover:bg-gray-700 disabled:opacity-40"
             >
               Next →
             </button>

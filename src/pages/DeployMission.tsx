@@ -17,7 +17,7 @@ import {
 
 const DeployMission = () => {
   const navigate = useNavigate();
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, session, refreshProfile } = useAuth();
   const vaultData = profile?.identity_vault_data;
 
   const effectiveTier = profile?.subscription_tier;
@@ -239,49 +239,89 @@ const DeployMission = () => {
 
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
+  if (!user) return;
 
   setSubmitting(true);
 
   try {
-
-    const submissionType = aiDiscovery ? "ai_discovery" : "manual";
-
     const finalNotes = specialInstructions.trim()
       ? `${notes.trim()}\n\n--- Special Instructions ---\n${specialInstructions.trim()}`
       : notes.trim();
 
-    const { error } = await supabase
-      .from("job_applications")
-      .insert({
-        user_id: user.id,
-        company_name: company.trim() || "TBD",
-        position_title: position.trim() || "TBD",
-        job_url: url.trim() || null,
-        status: "screening",
-        submission_type: submissionType,
-        notes: finalNotes || null,
-        salary_range: useVault && vaultSalaryMin
-          ? `${vaultSalaryMin} - ${vaultSalaryMax}`
-          : manualSalary.trim() || null,
-        contact_name: useVault ? vaultName : manualName.trim(),
-        contact_email: useVault ? vaultEmail : manualEmail.trim(),
+    if (aiDiscovery) {
+      // ─── AI Discovery Mode (Mass Deploy) ───────────────────────────────
+      const { data: camp, error: campErr } = await supabase
+        .from("campaigns")
+        .insert({
+          user_id: user.id,
+          status: "running",
+          total_jobs: 0,
+          processed_jobs: 0,
+          logs: ["Campaign initialized via Mission Deploy..."],
+          batch_size: 10,
+          interval_hours: 2,
+          current_batch_index: 1,
+          next_batch_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        })
+        .select()
+        .single();
+
+      if (campErr) throw campErr;
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/start-campaign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`,
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ 
+          campaignId: camp.id,
+          userId: user.id // Passing userId triggers back-end processing
+        }),
       });
 
-    if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to start AI Discovery mission");
+      }
 
-    await supabase
-      .from("profiles")
-      .update({ monthly_usage_count: monthlyUsed + 1 })
-      .eq("id", user.id);
+      toast.success("AI Discovery Mission launched! 10 jobs deploying now, others will follow in the background.");
+    } else {
+      // ─── Manual / Single Link Mode ──────────────────────────────────────
+      const { error } = await supabase
+        .from("applications")
+        .insert({
+          user_id: user.id,
+          company_name: company.trim() || "TBD",
+          job_title: position.trim() || "TBD",
+          job_url: url.trim() || null,
+          status: "screening",
+          submission_type: "manual",
+          notes: finalNotes || null,
+          salary_range: useVault && vaultSalaryMin
+            ? `${vaultSalaryMin} - ${vaultSalaryMax}`
+            : manualSalary.trim() || null,
+          contact_name: useVault ? vaultName : manualName.trim(),
+          contact_email: useVault ? vaultEmail : manualEmail.trim(),
+        });
+
+      if (error) throw error;
+
+      await supabase
+        .from("profiles")
+        .update({ monthly_usage_count: monthlyUsed + 1 })
+        .eq("id", user.id);
+
+      toast.success("Application deployed successfully!");
+    }
 
     await refreshProfile();
-
-    toast.success("Application deployed successfully!");
     navigate("/job-tracker");
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Submit failed:", error);
-    toast.error("Failed to deploy. Please try again.");
+    toast.error(error.message || "Failed to deploy. Please try again.");
   } finally {
     setSubmitting(false);
   }

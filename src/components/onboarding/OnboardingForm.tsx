@@ -348,6 +348,7 @@ const OnboardingForm = () => {
           .from('profiles')
           .update({
             full_name: formData.fullName,
+            onboarding_completed: true,
           })
           .eq('id', user.id)
           .select();

@@ -5,12 +5,12 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface Notification {
   id: string;
-  type: "alert" | "success" | "pending" | "error" | "info";
+  type: string;
   title: string;
   message: string;
-  timestamp: string;
-  read: boolean;
-  actionUrl?: string;
+  created_at: string;
+  is_read: boolean;
+  user_id?: string;
   data?: Record<string, any>;
 }
 
@@ -22,29 +22,35 @@ interface NotificationTypeConfig {
 }
 
 const notificationTypeConfig: Record<string, NotificationTypeConfig> = {
-  alert: {
-    icon: <AlertCircle className="h-5 w-5" />,
-    bgColor: "bg-orange-50",
-    textColor: "text-orange-700",
-    borderColor: "border-orange-200",
-  },
-  success: {
+  new_application: {
     icon: <CheckCircle className="h-5 w-5" />,
     bgColor: "bg-green-50",
     textColor: "text-green-700",
     borderColor: "border-green-200",
   },
-  pending: {
-    icon: <Clock className="h-5 w-5" />,
+  new_user: {
+    icon: <Bell className="h-5 w-5" />,
     bgColor: "bg-blue-50",
     textColor: "text-blue-700",
     borderColor: "border-blue-200",
   },
-  error: {
+  campaign_complete: {
+    icon: <CheckCircle className="h-5 w-5" />,
+    bgColor: "bg-green-50",
+    textColor: "text-green-700",
+    borderColor: "border-green-200",
+  },
+  campaign_failed: {
     icon: <XCircle className="h-5 w-5" />,
     bgColor: "bg-red-50",
     textColor: "text-red-700",
     borderColor: "border-red-200",
+  },
+  support_message: {
+    icon: <AlertCircle className="h-5 w-5" />,
+    bgColor: "bg-orange-50",
+    textColor: "text-orange-700",
+    borderColor: "border-orange-200",
   },
   info: {
     icon: <Bell className="h-5 w-5" />,
@@ -93,7 +99,7 @@ export const Notifications = (): JSX.Element => {
       const { data, error } = await supabase
         .from("admin_notifications")
         .select("*")
-        .order("timestamp", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(50);
 
       if (error) {
@@ -113,12 +119,12 @@ export const Notifications = (): JSX.Element => {
     try {
       await supabase
         .from("admin_notifications")
-        .update({ read: true })
+        .update({ is_read: true })
         .eq("id", id);
 
       setNotifications((prev) =>
         prev.map((notif) =>
-          notif.id === id ? { ...notif, read: true } : notif
+          notif.id === id ? { ...notif, is_read: true } : notif
         )
       );
     } catch (err) {
@@ -142,7 +148,7 @@ export const Notifications = (): JSX.Element => {
   const clearAllRead = async () => {
     try {
       const readIds = notifications
-        .filter((n) => n.read)
+        .filter((n) => n.is_read)
         .map((n) => n.id);
 
       if (readIds.length === 0) return;
@@ -152,16 +158,16 @@ export const Notifications = (): JSX.Element => {
         .delete()
         .in("id", readIds);
 
-      setNotifications((prev) => prev.filter((notif) => !notif.read));
+      setNotifications((prev) => prev.filter((notif) => !notif.is_read));
     } catch (err) {
       console.error("Error clearing read notifications:", err);
     }
   };
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
   const filteredNotifications =
     filter === "unread"
-      ? notifications.filter((n) => !n.read)
+      ? notifications.filter((n) => !n.is_read)
       : notifications;
 
   const config = notificationTypeConfig[notifications[0]?.type || "info"];
@@ -179,7 +185,7 @@ export const Notifications = (): JSX.Element => {
             </span>
           )}
         </div>
-        {notifications.filter((n) => n.read).length > 0 && (
+        {notifications.filter((n) => n.is_read).length > 0 && (
           <button
             onClick={clearAllRead}
             className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
@@ -235,10 +241,10 @@ export const Notifications = (): JSX.Element => {
               <div
                 key={notification.id}
                 className={`border rounded-lg p-4 transition-all ${typeConfig.borderColor} ${
-                  !notification.read ? "bg-white shadow-sm" : typeConfig.bgColor
+                  !notification.is_read ? "bg-white shadow-sm" : typeConfig.bgColor
                 }`}
                 onClick={() => {
-                  if (!notification.read) {
+                  if (!notification.is_read) {
                     markAsRead(notification.id);
                   }
                   setExpanded(isExpanded ? null : notification.id);
@@ -259,7 +265,7 @@ export const Notifications = (): JSX.Element => {
                           {notification.message}
                         </p>
                       </div>
-                      {!notification.read && (
+                      {!notification.is_read && (
                         <div className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-500 mt-2" />
                       )}
                     </div>
@@ -267,22 +273,13 @@ export const Notifications = (): JSX.Element => {
                     {/* Time */}
                     <div className="flex items-center justify-between mt-3">
                       <span className="text-xs text-gray-500">
-                        {formatDistanceToNow(new Date(notification.timestamp), {
+                        {formatDistanceToNow(new Date(notification.created_at), {
                           addSuffix: true,
                         })}
                       </span>
 
                       {/* Actions */}
                       <div className="flex gap-2">
-                        {notification.actionUrl && (
-                          <a
-                            href={notification.actionUrl}
-                            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            View
-                          </a>
-                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

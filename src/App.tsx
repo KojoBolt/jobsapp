@@ -26,6 +26,8 @@ import RefundPolicy from "./pages/RefundPolicy";
 import NotFound from "./pages/NotFound";
 import PaymentCallback from './pages/PaymentCallback';
 import ResetPassword from "./pages/ResetPassword";
+import ReferralRedirect from "./pages/ReferralRedirect";
+import Report from "./pages/Report";
 
 
 import Login from "./components/Auth/Login";
@@ -120,6 +122,15 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/report"
+              element={
+                <ProtectedRoute>
+                  <Report />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/ref/:code" element={<ReferralRedirect />} />
             <Route
               path="/refinement"
               element={

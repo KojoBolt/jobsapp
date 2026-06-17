@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, ChevronDown, ChevronUp, Shield, User, CreditCard } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, Shield, User, FileText } from "lucide-react";
 import { Button } from "../ui/Button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/admin/toast/ToastContext";
@@ -43,6 +43,7 @@ const UserManagementPage = (): JSX.Element => {
     role: string;
   }>({ plan: "free", credits: 0, role: "client" });
   const [saving, setSaving] = useState(false);
+  const [sendingSummaryId, setSendingSummaryId] = useState<string | null>(null);
   const { pushToast } = useToast();
 
   useEffect(() => {
@@ -53,7 +54,6 @@ const UserManagementPage = (): JSX.Element => {
     try {
       setLoading(true);
 
-      // Fetch all profiles
       const { data: profiles, error } = await supabase
         .from("profiles")
         .select("*")
@@ -64,7 +64,6 @@ const UserManagementPage = (): JSX.Element => {
         return;
       }
 
-      // Fetch application counts per user
       const { data: appCounts } = await supabase
         .from("applications")
         .select("user_id");
@@ -156,6 +155,36 @@ const UserManagementPage = (): JSX.Element => {
     pushToast({ variant: "success", title: "Credits Added", message: `Added ${amount} credits` });
   };
 
+  // Generate + send the application-summary PDF (in-app + email) for one user.
+  const handleSendSummary = async (user: UserProfile) => {
+    if (user.total_applications === 0) {
+      pushToast({ variant: "error", title: "No applications", message: "This user has no applications to summarize yet." });
+      return;
+    }
+    setSendingSummaryId(user.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-application-summary", {
+        body: { userId: user.id },
+      });
+      if (error) {
+        const body = await (error as any).context?.json?.().catch(() => null);
+        pushToast({ variant: "error", title: "Failed", message: body?.error || "Could not generate summary" });
+        return;
+      }
+     pushToast({
+  variant: "success",
+  title: "Summary generated",
+  message: data.emailed
+    ? `${data.job_count} applications · emailed + in-app`
+    : `${data.job_count} apps · in-app only (${data.email_error || "no reason returned"})`,
+});
+    } catch (err: any) {
+      pushToast({ variant: "error", title: "Error", message: err?.message || "Unexpected error" });
+    } finally {
+      setSendingSummaryId(null);
+    }
+  };
+
   const filtered = users.filter((u) =>
     (u.full_name || "").toLowerCase().includes(search.toLowerCase()) ||
     (u.email || "").toLowerCase().includes(search.toLowerCase())
@@ -201,7 +230,7 @@ const UserManagementPage = (): JSX.Element => {
         ].map((stat) => (
           <div key={stat.label} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-[#E2E8F0] dark:border-gray-700 p-4">
             <p className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</p>
-            <p className="text-sm text-[#64748B]">{stat.label}</p>
+            <p className="text-sm text-[#64748B] dark:text-gray-400">{stat.label}</p>
           </div>
         ))}
       </div>
@@ -225,21 +254,21 @@ const UserManagementPage = (): JSX.Element => {
                 <th className="px-6 py-4 text-left text-sm font-semibold">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E2E8F0]">
+            <tbody className="divide-y divide-[#E2E8F0] dark:divide-gray-700">
               {paginated.map((user) => (
                 <>
                   <tr
                     key={user.id}
-                    className="hover:bg-[#F8FAFC] transition-colors"
+                    className="hover:bg-[#F8FAFC] dark:hover:bg-gray-700 transition-colors"
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[#EDE9FE] flex items-center justify-center text-[#7C3AED] text-xs font-bold shrink-0">
+                        <div className="w-9 h-9 rounded-full bg-[#EDE9FE] dark:bg-purple-900 flex items-center justify-center text-[#7C3AED] text-xs font-bold shrink-0">
                           {getInitials(user.full_name || "?")}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-[#1E293B]">{user.full_name}</p>
-                          <p className="text-xs text-[#64748B]">{user.email}</p>
+                          <p className="text-sm font-semibold text-[#1E293B] dark:text-white">{user.full_name}</p>
+                          <p className="text-xs text-[#64748B] dark:text-gray-400">{user.email}</p>
                         </div>
                       </div>
                     </td>
@@ -268,10 +297,10 @@ const UserManagementPage = (): JSX.Element => {
                         </button>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-[#64748B]">
+                    <td className="px-6 py-4 text-sm text-[#64748B] dark:text-gray-400">
                       {user.total_applications}
                     </td>
-                    <td className="px-6 py-4 text-sm text-[#64748B]">
+                    <td className="px-6 py-4 text-sm text-[#64748B] dark:text-gray-400">
                       {format(new Date(user.created_at), "d MMM yyyy")}
                     </td>
                     <td className="px-6 py-4">
@@ -280,7 +309,7 @@ const UserManagementPage = (): JSX.Element => {
                           onClick={() => setExpandedUser(
                             expandedUser === user.id ? null : user.id
                           )}
-                          className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+                          className="p-1.5 rounded hover:bg-[#F1F5F9] dark:hover:bg-gray-700 text-[#64748B] dark:text-gray-400"
                         >
                           {expandedUser === user.id
                             ? <ChevronUp size={16} />
@@ -301,15 +330,15 @@ const UserManagementPage = (): JSX.Element => {
                   {/* Expanded Edit Row */}
                   {expandedUser === user.id && (
                     <tr key={`${user.id}-expanded`}>
-                      <td colSpan={7} className="px-6 py-4 bg-[#F8FAFC] border-t border-[#E2E8F0]">
+                      <td colSpan={7} className="px-6 py-4 bg-[#F8FAFC] dark:bg-gray-700 border-t border-[#E2E8F0] dark:border-gray-600">
                         {editingUser === user.id ? (
                           <div className="flex flex-wrap items-end gap-4">
                             <div>
-                              <label className="block text-xs font-semibold text-[#64748B] mb-1">Plan</label>
+                              <label className="block text-xs font-semibold text-[#64748B] dark:text-gray-400 mb-1">Plan</label>
                               <select
                                 value={editValues.plan}
                                 onChange={(e) => setEditValues((p) => ({ ...p, plan: e.target.value }))}
-                                className="px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                                className="px-3 py-2 text-sm border border-[#E2E8F0] dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
                               >
                                 <option value="free">Basic Plan</option>
                                 <option value="starter">Starter</option>
@@ -317,20 +346,20 @@ const UserManagementPage = (): JSX.Element => {
                               </select>
                             </div>
                             <div>
-                              <label className="block text-xs font-semibold text-[#64748B] mb-1">Credits</label>
+                              <label className="block text-xs font-semibold text-[#64748B] dark:text-gray-400 mb-1">Credits</label>
                               <input
                                 type="number"
                                 value={editValues.credits}
                                 onChange={(e) => setEditValues((p) => ({ ...p, credits: Number(e.target.value) }))}
-                                className="w-24 px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                                className="w-24 px-3 py-2 text-sm border border-[#E2E8F0] dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
                               />
                             </div>
                             <div>
-                              <label className="block text-xs font-semibold text-[#64748B] mb-1">Role</label>
+                              <label className="block text-xs font-semibold text-[#64748B] dark:text-gray-400 mb-1">Role</label>
                               <select
                                 value={editValues.role}
                                 onChange={(e) => setEditValues((p) => ({ ...p, role: e.target.value }))}
-                                className="px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                                className="px-3 py-2 text-sm border border-[#E2E8F0] dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
                               >
                                 <option value="client">Client</option>
                                 <option value="admin">Admin</option>
@@ -357,24 +386,33 @@ const UserManagementPage = (): JSX.Element => {
                         ) : (
                           <div className="grid grid-cols-4 gap-4 text-sm">
                             <div>
-                              <p className="text-xs text-[#64748B] mb-1">Monthly Usage</p>
-                              <p className="font-semibold text-[#1E293B]">{user.monthly_usage_count} / month</p>
+                              <p className="text-xs text-[#64748B] dark:text-gray-400 mb-1">Monthly Usage</p>
+                              <p className="font-semibold text-[#1E293B] dark:text-white">{user.monthly_usage_count} / month</p>
                             </div>
                             <div>
-                              <p className="text-xs text-[#64748B] mb-1">Total Applications</p>
-                              <p className="font-semibold text-[#1E293B]">{user.total_applications}</p>
+                              <p className="text-xs text-[#64748B] dark:text-gray-400 mb-1">Total Applications</p>
+                              <p className="font-semibold text-[#1E293B] dark:text-white">{user.total_applications}</p>
                             </div>
                             <div>
-                              <p className="text-xs text-[#64748B] mb-1">User ID</p>
-                              <p className="font-mono text-xs text-[#64748B]">{user.id.slice(0, 16)}...</p>
+                              <p className="text-xs text-[#64748B] dark:text-gray-400 mb-1">User ID</p>
+                              <p className="font-mono text-xs text-[#64748B] dark:text-gray-400">{user.id.slice(0, 16)}...</p>
                             </div>
-                            <div>
+                            <div className="flex flex-col gap-2">
                               <Button
                                 variant="primary"
                                 size="sm"
                                 onClick={() => handleEdit(user)}
                               >
                                 Edit User
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleSendSummary(user)}
+                                disabled={sendingSummaryId === user.id || user.total_applications === 0}
+                              >
+                                <FileText size={14} className="mr-1.5" />
+                                {sendingSummaryId === user.id ? "Generating…" : "Send Summary"}
                               </Button>
                             </div>
                           </div>
@@ -392,12 +430,12 @@ const UserManagementPage = (): JSX.Element => {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-[#64748B]">Page {currentPage} of {totalPages}</p>
+          <p className="text-sm text-[#64748B] dark:text-gray-400">Page {currentPage} of {totalPages}</p>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg text-[#64748B] hover:bg-[#F8FAFC] disabled:opacity-40"
+              className="px-3 py-1.5 text-sm border border-[#E2E8F0] dark:border-gray-600 rounded-lg text-[#64748B] dark:text-gray-400 hover:bg-[#F8FAFC] dark:hover:bg-gray-700 disabled:opacity-40"
             >
               ← Previous
             </button>
@@ -408,7 +446,7 @@ const UserManagementPage = (): JSX.Element => {
                 className={`px-3 py-1.5 text-sm border rounded-lg transition-colors ${
                   currentPage === page
                     ? "border-[#7C3AED] bg-[#7C3AED] text-white"
-                    : "border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]"
+                    : "border-[#E2E8F0] dark:border-gray-600 text-[#64748B] dark:text-gray-400 hover:bg-[#F8FAFC] dark:hover:bg-gray-700"
                 }`}
               >
                 {page}
@@ -417,7 +455,7 @@ const UserManagementPage = (): JSX.Element => {
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg text-[#64748B] hover:bg-[#F8FAFC] disabled:opacity-40"
+              className="px-3 py-1.5 text-sm border border-[#E2E8F0] dark:border-gray-600 rounded-lg text-[#64748B] dark:text-gray-400 hover:bg-[#F8FAFC] dark:hover:bg-gray-700 disabled:opacity-40"
             >
               Next →
             </button>

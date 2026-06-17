@@ -1,24 +1,42 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import {
-  Copy,
-  Check,
-  MessageCircle,
-  Linkedin,
-  Twitter,
-  Gift,
-} from "lucide-react";
+import { Copy, Check, MessageCircle, Linkedin, Twitter, Gift } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const ReferralWidget = () => {
   const [copied, setCopied] = useState(false);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
-  const referralLink = "https://jobapp.com/ref/YOUR_CODE";
+
+  // Load the logged-in user's real referral code.
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("referral_code")
+        .eq("id", user.id)
+        .single();
+      setReferralCode(profile?.referral_code ?? null);
+      setLoading(false);
+    })();
+  }, []);
+
+  const referralLink = referralCode
+    ? `https://thejobapp.online/ref/${referralCode}`
+    : "";
 
   const handleCopy = async () => {
+    if (!referralLink) return;
     await navigator.clipboard.writeText(referralLink);
     setCopied(true);
     toast({ title: "Link copied!", description: "Share it with your friends." });
@@ -41,17 +59,17 @@ const ReferralWidget = () => {
 
         <p className="text-sm leading-relaxed text-muted-foreground">
           Know someone else stuck in application hell? Give them{" "}
-          <span className="font-semibold text-primary">$15 off</span> their
-          first JobApp pack, and we'll give{" "}
-          <span className="font-semibold text-gold">YOU $15 in credits</span>{" "}
-          (or cash back) for every friend who joins.
+          <span className="font-semibold text-primary">$15 off</span> their first
+          JobApp pack, and we'll give{" "}
+          <span className="font-semibold text-gold">YOU $15 in credits</span> for
+          every friend who joins and makes their first purchase.
         </p>
 
         {/* Referral Link */}
         <div className="flex gap-2">
           <Input
             readOnly
-            value={referralLink}
+            value={loading ? "Loading your link…" : referralLink || "Sign in to get your link"}
             className="bg-muted/50 font-mono text-xs"
           />
           <Button
@@ -59,6 +77,7 @@ const ReferralWidget = () => {
             size="sm"
             className="shrink-0 gap-1.5"
             onClick={handleCopy}
+            disabled={!referralLink}
           >
             {copied ? (
               <>
@@ -81,6 +100,7 @@ const ReferralWidget = () => {
             variant="outline"
             size="sm"
             className="gap-1.5 text-xs"
+            disabled={!referralLink}
             onClick={() =>
               window.open(
                 `https://wa.me/?text=${shareText}%20${encodeURIComponent(referralLink)}`,
@@ -95,6 +115,7 @@ const ReferralWidget = () => {
             variant="outline"
             size="sm"
             className="gap-1.5 text-xs"
+            disabled={!referralLink}
             onClick={() =>
               window.open(
                 `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(referralLink)}`,
@@ -109,6 +130,7 @@ const ReferralWidget = () => {
             variant="outline"
             size="sm"
             className="gap-1.5 text-xs"
+            disabled={!referralLink}
             onClick={() =>
               window.open(
                 `https://twitter.com/intent/tweet?text=${shareText}&url=${encodeURIComponent(referralLink)}`,

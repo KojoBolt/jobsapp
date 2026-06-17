@@ -29,6 +29,8 @@ import {
   Building2,
   MessageSquare,
   Trash2,
+  Plus,
+  X,
 } from "lucide-react";
 import VaultStrengthMeter from "@/components/identity-vault/VaultStrengthMeter";
 import MultiSelectChips from "@/components/identity-vault/MultiSelectChips";
@@ -45,9 +47,9 @@ const roleTypes = ["Remote", "Hybrid", "On-site"];
 const targetRoleOptions = [
   "Full-stack", "Backend", "Frontend", "WordPress Developer", "DevOps", "Project Manager",
   "Product Manager", "Data Analyst", "UX Designer", "UI Designer",
-  "QA Engineer", "Mobile Developer", "Cloud Architect", "AI/ML Engineer", "Security Specialist", "Content Writer",
-   "Digital Marketer", "Sales Executive", "Customer Success Manager", 
-   "HR Specialist", "Finance Analyst", "Legal Counsel", "Video Editor", "Other",
+  "QA Engineer", "Mobile Developer", "Cloud Architect", "AI/ML Engineer", "Security Specialist",
+  "Content Writer", "Digital Marketer", "Sales Executive", "Customer Success Manager",
+  "HR Specialist", "Finance Analyst", "Legal Counsel", "Video Editor", "Other",
 ];
 const companySizeOptions = [
   "Startup (1-10)", "Early Stage (11-50)", "Mid-Market (51-500)", "Enterprise (500+)",
@@ -64,96 +66,6 @@ const fadeUp = {
   animate: { opacity: 1, y: 0 },
 };
 
-// const extractTextFromPDF = async (file: File): Promise<string> => {
-//   return new Promise((resolve) => {
-//     const reader = new FileReader();
-//     reader.onload = async (e) => {
-//       try {
-//         const pdfjsLib = await import('pdfjs-dist');
-//       pdfjsLib.GlobalWorkerOptions.workerSrc = 
-//           'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-//         const typedArray = new Uint8Array(e.target?.result as ArrayBuffer);
-//         const pdf = await pdfjsLib.getDocument(typedArray).promise;
-
-//         let fullText = '';
-//         for (let i = 1; i <= pdf.numPages; i++) {
-//           const page = await pdf.getPage(i);
-//           const textContent = await page.getTextContent();
-//           const pageText = textContent.items
-//             .map((item: any) => item.str)
-//             .join(' ');
-//           fullText += pageText + '\n';
-//         }
-//         resolve(fullText.trim());
-//       } catch (error) {
-//         console.error('PDF extraction failed:', error);
-//         resolve('');
-//       }
-//     };
-//     reader.readAsArrayBuffer(file);
-//   });
-// };
-
-// const extractTextFromPDF = async (file: File): Promise<string> => {
-//   return new Promise((resolve) => {
-//     const reader = new FileReader();
-//     reader.onload = async (e) => {
-//       try {
-//         const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf');
-//         pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-        
-//         const typedArray = new Uint8Array(e.target?.result as ArrayBuffer);
-//         const pdf = await pdfjsLib.getDocument({ 
-//           data: typedArray,
-//           useWorkerFetch: false,
-//           isEvalSupported: false,
-//           useSystemFonts: true,
-//         }).promise;
-
-//         let fullText = '';
-//         for (let i = 1; i <= pdf.numPages; i++) {
-//           const page = await pdf.getPage(i);
-//           const textContent = await page.getTextContent();
-//           const pageText = textContent.items
-//             .map((item: any) => item.str)
-//             .join(' ');
-//           fullText += pageText + '\n';
-//         }
-//         resolve(fullText.trim());
-//       } catch (error) {
-//         console.error('PDF extraction failed:', error);
-//         resolve('');
-//       }
-//     };
-//     reader.readAsArrayBuffer(file);
-//   });
-// };
-// const extractTextFromPDF = async (file: File): Promise<string> => {
-//   try {
-//     const formData = new FormData();
-//     formData.append("file", file);
-
-//     const response = await fetch(
-//       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-resume`,
-//       {
-//         method: "POST",
-//         headers: {
-//           "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-//         },
-//         body: formData,
-//       }
-//     );
-
-//     const data = await response.json();
-//     if (!response.ok) throw new Error(data.error);
-    
-//     console.log("Extracted text length:", data.extractedText.length);
-//     return data.extractedText;
-//   } catch (error) {
-//     console.error("PDF extraction failed:", error);
-//     return "";
-//   }
-// };
 const extractTextFromPDF = async (file: File): Promise<string> => {
   try {
     const formData = new FormData();
@@ -170,7 +82,6 @@ const extractTextFromPDF = async (file: File): Promise<string> => {
       }
     );
 
-    // Log raw response for debugging
     const data = await response.json();
     console.log("Edge Function response:", data);
 
@@ -179,7 +90,6 @@ const extractTextFromPDF = async (file: File): Promise<string> => {
       throw new Error(data.error || "Extraction failed");
     }
 
-    // Correct — Edge Function returns { extractedText }
     if (!data.extractedText) {
       throw new Error("No text returned");
     }
@@ -211,6 +121,10 @@ const IdentityVault = () => {
     mustHaves: "",
   });
 
+  // ✅ State for the "Other" custom role input
+  const [customRoleInput, setCustomRoleInput] = useState("");
+  const [customRoles, setCustomRoles] = useState<string[]>([]);
+
   const [currentResume, setCurrentResume] = useState<{
     fileName: string;
     fileUrl: string;
@@ -218,7 +132,34 @@ const IdentityVault = () => {
   } | null>(null);
   const [currentResumeId, setCurrentResumeId] = useState<string | null>(null);
 
-  // Extract fetch logic into a reusable, memoized function
+  // ✅ Detect if "Other" is selected in targetRoles
+  const otherSelected = targeting.targetRoles.includes("Other");
+
+  // ✅ Add custom role to the list and clear input
+  const handleAddCustomRole = () => {
+    const trimmed = customRoleInput.trim();
+    if (!trimmed) return;
+    if (customRoles.includes(trimmed)) {
+      toast.error("You've already added this role.");
+      return;
+    }
+    setCustomRoles((prev) => [...prev, trimmed]);
+    setCustomRoleInput("");
+  };
+
+  // ✅ Remove a custom role chip
+  const handleRemoveCustomRole = (role: string) => {
+    setCustomRoles((prev) => prev.filter((r) => r !== role));
+  };
+
+  // ✅ Allow pressing Enter to add a custom role
+  const handleCustomRoleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddCustomRole();
+    }
+  };
+
   const loadVaultData = useCallback(async () => {
     if (!user) return;
 
@@ -229,7 +170,7 @@ const IdentityVault = () => {
         .eq("id", user.id)
         .single();
 
-      if (profileError) console.error('Error fetching profile:', profileError.message);
+      if (profileError) console.error("Error fetching profile:", profileError.message);
 
       const { data: resumeData, error: resumeError } = await supabase
         .from("resumes")
@@ -239,9 +180,8 @@ const IdentityVault = () => {
         .limit(1)
         .maybeSingle();
 
-      if (resumeError) console.error('Error fetching resume:', resumeError.message);
+      if (resumeError) console.error("Error fetching resume:", resumeError.message);
 
-      // Update resume state with safe defaults
       if (resumeData?.file_url && resumeData?.file_name) {
         setCurrentResume({
           fileName: resumeData.file_name,
@@ -254,11 +194,13 @@ const IdentityVault = () => {
         setCurrentResumeId(null);
       }
 
-      // Update personal info and targeting with safe defaults
       if (profileData?.identity_vault_data) {
         const vault = profileData.identity_vault_data as Record<string, unknown>;
         if (vault.personalInfo) setPersonalInfo(vault.personalInfo as typeof personalInfo);
         if (vault.targeting) setTargeting(vault.targeting as typeof targeting);
+
+        // ✅ Restore saved custom roles from vault
+        if (vault.customRoles) setCustomRoles(vault.customRoles as string[]);
       } else {
         setPersonalInfo({
           name: profileData?.full_name || "",
@@ -280,16 +222,14 @@ const IdentityVault = () => {
         });
       }
     } catch (error) {
-      console.error('Unexpected error loading vault:', error);
+      console.error("Unexpected error loading vault:", error);
     }
   }, [user]);
 
-  // Fetch data on component mount (when user changes)
   useEffect(() => {
     loadVaultData();
   }, [user, loadVaultData]);
 
-  // Re-fetch data when navigating back to this route (SPA navigation)
   useEffect(() => {
     loadVaultData();
   }, [location.pathname, loadVaultData]);
@@ -309,28 +249,30 @@ const IdentityVault = () => {
   }, [personalInfo, resumeFile, currentResume, targeting]);
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user) {
+      toast.error("User not authenticated");
+      return;
+    }
     setSaving(true);
 
     try {
-      // 1. Save vault data to profiles
-      const vaultData = { personalInfo, targeting };
+      // Include customRoles in the vault data so they persist across sessions
+      const vaultData = { personalInfo, targeting, customRoles };
       const { error: vaultError } = await supabase
         .from("profiles")
-        .update({ identity_vault_data: vaultData })
+        .upsert({ id: user.id, identity_vault_data: vaultData }, { onConflict: "id" })
         .eq("id", user.id);
 
       if (vaultError) {
+        console.error("Vault save error:", vaultError);
         toast.error(`Failed to save: ${vaultError.message}`);
         setSaving(false);
         return;
       }
 
-      // 2. Handle resume upload
       if (resumeFile) {
         toast.info("Extracting resume text...");
 
-        // Actually extract text from PDF
         const extractedText = await extractTextFromPDF(resumeFile);
         console.log("Extracted text length:", extractedText.length);
         console.log("Extracted text preview:", extractedText.slice(0, 200));
@@ -339,8 +281,7 @@ const IdentityVault = () => {
           toast.warning("Could not extract text from PDF. Please ensure it's a text-based PDF.");
         }
 
-        // Upload file to storage
-        const fileExt = resumeFile.name.split('.').pop();
+        const fileExt = resumeFile.name.split(".").pop();
         const fileName = `${user.id}/${Date.now()}.${fileExt}`;
         const filePath = `resumes/${fileName}`;
 
@@ -349,24 +290,32 @@ const IdentityVault = () => {
           .upload(filePath, resumeFile, { upsert: true });
 
         if (uploadError) {
+          console.error("Upload error:", uploadError);
           toast.error("Failed to upload resume file");
           setSaving(false);
           return;
         }
 
-        const { data: { publicUrl } } = supabase.storage
+        const { data } = supabase.storage
           .from("resumes")
           .getPublicUrl(filePath);
 
+        const publicUrl = data?.publicUrl;
+
+        if (!publicUrl) {
+          toast.error("Failed to get resume URL");
+          setSaving(false);
+          return;
+        }
+
         if (currentResume && currentResumeId) {
-          // ✅ Update existing — include extracted_text
           const { error: updateError } = await supabase
             .from("resumes")
             .update({
               file_name: resumeFile.name,
               file_url: publicUrl,
               file_path: filePath,
-              extracted_text: extractedText, // ✅ Key addition
+              extracted_text: extractedText,
               updated_at: new Date().toISOString(),
             })
             .eq("id", currentResumeId);
@@ -377,7 +326,6 @@ const IdentityVault = () => {
             return;
           }
         } else {
-          //  Insert new — include extracted_text
           const { error: insertError } = await supabase
             .from("resumes")
             .insert([{
@@ -385,7 +333,7 @@ const IdentityVault = () => {
               file_name: resumeFile.name,
               file_url: publicUrl,
               file_path: filePath,
-              extracted_text: extractedText, //  Key addition
+              extracted_text: extractedText,
               created_at: new Date().toISOString(),
             }]);
 
@@ -407,13 +355,11 @@ const IdentityVault = () => {
 
       setSaving(false);
       toast.success("Identity Vault saved successfully");
-
-      //  Re-fetch latest data from Supabase after successful save
       await loadVaultData();
     } catch (error) {
-      console.error('Unexpected error:', error);
-      toast.error("An unexpected error occurred");
+      console.error("Unexpected error during save:", error);
       setSaving(false);
+      toast.error("An unexpected error occurred while saving");
     }
   };
 
@@ -587,13 +533,76 @@ const IdentityVault = () => {
                 <MultiSelectChips options={roleTypes} selected={targeting.roleTypes}
                   onChange={(v) => setTargeting({ ...targeting, roleTypes: v })} />
               </div>
+
+              {/* ✅ Target Roles with "Other" custom input */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5 text-xs">
                   <Target className="h-3 w-3" /> Target Roles (select multiple)
                 </Label>
-                <MultiSelectChips options={targetRoleOptions} selected={targeting.targetRoles}
-                  onChange={(v) => setTargeting({ ...targeting, targetRoles: v })} />
+                <MultiSelectChips
+                  options={targetRoleOptions}
+                  selected={targeting.targetRoles}
+                  onChange={(v) => setTargeting({ ...targeting, targetRoles: v })}
+                />
+
+                {/* ✅ Show custom role input only when "Other" is selected */}
+                {otherSelected && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="mt-3 space-y-3"
+                  >
+                    <Label className="text-xs text-muted-foreground">
+                      Add your own role(s)
+                    </Label>
+
+                    {/* Input row */}
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="e.g. Blockchain Developer, Growth Hacker..."
+                        value={customRoleInput}
+                        onChange={(e) => setCustomRoleInput(e.target.value)}
+                        onKeyDown={handleCustomRoleKeyDown}
+                        className="bg-muted/40 flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAddCustomRole}
+                        disabled={!customRoleInput.trim()}
+                        className="shrink-0 gap-1"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add
+                      </Button>
+                    </div>
+
+                    {/* Custom role chips */}
+                    {customRoles.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {customRoles.map((role) => (
+                          <span
+                            key={role}
+                            className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
+                          >
+                            {role}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveCustomRole(role)}
+                              className="ml-0.5 rounded-full hover:text-destructive transition-colors"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
               </div>
+
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5 text-xs">
                   <DollarSign className="h-3 w-3" /> Salary Expectations

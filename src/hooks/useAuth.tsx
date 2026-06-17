@@ -37,6 +37,7 @@ interface Profile {
   monthly_usage_count?: number;
   usage_reset_at?: string | null;
   identity_vault_data?: VaultData | null;
+  onboarding_completed?: boolean;
 }
 
 export type { VaultData };
@@ -67,8 +68,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchProfile = async (userId: string, userEmail?: string, userName?: string) => {
     try {
-      console.log('fetchProfile: Fetching for userId:', userId);
-
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
@@ -76,43 +75,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .maybeSingle();
 
       if (error) {
-        console.error('fetchProfile: Error fetching profile:', error);
+        console.error("fetchProfile: Error fetching profile:", error);
         setProfile(null);
         return;
       }
 
       if (data) {
-        console.log('fetchProfile: Profile found:', data);
         setProfile(data as Profile);
         return;
       }
 
       // Profile doesn't exist — create it (fallback for new OAuth users)
-      console.log('fetchProfile: Profile not found, creating...');
-
       const { data: newProfile, error: createError } = await supabase
         .from("profiles")
         .insert({
           id: userId,
           email: userEmail || null,
           full_name: userName || null,
-          role: 'client',
-          plan: 'free',
+          role: "client",
+          plan: "free",
           credits_remaining: 0,
         })
         .select()
         .single();
 
       if (createError) {
-        console.error('fetchProfile: Error creating profile:', createError);
+        console.error("fetchProfile: Error creating profile:", createError);
         setProfile(null);
       } else {
-        console.log('fetchProfile: Profile created successfully:', newProfile);
         setProfile(newProfile as Profile);
       }
-
     } catch (error) {
-      console.error('fetchProfile: Unexpected error:', error);
+      console.error("fetchProfile: Unexpected error:", error);
       setProfile(null);
     }
   };
@@ -124,83 +118,88 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    console.log('useAuth: Initializing...');
+    // Looks up role + onboarding, then redirects. Defined outside the auth
+    // callback and only CALLED from a deferred timeout (never awaited inside it).
+    const handleSignInRedirect = async (userId: string) => {
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("role, onboarding_completed")
+        .eq("id", userId)
+        .maybeSingle();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('useAuth: Auth state changed:', event);
+      const role = profileRow?.role ?? "client";
+      const onboardingCompleted = profileRow?.onboarding_completed ?? false;
+      const destination = !onboardingCompleted
+        ? "/onboarding"
+        : role === "admin"
+        ? "/admin/dashboard"
+        : "/dashboard";
 
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          await fetchProfile(
-            session.user.id,
-            session.user.email,
-            session.user.user_metadata?.full_name
-          );
-
-          // Redirect on sign in (handles both email/password and Google OAuth)
-          if (event === "SIGNED_IN") {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("role")
-              .eq("id", session.user.id)
-              .maybeSingle();
-
-            const role = profile?.role ?? "client";
-            const destination = role === "admin" ? "/admin/dashboard" : "/dashboard";
-
-            // Only redirect if not already on the destination
-            if (window.location.pathname !== destination) {
-              window.location.href = destination;
-            }
-          }
-
-        } else {
-          setProfile(null);
-        }
-
-        setLoading(false);
+      if (window.location.pathname !== destination) {
+        window.location.href = destination;
       }
-    );
+    };
 
-    // Get initial session on mount
+    // IMPORTANT: this callback is SYNCHRONOUS and never awaits Supabase calls
+    // inside itself. Awaiting Supabase calls here deadlocks the auth lock and
+    // makes signOut() (and other auth calls) hang until a manual page refresh.
+    // Any Supabase work is pushed out via setTimeout(0) so the callback returns
+    // immediately and releases the lock.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+
+      if (event === "SIGNED_OUT") {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      if (session?.user) {
+        const u = session.user;
+        setTimeout(() => {
+          fetchProfile(u.id, u.email, u.user_metadata?.full_name);
+          if (event === "SIGNED_IN") {
+            handleSignInRedirect(u.id);
+          }
+        }, 0);
+      } else {
+        setProfile(null);
+      }
+
+      setLoading(false);
+    });
+
+    // Initial session on mount — also defers the profile fetch.
     supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('useAuth: Initial session:', !!session);
-
       setSession(session);
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        fetchProfile(
-          session.user.id,
-          session.user.email,
-          session.user.user_metadata?.full_name
-        );
+        const u = session.user;
+        setTimeout(() => {
+          fetchProfile(u.id, u.email, u.user_metadata?.full_name);
+        }, 0);
       }
 
       setLoading(false);
     });
 
     return () => {
-      console.log('useAuth: Cleaning up...');
       subscription.unsubscribe();
     };
   }, []);
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut();
-      setUser(null);
-      setSession(null);
-      setProfile(null);
-
-      setTimeout(() => {
-        window.location.href = '/login';
-      }, 2000);
+      // 'local' clears this device's session without waiting on a server
+      // round-trip, so it's instant and can't hang on a slow network.
+      await supabase.auth.signOut({ scope: "local" });
     } catch (error) {
-      console.error('Sign out error:', error);
+      console.error("Sign out error:", error);
+    } finally {
+      // Full page navigation = clean teardown of all state. Immediate.
+      window.location.href = "/login";
     }
   };
 

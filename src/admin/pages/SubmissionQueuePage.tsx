@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, ExternalLink, CheckCircle, Clock } from "lucide-react";
+import { Search, ExternalLink, CheckCircle, Clock, Send } from "lucide-react";
 import { Button } from "../ui/Button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/admin/toast/ToastContext";
@@ -27,6 +27,7 @@ const SubmissionQueuePage = (): JSX.Element => {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [submitting, setSubmitting] = useState<string | null>(null);
+  const [submittingAll, setSubmittingAll] = useState(false);
   const [expandedApp, setExpandedApp] = useState<string | null>(null);
   const { pushToast } = useToast();
 
@@ -54,7 +55,6 @@ const SubmissionQueuePage = (): JSX.Element => {
         return;
       }
 
-      // Fetch user profiles
       const userIds = [...new Set(apps.map((a) => a.user_id))];
       const { data: profiles } = await supabase
         .from("profiles")
@@ -82,16 +82,34 @@ const SubmissionQueuePage = (): JSX.Element => {
     }
   };
 
+  const getAdminId = async (): Promise<string | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  };
+
+  // Single submit — race-guarded + audit-stamped.
   const handleMarkSubmitted = async (appId: string) => {
     setSubmitting(appId);
     try {
-      const { error } = await supabase
+      const adminId = await getAdminId();
+      const { data, error } = await supabase
         .from("applications")
-        .update({ status: "submitted" })
-        .eq("id", appId);
+        .update({
+          status: "submitted",
+          submitted_at: new Date().toISOString(),
+          submitted_by: adminId,
+        })
+        .eq("id", appId)
+        .eq("status", "approved")            // only approved → submitted
+        .select();
 
       if (error) {
         pushToast({ variant: "error", title: "Error", message: `Failed: ${error.message}` });
+        return;
+      }
+      if (!data || data.length === 0) {
+        pushToast({ variant: "warning", title: "Skipped", message: "This application is no longer awaiting submission." });
+        setApplications((prev) => prev.filter((a) => a.id !== appId)); // drop stale row
         return;
       }
 
@@ -101,6 +119,58 @@ const SubmissionQueuePage = (): JSX.Element => {
       pushToast({ variant: "error", title: "Error", message: err.message });
     } finally {
       setSubmitting(null);
+    }
+  };
+
+  // Bulk submit — scoped to the CURRENTLY FILTERED set (respects the search box),
+  // chunked to stay within request limits, race-guarded, audit-stamped.
+  const handleSubmitAll = async () => {
+    if (filtered.length === 0) return;
+    const ok = window.confirm(
+      `Mark all ${filtered.length} approved application${filtered.length === 1 ? "" : "s"} as submitted? This cannot be undone.`
+    );
+    if (!ok) return;
+
+    setSubmittingAll(true);
+    try {
+      const adminId = await getAdminId();
+      const ids = filtered.map((a) => a.id);
+      const submittedIds = new Set<string>();
+
+      for (let i = 0; i < ids.length; i += 50) {
+        const chunk = ids.slice(i, i + 50);
+        const { data, error } = await supabase
+          .from("applications")
+          .update({
+            status: "submitted",
+            submitted_at: new Date().toISOString(),
+            submitted_by: adminId,
+          })
+          .in("id", chunk)
+          .eq("status", "approved")
+          .select("id");
+
+        if (error) {
+          pushToast({ variant: "error", title: "Error", message: `Failed partway: ${error.message}` });
+          break;
+        }
+        (data || []).forEach((r: { id: string }) => submittedIds.add(r.id));
+      }
+
+      if (submittedIds.size > 0) {
+        setApplications((prev) => prev.filter((a) => !submittedIds.has(a.id)));
+        pushToast({
+          variant: "success",
+          title: "Submitted",
+          message: `${submittedIds.size} application${submittedIds.size === 1 ? "" : "s"} marked as submitted.`,
+        });
+      } else {
+        pushToast({ variant: "warning", title: "Nothing submitted", message: "No approved applications were updated." });
+      }
+    } catch (e: any) {
+      pushToast({ variant: "error", title: "Error", message: e.message });
+    } finally {
+      setSubmittingAll(false);
     }
   };
 
@@ -119,22 +189,34 @@ const SubmissionQueuePage = (): JSX.Element => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#1E293B] dark:text-white">Submission Queue</h1>
           <p className="text-sm text-[#64748B] mt-1">
             {loading ? "Loading..." : `${filtered.length} approved application${filtered.length !== 1 ? "s" : ""} ready to submit`}
           </p>
         </div>
-        <div className="relative w-64">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-          <input
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-            className="w-full pl-9 pr-4 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED] dark:bg-gray-800 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500"
-          />
+        <div className="flex items-center gap-3">
+          {!loading && filtered.length > 0 && (
+            <button
+              onClick={handleSubmitAll}
+              disabled={submittingAll}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-[#10B981] rounded-lg hover:bg-[#059669] transition-colors disabled:opacity-50"
+            >
+              <Send size={14} />
+              {submittingAll ? "Submitting…" : `Submit All (${filtered.length})`}
+            </button>
+          )}
+          <div className="relative w-64">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
+              className="w-full pl-9 pr-4 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED] dark:bg-gray-800 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500"
+            />
+          </div>
         </div>
       </div>
 
@@ -165,34 +247,33 @@ const SubmissionQueuePage = (): JSX.Element => {
                 <th className="px-6 py-4 text-left text-sm font-semibold">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E2E8F0]">
+            <tbody className="divide-y divide-[#E2E8F0] dark:divide-gray-700">
               {paginated.map((app) => (
                 <>
-                  <tr key={app.id} className="hover:bg-[#F8FAFC] transition-colors">
+                  <tr key={app.id} className="hover:bg-[#F8FAFC] dark:hover:bg-gray-700 transition-colors">
                     <td className="px-6 py-4">
                       <div>
-                        <p className="text-sm font-semibold text-[#1E293B]">{app.user_full_name}</p>
-                        <p className="text-xs text-[#64748B]">{app.user_email}</p>
+                        <p className="text-sm font-semibold text-[#1E293B] dark:text-white">{app.user_full_name}</p>
+                        <p className="text-xs text-[#64748B] dark:text-gray-400">{app.user_email}</p>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div>
-                        
-                        <p className="text-sm font-medium text-[#1E293B]">{app.company_name}</p>
+                        <p className="text-sm font-medium text-[#1E293B] dark:text-white">{app.company_name}</p>
                         {app.job_url && (
-                          
-                           <a href={app.job_url}
+                          <a
+                            href={app.job_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-xs text-[#7C3AED] hover:underline flex items-center gap-0.5"
+                            className="text-xs text-[#7C3AED] dark:text-purple-400 hover:underline flex items-center gap-0.5"
                           >
                             Open Job <ExternalLink size={10} />
                           </a>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-[#64748B]">{app.job_title}</td>
-                    <td className="px-6 py-4 text-sm text-[#64748B]">
+                    <td className="px-6 py-4 text-sm text-[#64748B] dark:text-gray-400">{app.job_title}</td>
+                    <td className="px-6 py-4 text-sm text-[#64748B] dark:text-gray-400">
                       {format(new Date(app.updated_at || app.created_at), "d MMM yyyy")}
                     </td>
                     <td className="px-6 py-4">
@@ -207,7 +288,7 @@ const SubmissionQueuePage = (): JSX.Element => {
                           variant="primary"
                           size="sm"
                           onClick={() => handleMarkSubmitted(app.id)}
-                          disabled={submitting === app.id}
+                          disabled={submitting === app.id || submittingAll}
                         >
                           {submitting === app.id ? "..." : (
                             <span className="flex items-center gap-1">
@@ -220,20 +301,19 @@ const SubmissionQueuePage = (): JSX.Element => {
                     </td>
                   </tr>
 
-                  {/* Cover Letter Preview */}
                   {expandedApp === app.id && (
                     <tr key={`${app.id}-cover`}>
-                      <td colSpan={5} className="px-6 py-4 bg-[#F8FAFC] border-t border-[#E2E8F0]">
-                        <p className="text-xs font-semibold text-[#64748B] uppercase mb-2">Cover Letter</p>
+                      <td colSpan={5} className="px-6 py-4 bg-[#F8FAFC] dark:bg-gray-700 border-t border-[#E2E8F0] dark:border-gray-600">
+                        <p className="text-xs font-semibold text-[#64748B] dark:text-gray-400 uppercase mb-2">Cover Letter</p>
                         <div className="bg-white dark:bg-gray-800 border border-[#E2E8F0] dark:border-gray-700 rounded-lg p-4 max-h-60 overflow-y-auto">
-                          <p className="text-sm text-[#1E293B] leading-relaxed whitespace-pre-wrap">
+                          <p className="text-sm text-[#1E293B] dark:text-gray-200 leading-relaxed whitespace-pre-wrap">
                             {app.cover_letter || "No cover letter available."}
                           </p>
                         </div>
                         {app.admin_notes && (
-                          <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                            <p className="text-xs font-semibold text-yellow-700">Admin Notes:</p>
-                            <p className="text-xs text-yellow-800 mt-1">{app.admin_notes}</p>
+                          <div className="mt-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3">
+                            <p className="text-xs font-semibold text-yellow-700 dark:text-yellow-400">Admin Notes:</p>
+                            <p className="text-xs text-yellow-800 dark:text-yellow-300 mt-1">{app.admin_notes}</p>
                           </div>
                         )}
                       </td>
@@ -246,23 +326,23 @@ const SubmissionQueuePage = (): JSX.Element => {
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-[#E2E8F0] dark:border-gray-700 p-12 text-center">
-          <div className="w-16 h-16 bg-[#D1FAE5] rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-[#D1FAE5] dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle size={32} className="text-[#10B981]" />
           </div>
-          <h3 className="text-xl font-semibold text-[#1E293B] mb-2">Queue is empty!</h3>
-          <p className="text-sm text-[#64748B]">No approved applications waiting to be submitted.</p>
+          <h3 className="text-xl font-semibold text-[#1E293B] dark:text-white mb-2">Queue is empty!</h3>
+          <p className="text-sm text-[#64748B] dark:text-gray-400">No approved applications waiting to be submitted.</p>
         </div>
       )}
 
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-[#64748B]">Page {currentPage} of {totalPages}</p>
+          <p className="text-sm text-[#64748B] dark:text-gray-400">Page {currentPage} of {totalPages}</p>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg text-[#64748B] hover:bg-[#F8FAFC] disabled:opacity-40"
+              className="px-3 py-1.5 text-sm border border-[#E2E8F0] dark:border-gray-600 rounded-lg text-[#64748B] dark:text-gray-400 hover:bg-[#F8FAFC] dark:hover:bg-gray-700 disabled:opacity-40"
             >
               ← Previous
             </button>

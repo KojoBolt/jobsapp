@@ -9,26 +9,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
-  Check,
-  ShoppingCart,
-  Download,
-  Users,
-  Gift,
-  BookOpen,
-  Video,
-  FileText,
-  Zap,
-  TrendingUp,
+  Check, ShoppingCart, Download, Play, Users, Gift,
+  BookOpen, Video, FileText, Zap, TrendingUp,
 } from "lucide-react";
-import type { Product } from "@/data/products";
+import { type Product, formatPrice } from "@/hooks/useAccelerators";
 
-const categoryIcons: Record<string, React.ElementType> = {
-  "E-Book": BookOpen,
-  "Video Series": Video,
-  "Video Masterclass": Video,
-  "PDF Bundle": FileText,
-  "Template Kit": FileText,
-};
+function iconFor(product: Product): React.ElementType {
+  if (product.type === "video") return Video;
+  if (product.category?.toLowerCase().includes("template")) return FileText;
+  return BookOpen;
+}
 
 interface ProductModalProps {
   product: Product | null;
@@ -36,7 +26,9 @@ interface ProductModalProps {
   onOpenChange: (open: boolean) => void;
   isPurchased?: boolean;
   onPurchase?: (product: Product) => void;
-  isLoading?: boolean;
+  onDownload?: (productId: string) => void;
+  isBuying?: boolean;
+  isDownloading?: boolean;
 }
 
 const ProductModal = ({
@@ -45,34 +37,44 @@ const ProductModal = ({
   onOpenChange,
   isPurchased = false,
   onPurchase,
-  isLoading = false,
+  onDownload,
+  isBuying = false,
+  isDownloading = false,
 }: ProductModalProps) => {
   if (!product) return null;
 
-  const Icon = categoryIcons[product.category] || FileText;
+  const Icon = iconFor(product);
+  const isFree = product.price_subunit === 0;
+  const isVideo = product.type === "video";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto border-border/50 bg-card sm:max-w-lg">
         <DialogHeader>
           <div className="flex items-start gap-3">
-            <div
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${product.imageGradient}`}
-            >
-              <Icon className="h-6 w-6 text-foreground/40" />
+            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg">
+              {product.cover_url ? (
+                <img src={product.cover_url} alt={product.title} className="h-12 w-12 object-cover" />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center bg-gradient-to-br from-muted to-muted/40">
+                  <Icon className="h-6 w-6 text-foreground/40" />
+                </div>
+              )}
             </div>
             <div className="space-y-1">
               <DialogTitle className="text-lg leading-tight text-foreground">
                 {product.title}
               </DialogTitle>
-              <DialogDescription className="flex items-center gap-2">
-                <Badge variant="outline" className="text-[10px]">
-                  {product.category}
-                </Badge>
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Users className="h-3 w-3" />
-                  Recently purchased by {product.recentPurchases} professionals
-                </span>
+              <DialogDescription className="flex flex-wrap items-center gap-2">
+                {product.category && (
+                  <Badge variant="outline" className="text-[10px]">{product.category}</Badge>
+                )}
+                {product.recent_purchases ? (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Users className="h-3 w-3" />
+                    Recently purchased by {product.recent_purchases} professionals
+                  </span>
+                ) : null}
               </DialogDescription>
             </div>
           </div>
@@ -81,84 +83,77 @@ const ProductModal = ({
         <Separator className="bg-border/50" />
 
         <div className="space-y-4">
-          {/* Headline */}
-          <h3 className="text-base font-bold leading-snug text-foreground">
-            {product.headline}
-          </h3>
+          {product.headline && (
+            <h3 className="text-base font-bold leading-snug text-foreground">{product.headline}</h3>
+          )}
 
-          {/* Hook */}
-          <p className="text-sm leading-relaxed text-muted-foreground italic">
-            {product.hook}
-          </p>
+          {product.hook && (
+            <p className="text-sm italic leading-relaxed text-muted-foreground">{product.hook}</p>
+          )}
 
-          {/* What's Inside */}
-          <div className="space-y-2">
-            <h4 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-              <Zap className="h-3.5 w-3.5 text-gold" />
-              What's Inside
-            </h4>
-            <ul className="space-y-2">
-              {product.features.map((feature, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 text-sm text-muted-foreground"
-                >
-                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-status-interview" />
-                  {feature}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {product.features && product.features.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                <Zap className="h-3.5 w-3.5 text-gold" />
+                What's Inside
+              </h4>
+              <ul className="space-y-2">
+                {product.features.map((feature, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-status-interview" />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-          {/* The Result */}
-          <div className="rounded-lg border border-status-interview/20 bg-status-interview/5 p-3">
-            <p className="flex items-start gap-2 text-sm font-medium text-foreground">
-              <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-status-interview" />
-              <span>
-                <span className="font-semibold">The Result:</span>{" "}
-                {product.result}
-              </span>
-            </p>
-          </div>
+          {product.result && (
+            <div className="rounded-lg border border-status-interview/20 bg-status-interview/5 p-3">
+              <p className="flex items-start gap-2 text-sm font-medium text-foreground">
+                <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-status-interview" />
+                <span>
+                  <span className="font-semibold">The Result:</span> {product.result}
+                </span>
+              </p>
+            </div>
+          )}
 
           <Separator className="bg-border/50" />
 
           {/* Price & CTA */}
           <div className="flex items-center justify-between">
             <div className="flex items-baseline gap-2">
-              {product.isFree ? (
-                <span className="text-2xl font-bold text-status-interview">
-                  Free
-                </span>
+              {isFree ? (
+                <span className="text-2xl font-bold text-status-interview">Free</span>
               ) : (
                 <>
                   <span className="text-2xl font-bold text-foreground">
-                    ${product.memberPrice}
+                    {formatPrice(product.price_subunit, product.currency)}
                   </span>
-                  <span className="text-sm text-muted-foreground line-through">
-                    ${product.originalPrice}
-                  </span>
-                  <Badge variant="gold" className="text-[10px]">
-                    Member Exclusive
-                  </Badge>
+                  {product.compare_at_subunit ? (
+                    <span className="text-sm text-muted-foreground line-through">
+                      {formatPrice(product.compare_at_subunit, product.currency)}
+                    </span>
+                  ) : null}
                 </>
               )}
             </div>
 
             {isPurchased ? (
-              <Button variant="default" size="sm">
-                <Download className="mr-1.5 h-4 w-4" />
-                Download
-              </Button>
-            ) : product.isFree ? (
               <Button
                 variant="default"
                 size="sm"
-                onClick={() => onPurchase?.(product)}
-                disabled={isLoading}
+                onClick={() => onDownload?.(product.id)}
+                disabled={isDownloading}
               >
+                {isVideo ? <Play className="mr-1.5 h-4 w-4" /> : <Download className="mr-1.5 h-4 w-4" />}
+                {isDownloading ? "Opening…" : isVideo ? "Watch Now" : "Download"}
+              </Button>
+            ) : isFree ? (
+              <Button variant="default" size="sm" onClick={() => onPurchase?.(product)} disabled={isBuying}>
                 <Gift className="mr-1.5 h-4 w-4" />
-                Get Free Access
+                {isBuying ? "Adding…" : "Get Free Access"}
               </Button>
             ) : (
               <Button
@@ -166,10 +161,10 @@ const ProductModal = ({
                 size="lg"
                 className="font-bold"
                 onClick={() => onPurchase?.(product)}
-                disabled={isLoading}
+                disabled={isBuying}
               >
                 <ShoppingCart className="mr-1.5 h-4 w-4" />
-                {isLoading ? "Processing…" : "Buy Now"}
+                {isBuying ? "Processing…" : "Buy Now"}
               </Button>
             )}
           </div>

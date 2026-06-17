@@ -1,46 +1,52 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Clock, CheckCircle2, UserPlus } from "lucide-react";
+import { Clock, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
 
+interface Referral {
+  id: string;
+  referred_user_id: string | null;
+  referred_email: string | null;
+  status: string;          // 'pending' | 'rewarded'
+  credits_earned: number;
+  created_at: string;
+}
+
 interface ReferralPipelineProps {
-  referrals: any[];
+  referrals: Referral[];
   loading?: boolean;
 }
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; icon: React.ElementType; className: string }> = {
   pending: {
     label: "Signed Up",
     icon: Clock,
     className: "border-status-reviewing/40 bg-status-reviewing/10 text-status-reviewing",
   },
-  signed_up: {
-    label: "Signed Up",
-    icon: Clock,
-    className: "border-status-reviewing/40 bg-status-reviewing/10 text-status-reviewing",
-  },
-  pack_purchased: {
-    label: "Pack Purchased",
-    icon: UserPlus,
-    className: "border-primary/40 bg-primary/10 text-primary",
-  },
-  hired: {
-    label: "Mission Complete",
+  rewarded: {
+    label: "Purchased — Earned",
     icon: CheckCircle2,
     className: "border-status-interview/40 bg-status-interview/10 text-status-interview",
   },
 };
 
+// New rows have no email (attribution stores referred_user_id). Build a stable
+// label from whatever we have, without ever crashing on null.
+function labelFor(referral: Referral): { initials: string; name: string } {
+  if (referral.referred_email) {
+    return {
+      initials: referral.referred_email.slice(0, 2).toUpperCase(),
+      name: referral.referred_email.split("@")[0],
+    };
+  }
+  if (referral.referred_user_id) {
+    return { initials: referral.referred_user_id.slice(0, 2).toUpperCase(), name: "Friend" };
+  }
+  return { initials: "??", name: "Friend" };
+}
+
 const ReferralPipeline = ({ referrals, loading = false }: ReferralPipelineProps) => {
-  const getInitials = (email: string) => {
-    return email.slice(0, 2).toUpperCase();
-  };
-
-  const getDisplayName = (email: string) => {
-    return email.split("@")[0];
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -52,14 +58,12 @@ const ReferralPipeline = ({ referrals, loading = false }: ReferralPipelineProps)
           <div className="border-b border-border/50 px-6 py-4">
             <h3 className="text-lg font-bold text-foreground">Referral Pipeline</h3>
             <p className="text-xs text-muted-foreground">
-              Track where your friends are in their journey.
+              Friends earn you ${15} in credits once they make their first purchase.
             </p>
           </div>
 
           {loading ? (
-            <div className="p-6 text-center text-sm text-muted-foreground">
-              Loading referrals...
-            </div>
+            <div className="p-6 text-center text-sm text-muted-foreground">Loading referrals...</div>
           ) : referrals.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">
               No referrals yet. Share your link to get started!
@@ -78,21 +82,19 @@ const ReferralPipeline = ({ referrals, loading = false }: ReferralPipelineProps)
                   </TableHeader>
                   <TableBody>
                     {referrals.map((referral) => {
-                      const status = referral.status as keyof typeof statusConfig;
-                      const config = statusConfig[status] || statusConfig.pending;
+                      const config = statusConfig[referral.status] || statusConfig.pending;
                       const StatusIcon = config.icon;
-                      const earned = referral.status !== "pending" && referral.status !== "signed_up";
+                      const earned = referral.status === "rewarded";
+                      const { initials, name } = labelFor(referral);
 
                       return (
                         <TableRow key={referral.id} className="border-border/30 hover:bg-muted/30">
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
-                                {getInitials(referral.referred_email)}
+                                {initials}
                               </div>
-                              <span className="text-sm font-medium text-foreground">
-                                {getDisplayName(referral.referred_email)}
-                              </span>
+                              <span className="text-sm font-medium text-foreground">{name}</span>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -116,21 +118,19 @@ const ReferralPipeline = ({ referrals, loading = false }: ReferralPipelineProps)
               {/* Mobile cards */}
               <div className="space-y-2 p-4 md:hidden">
                 {referrals.map((referral) => {
-                  const status = referral.status as keyof typeof statusConfig;
-                  const config = statusConfig[status] || statusConfig.pending;
+                  const config = statusConfig[referral.status] || statusConfig.pending;
                   const StatusIcon = config.icon;
-                  const earned = referral.status !== "pending" && referral.status !== "signed_up";
+                  const earned = referral.status === "rewarded";
+                  const { initials, name } = labelFor(referral);
 
                   return (
                     <div key={referral.id} className="flex items-center justify-between rounded-lg border border-border/30 bg-muted/20 p-3">
                       <div className="flex items-center gap-3">
                         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
-                          {getInitials(referral.referred_email)}
+                          {initials}
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {getDisplayName(referral.referred_email)}
-                          </p>
+                          <p className="text-sm font-medium text-foreground">{name}</p>
                           <Badge variant="outline" className={`mt-1 gap-1 text-[10px] ${config.className}`}>
                             <StatusIcon className="h-2.5 w-2.5" />
                             {config.label}

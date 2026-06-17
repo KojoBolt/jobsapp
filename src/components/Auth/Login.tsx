@@ -84,7 +84,7 @@ function Login() {
 
     const { data: profile, error: profileErr } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, onboarding_completed")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -95,9 +95,15 @@ function Login() {
 
     }
 
-
     const role = profile?.role ?? "client";
-    navigate(role === "admin" ? "/admin/dashboard" : "/dashboard", { replace: true });
+    const onboardingCompleted = profile?.onboarding_completed ?? false;
+    
+    // Redirect new users to onboarding, existing users to dashboard/admin
+    if (!onboardingCompleted) {
+      navigate("/onboarding", { replace: true });
+    } else {
+      navigate(role === "admin" ? "/admin/dashboard" : "/dashboard", { replace: true });
+    }
   };
 
   const handlePasswordReset = async (e: React.FormEvent) => {

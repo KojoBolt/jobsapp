@@ -76,11 +76,12 @@ serve(async (req) => {
       return json({ ok: true, message: "Already processed" });
     }
 
-    // ✅ Fixed: was amount_kobo, now amount_subunit
+    // Amount check against what we recorded at checkout.
     if (Number(paymentRow.amount_subunit ?? 0) !== eventAmount) {
       return json({ error: "Amount mismatch" }, 400);
     }
 
+    // Re-verify with Paystack directly (don't trust the webhook body alone).
     const verifyRes = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
       {
@@ -97,11 +98,49 @@ serve(async (req) => {
 
     const verifiedAmount = Number(verifyData?.data?.amount ?? 0);
 
-    // ✅ Fixed: was amount_kobo, now amount_subunit
     if (verifiedAmount !== Number(paymentRow.amount_subunit ?? 0)) {
       return json({ error: "Verified amount mismatch" }, 400);
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    //  PRODUCT PURCHASE PATH
+    //  Self-contained: marks payment success + grants the product. Never
+    //  touches profile/credits logic. Returns before the credits path.
+    // ─────────────────────────────────────────────────────────────────────
+    if (paymentRow.purpose === "product") {
+      const { error: updatePaymentError } = await supabase
+        .from("payments")
+        .update({ status: "success", paystack_transaction_id: transactionId })
+        .eq("reference", reference)
+        .eq("provider", "paystack")
+        .neq("status", "success");
+
+      if (updatePaymentError) {
+        return json({ error: updatePaymentError.message }, 500);
+      }
+
+      const { error: purchaseErr } = await supabase
+        .from("purchases")
+        .upsert(
+          {
+            user_id: paymentRow.user_id,
+            product_id: paymentRow.product_id,
+            payment_reference: reference,
+            provider: "paystack",
+          },
+          { onConflict: "user_id,product_id", ignoreDuplicates: true }
+        );
+
+      if (purchaseErr) {
+        return json({ error: purchaseErr.message }, 500);
+      }
+
+      return json({ ok: true, message: "Product purchase granted" });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    //  CREDITS / PLAN PATH (unchanged original behavior)
+    // ─────────────────────────────────────────────────────────────────────
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("plan, credits_remaining, total_credits_earned")

@@ -361,7 +361,7 @@ const ApplicationFeed = ({ applications, onApplicationDeleted }: ApplicationFeed
                   </td>
                   <td className="px-6 py-4">
                     <Badge variant="human" className="text-[10px]">
-                      {app.resume_id ? `Resume #${app.resume_id.slice(0, 8)}` : "Default"}
+                      {app.resume_id ? "Resume" : "Default"}
                     </Badge>
                   </td>
                   <td className="px-6 py-4">
@@ -477,7 +477,7 @@ const ApplicationFeed = ({ applications, onApplicationDeleted }: ApplicationFeed
               </a>
               <div className="mb-2">
                 <Badge variant="human" className="text-[10px]">
-                  {app.resume_id || "Default Resume"}
+                  {app.resume_id ? "Resume" : "Default"}
                 </Badge>
               </div>
               <div className="flex items-center justify-between">

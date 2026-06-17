@@ -1,25 +1,35 @@
-import { useState } from "react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SocialProofTicker from "@/components/accelerators/SocialProofTicker";
 import { ShoppingBag, Library } from "lucide-react";
 import ProductGallery from "@/components/accelerators/ProductGallery";
 import MyLibrary from "@/components/accelerators/MyLibrary";
+import { useAccelerators } from "@/hooks/useAccelerators";
+import SocialProofStrip from "@/pages/Socialproofstrip";
+// import CareerLadderNavigator from "@/pages/CareerLadderNavigator";
 
 const CareerAccelerators = () => {
-  // In a real app this would come from Supabase; mock for now
-  const [purchasedIds] = useState<Set<string>>(new Set());
+  const {
+    products,
+    purchasedIds,
+    loading,
+    buyingId,
+    downloadingId,
+    buy,
+    download,
+  } = useAccelerators();
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">
-            Career Accelerators
-          </h1>
+          <h1 className="text-2xl font-bold text-foreground">Career Accelerators</h1>
           <p className="text-sm text-muted-foreground">
             Premium resources to fast-track your job search and career growth.
           </p>
+        </div>
+        <div>
+          <SocialProofStrip />
         </div>
 
         <Tabs defaultValue="gallery">
@@ -35,15 +45,30 @@ const CareerAccelerators = () => {
           </TabsList>
 
           <TabsContent value="gallery">
-            <ProductGallery />
+            <ProductGallery
+              products={products}
+              purchasedIds={purchasedIds}
+              loading={loading}
+              buyingId={buyingId}
+              onBuy={buy}
+            />
           </TabsContent>
 
           <TabsContent value="library">
-            <MyLibrary purchasedIds={purchasedIds} />
+            <MyLibrary
+              products={products}
+              purchasedIds={purchasedIds}
+              loading={loading}
+              downloadingId={downloadingId}
+              onDownload={download}
+            />
           </TabsContent>
         </Tabs>
+        {/* <div>
+          <CareerLadderNavigator />
+        </div> */}
 
-        <SocialProofTicker />
+        <SocialProofTicker/>
       </div>
     </DashboardLayout>
   );

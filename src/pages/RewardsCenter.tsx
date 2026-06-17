@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import EarningsHero from "@/components/rewards/EarningsHero";
 import ReferralTool from "@/components/rewards/ReferralTool";
@@ -10,16 +10,32 @@ import { PartyPopper } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
-const REFERRAL_GOAL = 5;
+interface Referral {
+  id: string;
+  referrer_id: string;
+  referred_user_id: string | null;
+  referred_email: string | null;
+  status: string;            // 'pending' | 'rewarded'
+  credits_earned: number;
+  created_at: string;
+}
+
+const REFERRAL_REWARD = 15;
 
 const RewardsCenter = () => {
   const { user, profile } = useAuth();
   const [showMissionModal, setShowMissionModal] = useState(false);
-  const [referrals, setReferrals] = useState<any[]>([]);
+  const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
+  const [jobsSubmitted, setJobsSubmitted] = useState(0);
+
+  // Tracks completed campaigns we've already celebrated, so auto-fire happens
+  // once per completion — not on every page load.
+  const celebratedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) return;
+
     const fetchReferrals = async () => {
       setLoading(true);
       const { data } = await supabase
@@ -27,69 +43,117 @@ const RewardsCenter = () => {
         .select("*")
         .eq("referrer_id", user.id)
         .order("created_at", { ascending: false });
-      setReferrals(data || []);
+      setReferrals((data as Referral[]) || []);
       setLoading(false);
     };
+
+    // All-time submitted applications for this user.
+    const fetchJobsSubmitted = async () => {
+      const { count } = await supabase
+        .from("applications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .in("status", ["submitted", "completed"]);
+      setJobsSubmitted(count || 0);
+    };
+
     fetchReferrals();
+    fetchJobsSubmitted();
+  }, [user]);
+
+  // ── Auto-fire: celebrate when a campaign newly completes ──────────────
+  useEffect(() => {
+    if (!user) return;
+
+    // Seed already-completed campaigns so we DON'T celebrate old ones on first load.
+    let seeded = false;
+    const seed = async () => {
+      const { data } = await supabase
+        .from("campaigns")
+        .select("id, status")
+        .eq("user_id", user.id)
+        .eq("status", "completed");
+      (data || []).forEach((c: { id: string }) => celebratedRef.current.add(c.id));
+      seeded = true;
+    };
+    seed();
+
+    const channel = supabase
+      .channel(`rewards-campaigns-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "campaigns", filter: `user_id=eq.${user.id}` },
+        async (payload) => {
+          const c = payload.new as { id: string; status: string };
+          if (!seeded) return;
+          if (c.status === "completed" && !celebratedRef.current.has(c.id)) {
+            celebratedRef.current.add(c.id);
+            // refresh the count, then celebrate
+            const { count } = await supabase
+              .from("applications")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", user.id)
+              .in("status", ["submitted", "completed"]);
+            setJobsSubmitted(count || 0);
+            setShowMissionModal(true);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   const referralCode = profile?.referral_code || "loading...";
-  const referralLink = `https://jobapp.com/ref/${referralCode}`;
-  const totalCredits = profile?.total_credits_earned || 0;
-  const friendsHired = profile?.friends_hired || 0;
+  const referralLink = `https://thejobapp.online/ref/${referralCode}`;
+
+  const rewardedReferrals = referrals.filter((r) => r.status === "rewarded");
+  const pendingReferrals = referrals.filter((r) => r.status === "pending");
+  const convertedCount = rewardedReferrals.length;
+  const pendingCount = pendingReferrals.length;
   const referralCount = referrals.length;
+  const referralCreditsEarned = rewardedReferrals.reduce((sum, r) => sum + (r.credits_earned || 0), 0);
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">
-              Rewards Center
-            </h1>
+            <h1 className="text-2xl font-bold text-foreground">Rewards Center</h1>
             <p className="text-sm text-muted-foreground">
-              Earn credits, share with friends, and unlock free packs.
+              Earn ${REFERRAL_REWARD} in credits for every friend who joins and makes their first purchase.
             </p>
           </div>
-          <Button
-            variant="gold"
-            size="sm"
-            className="gap-2"
-            onClick={() => setShowMissionModal(true)}
-          >
+          <Button variant="gold" size="sm" className="gap-2" onClick={() => setShowMissionModal(true)}>
             <PartyPopper className="h-4 w-4" />
             Preview Celebration
           </Button>
         </div>
 
         <EarningsHero
-          totalCredits={totalCredits}
-          friendsHired={friendsHired}
+          totalCredits={referralCreditsEarned}
+          convertedCount={convertedCount}
+          pendingCount={pendingCount}
           referralCount={referralCount}
-          referralGoal={REFERRAL_GOAL}
+          rewardPerReferral={REFERRAL_REWARD}
           loading={loading}
         />
 
-        <ReferralTool
-          referralLink={referralLink}
-          referralCode={referralCode}
-        />
+        <ReferralTool referralLink={referralLink} referralCode={referralCode} />
 
-        <ReferralPipeline
-          referrals={referrals}
-          loading={loading}
-        />
+        <ReferralPipeline referrals={referrals} loading={loading} />
 
         <CashOutToggle
           userId={user?.id}
           initialMode={profile?.cashout_preference || "reapply"}
-          totalCredits={totalCredits}
+          totalCredits={referralCreditsEarned}
         />
 
         <MissionCompleteModal
           open={showMissionModal}
           onOpenChange={setShowMissionModal}
           referralLink={referralLink}
+          jobsSubmitted={jobsSubmitted}
         />
       </div>
     </DashboardLayout>

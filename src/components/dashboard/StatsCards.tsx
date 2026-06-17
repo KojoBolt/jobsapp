@@ -1,8 +1,8 @@
 import { DashboardStats } from "@/hooks/useDashboardData";
 import { motion } from "framer-motion";
-import { Send, CheckCircle2 } from "lucide-react";
+import { Send, CheckCircle2, Layers } from "lucide-react";
 
-interface StatsCardsProps { 
+interface StatsCardsProps {
   data: DashboardStats | null;
 }
 
@@ -14,32 +14,37 @@ interface StatCard {
   positive: boolean;
 }
 
-
 const StatsCards = ({ data }: StatsCardsProps) => {
-
   if (!data) {
     return null;
   }
 
-  const stats: StatCard[] = [ 
+  const stats: StatCard[] = [
     {
       label: "Applications Sent",
       value: String(data.total_sent),
-      change: `+${data.sent_this_week} this week`,
+      change: `+${data.sent_this_week} this campaign`,
       icon: Send,
       positive: true,
     },
-    { 
+    {
       label: "Confirmations",
       value: String(data.total_confirmations),
       change: `${data.confirmation_rate}% rate`,
       icon: CheckCircle2,
       positive: true,
     },
+    {
+      label: "Total Application Sent",
+      value: String(data.lifetime_sent),
+      change: "all-time across all campaigns",
+      icon: Layers,
+      positive: true,
+    },
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {stats.map((stat, i) => (
         <motion.div
           key={stat.label}
