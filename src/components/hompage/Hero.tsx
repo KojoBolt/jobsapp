@@ -1,16 +1,20 @@
 import { ArrowRightIcon, PlayIcon, ZapIcon, CheckIcon } from 'lucide-react';
 import { PrimaryButton, GhostButton } from './Buttons';
 import { motion } from 'framer-motion';
+import MainImage from '../../assets/images/career-match.webp';
+import ProfileOne from '../../assets/images/p1.webp';
+import ProfileTwo from '../../assets/images/p2.webp';
+import ProfileThree from '../../assets/images/p3.webp';
 
 export default function Hero() {
 
     const trustedUserImages = [
-        'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=50',
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=50',
-        'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=50&h=50&fit=crop'
+        ProfileOne,
+        ProfileTwo,
+        ProfileThree,   
     ];
 
-    const mainImageUrl = 'https://images.unsplash.com/photo-1576267423445-b2e0074d68a4?q=80&w=1600&auto=format&fit=crop';
+    const mainImageUrl = MainImage; // Use the imported image directly
 
     const galleryStripImages = [
         'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?q=80&w=100',
@@ -23,7 +27,7 @@ export default function Hero() {
         'Indeed',
         'RemoteOK',
         'Remotive',
-        'Jobberman'
+        'We Work Remotely',
     ];
 
     return (
@@ -91,10 +95,12 @@ export default function Hero() {
                                     </PrimaryButton>
                                 </a>
 
-                                <GhostButton className="max-sm:w-full max-sm:justify-center py-3 px-5" to ="/login">
-                                    <PlayIcon className="size-4" />
-                                    Login
-                                </GhostButton>
+                                <a href="/login" className="w-full sm:w-auto">
+                                    <GhostButton className="max-sm:w-full max-sm:justify-center py-3 px-5">
+                                        <PlayIcon className="size-4" />
+                                        Login
+                                    </GhostButton>
+                                </a>
                             </motion.div>
 
                             <motion.div className="flex sm:inline-flex overflow-hidden items-center max-sm:justify-center text-sm text-gray-200 bg-white/10 rounded"
@@ -139,7 +145,7 @@ export default function Hero() {
                                     <img
                                         src={mainImageUrl}
                                         alt="agency-work-preview"
-                                        className="w-full h-full object-cover object-center"
+                                        className="w-full h-full object-cover object-center opacity-80"
                                     />
 
                                     <div className="absolute left-4 top-4 px-3 py-1 rounded-full bg-black/15 backdrop-blur-sm text-xs">

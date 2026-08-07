@@ -5,7 +5,7 @@ import { TrendingUp, Users, Sparkles } from "lucide-react";
 const proofItems = [
   {
     icon: TrendingUp,
-    text: "James just landed an interview at Stripe using the Negotiation Playbook!",
+    text: "John just landed a $15K raise using our Salary Playbook strategies.",
   },
   {
     icon: Users,
@@ -13,11 +13,11 @@ const proofItems = [
   },
   {
     icon: Sparkles,
-    text: "Michael just upgraded to the Video Masterclass bundle.",
+    text: "Michael just upgraded to Premium System collections.",
   },
   {
     icon: TrendingUp,
-    text: "Priya negotiated a $22K raise with the Salary Playbook strategies.",
+    text: "Bella just got herself 100 Behavioral Interview Q&A ",
   },
   {
     icon: Users,
@@ -25,7 +25,7 @@ const proofItems = [
   },
   {
     icon: Sparkles,
-    text: "Emma downloaded the FAANG Cheat Sheets and aced her Meta interview.",
+    text: "Emma just unlocked the exclusive Career Accelerator bundle.",
   },
 ];
 

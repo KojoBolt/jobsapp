@@ -31,9 +31,11 @@ export default function CTA() {
                             viewport={{ once: true }}
                             transition={{ type: "spring", stiffness: 250, damping: 70, mass: 1, delay: 0.3 }}
                         >
-                            <GhostButton to="/sign-up" className="px-8 py-3 gap-2">
-                                Start Matching Jobs Now <ArrowRightIcon size={20} />
-                            </GhostButton>
+                            <a href="/sign-up">
+                                <GhostButton className="px-8 py-3 gap-2">
+                                    Start Matching Jobs Now <ArrowRightIcon size={20} />
+                                </GhostButton>
+                            </a>
                         </motion.div>
                     </div>
                 </div>

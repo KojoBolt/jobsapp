@@ -3,12 +3,10 @@ import { PrimaryButton } from './Buttons';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import Logo from '../../assets/images/job-logo.png';
-import {useNavigate} from 'react-router-dom';
 
 
 export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
-    const navigate = useNavigate();
 
     const navLinks = [
         { name: 'Home', href: '/#' },
@@ -38,9 +36,9 @@ export default function Navbar() {
                 </div>
 
                 <div className='hidden md:flex items-center gap-3'>
-                    <button onClick={() => navigate('/login')} className='text-sm font-medium text-gray-300 hover:text-white transition max-sm:hidden'>
+                    <a href="/login" className='text-sm font-medium text-gray-300 hover:text-white transition max-sm:hidden'>
                         Sign in
-                    </button>
+                    </a>
                     <PrimaryButton to="/sign-up" className='max-sm:text-xs hidden sm:inline-block'>Get Started</PrimaryButton>
                 </div>
 

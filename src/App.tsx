@@ -28,7 +28,7 @@ import PaymentCallback from './pages/PaymentCallback';
 import ResetPassword from "./pages/ResetPassword";
 import ReferralRedirect from "./pages/ReferralRedirect";
 import Report from "./pages/Report";
-
+import FunnelRoutes from '@/components/funnel/FunnelRoutes';
 
 import Login from "./components/Auth/Login";
 import Signup from "./components/Auth/Signup";
@@ -72,6 +72,7 @@ const App = () => (
             <Route path="/sign-up" element={<Signup />} />
             <Route path="/email-confirmation" element={<EmailConfirmation />} />
             <Route path="/refund-policy" element={<RefundPolicy />} />
+            <Route path="/start/*" element={<FunnelRoutes />} />
 
             {/* AUTHENTICATED USER ROUTES */}
             <Route

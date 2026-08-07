@@ -118,8 +118,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    // Looks up role + onboarding, then redirects. Defined outside the auth
-    // callback and only CALLED from a deferred timeout (never awaited inside it).
+    let isInitialLoad = true;
+
     const handleSignInRedirect = async (userId: string) => {
       const { data: profileRow } = await supabase
         .from("profiles")
@@ -140,11 +140,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    // IMPORTANT: this callback is SYNCHRONOUS and never awaits Supabase calls
-    // inside itself. Awaiting Supabase calls here deadlocks the auth lock and
-    // makes signOut() (and other auth calls) hang until a manual page refresh.
-    // Any Supabase work is pushed out via setTimeout(0) so the callback returns
-    // immediately and releases the lock.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -152,6 +147,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (event === "SIGNED_OUT") {
         setProfile(null);
         setLoading(false);
+        isInitialLoad = false;
         return;
       }
 
@@ -159,9 +155,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const u = session.user;
         setTimeout(() => {
           fetchProfile(u.id, u.email, u.user_metadata?.full_name);
-          if (event === "SIGNED_IN") {
+          // Only redirect on fresh SIGNED_IN events if:
+          // 1. Not the initial load (isInitialLoad = true means first event on app start)
+          // 2. User is coming from login page or callback (not already on an app route)
+          if (event === "SIGNED_IN" && !isInitialLoad && window.location.pathname === "/login") {
             handleSignInRedirect(u.id);
           }
+          isInitialLoad = false;
         }, 0);
       } else {
         setProfile(null);
@@ -170,20 +170,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
     });
 
-    // Initial session on mount — also defers the profile fetch.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-
-      if (session?.user) {
-        const u = session.user;
-        setTimeout(() => {
-          fetchProfile(u.id, u.email, u.user_metadata?.full_name);
-        }, 0);
-      }
-
-      setLoading(false);
-    });
+    // NOTE: getSession() commented out to prevent double state updates.
+    // onAuthStateChange fires with INITIAL_SESSION on mount and covers
+    // everything this block was doing. Uncomment only if you find a specific
+    // edge case where the listener doesn't hydrate state (e.g. SSR or certain
+    // OAuth flows where the listener fires late).
+    //
+    // supabase.auth.getSession().then(({ data: { session } }) => {
+    //   setSession(session);
+    //   setUser(session?.user ?? null);
+    //
+    //   if (session?.user) {
+    //     const u = session.user;
+    //     setTimeout(() => {
+    //       fetchProfile(u.id, u.email, u.user_metadata?.full_name);
+    //     }, 0);
+    //   }
+    //
+    //   setLoading(false);
+    // });
 
     return () => {
       subscription.unsubscribe();
@@ -192,13 +197,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = async () => {
     try {
-      // 'local' clears this device's session without waiting on a server
-      // round-trip, so it's instant and can't hang on a slow network.
       await supabase.auth.signOut({ scope: "local" });
     } catch (error) {
       console.error("Sign out error:", error);
     } finally {
-      // Full page navigation = clean teardown of all state. Immediate.
       window.location.href = "/login";
     }
   };

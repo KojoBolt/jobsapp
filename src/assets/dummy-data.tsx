@@ -95,8 +95,8 @@ export const footerLinks = [
         title: "Company",
         links: [
             { name: "Home", url: "#" },
-            { name: "Services", url: "#" },
-            { name: "Work", url: "#" },
+            { name: "About Us", url: "#" },
+            // { name: "Work", url: "#" },
             { name: "Contact", url: "#" }
         ]
     },
@@ -111,8 +111,8 @@ export const footerLinks = [
         title: "Connect",
         links: [
             { name: "Twitter", url: "#" },
-            { name: "LinkedIn", url: "#" },
-            { name: "GitHub", url: "#" }
+            { name: "LinkedIn", url: "#" }
+            // { name: "GitHub", url: "#" }
         ]
     }
 ];

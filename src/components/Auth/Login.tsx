@@ -3,7 +3,7 @@ import { FcGoogle } from "react-icons/fc";
 import { FiEye, FiEyeOff } from "react-icons/fi";
 import { motion } from "framer-motion";
 import Hero from "../../assets/images/login-front.webp";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../../integrations/supabase/client";
 import { z } from "zod";
 import { useNavigate } from "react-router-dom";
@@ -40,7 +40,18 @@ function Login() {
   const [resetEmail, setResetEmail] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMessage, setResetMessage] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const navigate = useNavigate();
+
+  // Load saved email from localStorage on mount
+  useEffect(() => {
+    const savedEmail = localStorage.getItem("jobstack_remember_email");
+    const wasRemembered = localStorage.getItem("jobstack_remember_me") === "true";
+    if (savedEmail && wasRemembered) {
+      setEmail(savedEmail);
+      setRememberMe(true);
+    }
+  }, []);
 
   const validateForm = (values: { email: string; password: string }) => {
     const result = loginSchema.safeParse(values);
@@ -97,6 +108,15 @@ function Login() {
 
     const role = profile?.role ?? "client";
     const onboardingCompleted = profile?.onboarding_completed ?? false;
+    
+    // Save email to localStorage if "Remember me" is checked
+    if (rememberMe) {
+      localStorage.setItem("jobstack_remember_email", email);
+      localStorage.setItem("jobstack_remember_me", "true");
+    } else {
+      localStorage.removeItem("jobstack_remember_email");
+      localStorage.removeItem("jobstack_remember_me");
+    }
     
     // Redirect new users to onboarding, existing users to dashboard/admin
     if (!onboardingCompleted) {
@@ -239,6 +259,8 @@ function Login() {
                   type="checkbox"
                   id="remember"
                   name="remember"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
                   className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                 />
                 <label htmlFor="remember" className="ml-2 text-sm text-gray-200">Remember me</label>
