@@ -1,9 +1,23 @@
-import { useState, useEffect } from "react";
-import { Search, ChevronDown, ChevronUp, Shield, User, FileText } from "lucide-react";
-import { Button } from "../ui/Button";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import {
+  ChevronDown, ChevronUp, Shield, User, FileText, Users2, Crown,
+  Coins, PieChart, LineChart as LineIcon, BarChart3, Inbox, AlertTriangle, Plus,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/admin/toast/ToastContext";
-import { format } from "date-fns";
+import { format, formatDistanceToNow, subMonths, startOfMonth } from "date-fns";
+import {
+  T, Panel, PanelHeader, Th, Avatar, StatTile, SearchInput, Pill,
+  PrimaryButton, GhostButton, IconButton, LegendRow, Pagination, EmptyState,
+} from "@/admin/ui/system";
+import {
+  PipelineGauge, TrendChart, TrendKey, RankedBar, useRamp, type GaugeBand,
+} from "@/admin/ui/charts";
+import { useRegisterExport } from "@/admin/context/AdminActionsContext";
+
+/** Mirrors the user_plan / user_role enums. */
+type Plan = "free" | "starter" | "pro";
+type Role = "client" | "admin";
 
 interface UserProfile {
   id: string;
@@ -19,40 +33,45 @@ interface UserProfile {
 
 const ITEMS_PER_PAGE = 10;
 
-const planColors: Record<string, string> = {
-  basic:    "bg-gray-100 text-gray-600",
-  starter: "bg-blue-100 text-blue-600",
-  pro:     "bg-purple-100 text-purple-600",
+/** "free" is the DB value; "Basic" is what the product calls it. */
+const PLAN_LABEL: Record<string, string> = {
+  free: "Basic",
+  starter: "Starter",
+  pro: "Pro",
 };
 
-const roleColors: Record<string, string> = {
-  admin:  "bg-red-100 text-red-600",
-  client: "bg-green-100 text-green-600",
+const csvCell = (v: unknown) => {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
 const UserManagementPage = (): JSX.Element => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<{
-    plan: string;
-    credits: number;
-    role: string;
-  }>({ plan: "free", credits: 0, role: "client" });
+  const [editValues, setEditValues] = useState<{ plan: Plan; credits: number; role: Role }>({
+    plan: "free",
+    credits: 0,
+    role: "client",
+  });
   const [saving, setSaving] = useState(false);
   const [sendingSummaryId, setSendingSummaryId] = useState<string | null>(null);
   const { pushToast } = useToast();
+  const { ramp } = useRamp();
 
   useEffect(() => {
     fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
 
       const { data: profiles, error } = await supabase
         .from("profiles")
@@ -60,13 +79,13 @@ const UserManagementPage = (): JSX.Element => {
         .order("created_at", { ascending: false });
 
       if (error) {
-        pushToast({ variant: "error", title: "Error", message: "Failed to load users" });
+        console.error("[UserManagement] profiles query failed:", error);
+        setLoadError(error.message || "Failed to load users");
+        pushToast({ variant: "error", title: "Error", message: error.message || "Failed to load users" });
         return;
       }
 
-      const { data: appCounts } = await supabase
-        .from("applications")
-        .select("user_id");
+      const { data: appCounts } = await supabase.from("applications").select("user_id");
 
       const countMap = new Map<string, number>();
       (appCounts || []).forEach((a) => {
@@ -86,7 +105,9 @@ const UserManagementPage = (): JSX.Element => {
       }));
 
       setUsers(enriched);
-    } catch (err) {
+    } catch (err: any) {
+      console.error("[UserManagement] unexpected error:", err);
+      setLoadError(err?.message || "Unexpected error");
       pushToast({ variant: "error", title: "Error", message: "Unexpected error" });
     } finally {
       setLoading(false);
@@ -94,11 +115,12 @@ const UserManagementPage = (): JSX.Element => {
   };
 
   const handleEdit = (user: UserProfile) => {
+    setExpandedUser(user.id);
     setEditingUser(user.id);
     setEditValues({
-      plan: user.plan || "free",
+      plan: (user.plan as Plan) || "free",
       credits: user.credits_remaining,
-      role: user.role || "client",
+      role: (user.role as Role) || "client",
     });
   };
 
@@ -119,11 +141,13 @@ const UserManagementPage = (): JSX.Element => {
         return;
       }
 
-      setUsers((prev) => prev.map((u) =>
-        u.id === userId
-          ? { ...u, plan: editValues.plan, credits_remaining: editValues.credits, role: editValues.role }
-          : u
-      ));
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userId
+            ? { ...u, plan: editValues.plan, credits_remaining: editValues.credits, role: editValues.role }
+            : u,
+        ),
+      );
 
       pushToast({ variant: "success", title: "Updated", message: "User updated successfully!" });
       setEditingUser(null);
@@ -149,16 +173,18 @@ const UserManagementPage = (): JSX.Element => {
       return;
     }
 
-    setUsers((prev) => prev.map((u) =>
-      u.id === userId ? { ...u, credits_remaining: newCredits } : u
-    ));
-    pushToast({ variant: "success", title: "Credits Added", message: `Added ${amount} credits` });
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, credits_remaining: newCredits } : u)));
+    pushToast({ variant: "success", title: "Credits added", message: `Added ${amount} credits` });
   };
 
   // Generate + send the application-summary PDF (in-app + email) for one user.
   const handleSendSummary = async (user: UserProfile) => {
     if (user.total_applications === 0) {
-      pushToast({ variant: "error", title: "No applications", message: "This user has no applications to summarize yet." });
+      pushToast({
+        variant: "error",
+        title: "No applications",
+        message: "This user has no applications to summarize yet.",
+      });
       return;
     }
     setSendingSummaryId(user.id);
@@ -171,13 +197,13 @@ const UserManagementPage = (): JSX.Element => {
         pushToast({ variant: "error", title: "Failed", message: body?.error || "Could not generate summary" });
         return;
       }
-     pushToast({
-  variant: "success",
-  title: "Summary generated",
-  message: data.emailed
-    ? `${data.job_count} applications · emailed + in-app`
-    : `${data.job_count} apps · in-app only (${data.email_error || "no reason returned"})`,
-});
+      pushToast({
+        variant: "success",
+        title: "Summary generated",
+        message: data.emailed
+          ? `${data.job_count} applications · emailed + in-app`
+          : `${data.job_count} apps · in-app only (${data.email_error || "no reason returned"})`,
+      });
     } catch (err: any) {
       pushToast({ variant: "error", title: "Error", message: err?.message || "Unexpected error" });
     } finally {
@@ -185,283 +211,487 @@ const UserManagementPage = (): JSX.Element => {
     }
   };
 
-  const filtered = users.filter((u) =>
-    (u.full_name || "").toLowerCase().includes(search.toLowerCase()) ||
-    (u.email || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return users.filter(
+      (u) =>
+        (u.full_name || "").toLowerCase().includes(q) ||
+        (u.email || "").toLowerCase().includes(q),
+    );
+  }, [users, search]);
+
+  /* ── Derived metrics + chart series ───────────────────────────────────── */
+  const m = useMemo(() => {
+    const paid = users.filter((u) => u.plan === "starter" || u.plan === "pro").length;
+    const admins = users.filter((u) => u.role === "admin").length;
+    const credits = users.reduce((s, u) => s + u.credits_remaining, 0);
+
+    // Plan mix for the gauge.
+    const byPlan = new Map<string, number>();
+    users.forEach((u) => byPlan.set(u.plan || "free", (byPlan.get(u.plan || "free") || 0) + 1));
+    const bands: GaugeBand[] = [...byPlan.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name: PLAN_LABEL[name] || name, value }));
+
+    // Signups per month, last 7 months.
+    const now = new Date();
+    const trend = Array.from({ length: 7 }, (_, i) => {
+      const from = startOfMonth(subMonths(now, 6 - i));
+      const to = startOfMonth(subMonths(now, 5 - i));
+      return {
+        month: format(from, "MMM"),
+        value: users.filter((u) => {
+          const t = new Date(u.created_at);
+          return t >= from && t < to;
+        }).length,
+      };
+    });
+    const nonZero = trend.filter((t) => t.value > 0);
+    const target = nonZero.length
+      ? Math.round(nonZero.reduce((s, t) => s + t.value, 0) / nonZero.length)
+      : 0;
+
+    // Most active users by application volume.
+    const topUsers = [...users]
+      .filter((u) => u.total_applications > 0)
+      .sort((a, b) => b.total_applications - a.total_applications)
+      .slice(0, 3)
+      .map((u) => {
+        const n = u.full_name || "Unknown";
+        return { name: n.length > 12 ? `${n.slice(0, 11)}…` : n, value: u.total_applications };
+      });
+
+    return { paid, admins, credits, bands, trend, target, topUsers };
+  }, [users]);
+
+  const exportCsv = useCallback(() => {
+    const header = ["Name", "Email", "Role", "Plan", "Credits", "Applications", "Joined"];
+    const rows = filtered.map((u) => [
+      u.full_name, u.email, u.role, PLAN_LABEL[u.plan || "free"] || u.plan,
+      u.credits_remaining, u.total_applications,
+      format(new Date(u.created_at), "yyyy-MM-dd"),
+    ]);
+    const csv = [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `users-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filtered]);
+
+  useRegisterExport(exportCsv);
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated = filtered.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
+    currentPage * ITEMS_PER_PAGE,
   );
 
-  const getInitials = (name: string) =>
-    name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const field = `rounded-lg border ${T.hairline} bg-white px-2.5 py-1.5 text-[12.5px] ${T.ink}
+                 focus:outline-none focus:ring-2 focus:ring-[#2a78d6]/30 dark:bg-[#1A1A19]`;
+  const microLabel = `mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] ${T.muted}`;
+
+  /** Expanded detail / edit panel — shared by the desktop table and mobile cards. */
+  const renderDetails = (user: UserProfile) => {
+    const isEditing = editingUser === user.id;
+
+    return (
+      <div className={`border-t ${T.hairline} bg-[#FAFAF8] px-4 py-4 dark:bg-white/[0.02] sm:px-5`}>
+        {isEditing ? (
+          <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-end">
+            <div>
+              <label className={microLabel}>Plan</label>
+              <select
+                value={editValues.plan}
+                onChange={(e) => setEditValues((p) => ({ ...p, plan: e.target.value as Plan }))}
+                className={`${field} w-full sm:w-auto`}
+              >
+                <option value="free">Basic</option>
+                <option value="starter">Starter</option>
+                <option value="pro">Pro</option>
+              </select>
+            </div>
+            <div>
+              <label className={microLabel}>Credits</label>
+              <input
+                type="number"
+                value={editValues.credits}
+                onChange={(e) => setEditValues((p) => ({ ...p, credits: Number(e.target.value) }))}
+                className={`${field} w-full tabular-nums sm:w-24`}
+              />
+            </div>
+            <div>
+              <label className={microLabel}>Role</label>
+              <select
+                value={editValues.role}
+                onChange={(e) => setEditValues((p) => ({ ...p, role: e.target.value as Role }))}
+                className={`${field} w-full sm:w-auto`}
+              >
+                <option value="client">Client</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <PrimaryButton onClick={() => !saving && handleSave(user.id)}>
+                {saving ? "Saving…" : "Save changes"}
+              </PrimaryButton>
+              <GhostButton onClick={() => setEditingUser(null)}>Cancel</GhostButton>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <p className={microLabel}>Monthly usage</p>
+              <p className={`text-[13px] font-semibold ${T.ink}`}>
+                {user.monthly_usage_count}
+                <span className={`ml-1 text-[11px] font-normal ${T.muted}`}>this month</span>
+              </p>
+            </div>
+            <div>
+              <p className={microLabel}>Total applications</p>
+              <p className={`text-[13px] font-semibold ${T.ink}`}>{user.total_applications}</p>
+            </div>
+            <div>
+              <p className={microLabel}>User ID</p>
+              <p className={`font-mono text-[11px] ${T.ink2}`}>{user.id.slice(0, 18)}…</p>
+            </div>
+            <div className="flex flex-wrap items-start gap-2">
+              <PrimaryButton onClick={() => handleEdit(user)}>Edit user</PrimaryButton>
+              <GhostButton
+                onClick={() =>
+                  sendingSummaryId !== user.id &&
+                  user.total_applications > 0 &&
+                  handleSendSummary(user)
+                }
+              >
+                <FileText size={13} />
+                {sendingSummaryId === user.id ? "Generating…" : "Send summary"}
+              </GhostButton>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+    <div className="space-y-4">
+      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[#1E293B] dark:text-white">User Management</h1>
-          <p className="text-sm text-[#64748B] mt-1">
-            {loading ? "Loading..." : `${filtered.length} user${filtered.length !== 1 ? "s" : ""} total`}
+          <h1 className={`text-[20px] font-bold tracking-[-0.01em] ${T.ink}`}>User Management</h1>
+          <p className={`text-[12px] ${T.muted}`}>
+            {loading
+              ? "Loading…"
+              : `${filtered.length} user${filtered.length !== 1 ? "s" : ""}${
+                  search ? ` of ${users.length}` : ""
+                }`}
           </p>
         </div>
-        <div className="relative w-64">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-          <input
-            type="text"
-            placeholder="Search by name or email..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-            className="w-full pl-9 pr-4 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED] text-[#1E293B] placeholder:text-[#94A3B8] dark:bg-gray-800 dark:border-gray-600 dark:text-white dark:placeholder:text-gray-400 dark:focus:ring-blue-500"
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={(v) => { setSearch(v); setCurrentPage(1); }}
+          placeholder="Search by name or email…"
+        />
       </div>
 
-      {/* Stats Row */}
-      <div className="grid md:grid-cols-3 gap-4 grid-cols-1">
-        {[
-          { label: "Total Users", value: users.length, color: "#7C3AED" },
-          { label: "Pro Users", value: users.filter((u) => u.plan === "pro").length, color: "#10B981" },
-          { label: "Basic Users", value: users.filter((u) => u.plan === "free").length, color: "#F59E0B" },
-        ].map((stat) => (
-          <div key={stat.label} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-[#E2E8F0] dark:border-gray-700 p-4">
-            <p className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</p>
-            <p className="text-sm text-[#64748B] dark:text-gray-400">{stat.label}</p>
+      {/* ── Stat row ────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile icon={Users2} label="Total Users" value={users.length}
+                  delta={0} caption="registered" loading={loading} />
+        <StatTile icon={Crown} label="Paid Users" value={m.paid}
+                  note={users.length ? `${Math.round((m.paid / users.length) * 100)}%` : undefined}
+                  delta={0} caption="starter or pro" loading={loading} />
+        <StatTile icon={Shield} label="Admins" value={m.admins}
+                  delta={0} caption="with elevated access" loading={loading} />
+        <StatTile icon={Coins} label="Credits Outstanding" value={m.credits.toLocaleString()}
+                  delta={0} caption="across all accounts" loading={loading} />
+      </div>
+
+      {/* ── Charts ──────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Panel>
+          <PanelHeader icon={PieChart} title="Plan Mix" right={<IconButton label="Open plan mix" />} />
+          <div className="px-5 pb-4">
+            {users.length > 0 ? (
+              <>
+                <PipelineGauge bands={m.bands} total={users.length} caption="Users" />
+                <div className={`mt-2 divide-y ${T.divide}`}>
+                  {m.bands.map((b, i) => (
+                    <LegendRow
+                      key={b.name}
+                      color={ramp[i % ramp.length]}
+                      name={b.name}
+                      sub={`${Math.round((b.value / users.length) * 100)}% of users`}
+                      value={String(b.value)}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className={`py-14 text-center text-[12px] ${T.muted}`}>
+                {loading ? "Loading…" : "No users yet"}
+              </p>
+            )}
           </div>
-        ))}
+        </Panel>
+
+        <Panel className="lg:col-span-2">
+          <PanelHeader icon={LineIcon} title="Signups Over Time"
+                       right={<><Pill>Monthly</Pill><IconButton label="Open signups" /></>} />
+          <div className="px-5 pb-4">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className={`text-[24px] font-bold leading-none tracking-[-0.02em] ${T.ink}`}>
+                  {m.trend.reduce((s, t) => s + t.value, 0)}
+                </p>
+                <p className={`mt-1 text-[11px] ${T.muted}`}>Joined in the last 7 months</p>
+              </div>
+              <TrendKey />
+            </div>
+            <TrendChart data={m.trend} target={m.target} />
+          </div>
+        </Panel>
       </div>
 
-      {/* Table */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7C3AED]" />
-        </div>
-      ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-[#E2E8F0] dark:border-gray-700 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-[#7C3AED] text-white">
-                <th className="px-6 py-4 text-left text-sm font-semibold">User</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">Role</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">Plan</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">Credits</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">Applications</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">Joined</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E2E8F0] dark:divide-gray-700">
-              {paginated.map((user) => (
-                <>
-                  <tr
-                    key={user.id}
-                    className="hover:bg-[#F8FAFC] dark:hover:bg-gray-700 transition-colors"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[#EDE9FE] dark:bg-purple-900 flex items-center justify-center text-[#7C3AED] text-xs font-bold shrink-0">
-                          {getInitials(user.full_name || "?")}
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-[#1E293B] dark:text-white">{user.full_name}</p>
-                          <p className="text-xs text-[#64748B] dark:text-gray-400">{user.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${roleColors[user.role || "client"] || "bg-gray-100 text-gray-600"}`}>
-                        {user.role === "admin" ? <Shield size={10} /> : <User size={10} />}
+      {m.topUsers.length > 0 && (
+        <Panel>
+          <PanelHeader icon={BarChart3} title="Most Active Users" right={<Pill>All time</Pill>} />
+          <div className="px-5 pb-4">
+            <RankedBar data={m.topUsers} />
+          </div>
+        </Panel>
+      )}
+
+      {/* ── Mobile: one card per user ───────────────────────────────────── */}
+      <div className="space-y-3 md:hidden">
+        {loading ? (
+          [...Array(3)].map((_, i) => (
+            <Panel key={i} className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 animate-pulse rounded-full bg-[#EFEFEC] dark:bg-white/10" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 w-32 animate-pulse rounded bg-[#EFEFEC] dark:bg-white/10" />
+                  <div className="h-3 w-44 animate-pulse rounded bg-[#EFEFEC] dark:bg-white/10" />
+                </div>
+              </div>
+            </Panel>
+          ))
+        ) : paginated.length > 0 ? (
+          paginated.map((user) => {
+            const isOpen = expandedUser === user.id;
+            const isAdmin = user.role === "admin";
+
+            return (
+              <Panel key={user.id} className="overflow-hidden">
+                <div className="flex items-start gap-3 p-4">
+                  <Avatar name={user.full_name || "?"} size={44} />
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate text-[15px] font-bold ${T.ink}`}>{user.full_name}</p>
+                    <p className={`truncate text-[12.5px] ${T.muted}`}>{user.email}</p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex items-center gap-1 text-[11px] font-medium capitalize ${T.ink2}`}>
+                        {isAdmin
+                          ? <Shield size={10} className="text-[#D03B3B]" />
+                          : <User size={10} className={T.muted} />}
                         {user.role}
                       </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold capitalize ${planColors[user.plan || "basic"] || "bg-gray-100 text-gray-600"}`}>
-                        {user.plan}
+                      <span className={`rounded-md border ${T.hairline} px-1.5 py-0.5 text-[10.5px] font-medium ${T.ink}`}>
+                        {PLAN_LABEL[user.plan || "free"] || user.plan}
                       </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-[#1E293B]">
-                          {user.credits_remaining}
-                        </span>
-                        <button
-                          onClick={() => handleAddCredits(user.id, 200)}
-                          className="text-xs text-[#7C3AED] hover:underline"
-                          title="Add 200 credits"
-                        >
-                          +200
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-[#64748B] dark:text-gray-400">
+                    </div>
+                  </div>
+                </div>
+
+                {/* Credits and applications — the two numbers that get acted on. */}
+                <div className={`grid grid-cols-2 border-t ${T.hairline}`}>
+                  <div className={`border-r ${T.hairline} p-4`}>
+                    <p className={`text-[11px] ${T.muted}`}>Credits</p>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <span className={`text-[18px] font-bold leading-none tabular-nums ${T.ink}`}>
+                        {user.credits_remaining}
+                      </span>
+                      <button
+                        onClick={() => handleAddCredits(user.id, 200)}
+                        className={`inline-flex items-center gap-0.5 rounded-md border ${T.hairline} px-1.5 py-0.5
+                                    text-[10.5px] font-semibold ${T.ink2} hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+                      >
+                        <Plus size={9} strokeWidth={3} />200
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <p className={`text-[11px] ${T.muted}`}>Applications</p>
+                    <p className={`mt-0.5 text-[18px] font-bold leading-none tabular-nums ${T.ink}`}>
                       {user.total_applications}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-[#64748B] dark:text-gray-400">
-                      {format(new Date(user.created_at), "d MMM yyyy")}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setExpandedUser(
-                            expandedUser === user.id ? null : user.id
-                          )}
-                          className="p-1.5 rounded hover:bg-[#F1F5F9] dark:hover:bg-gray-700 text-[#64748B] dark:text-gray-400"
-                        >
-                          {expandedUser === user.id
-                            ? <ChevronUp size={16} />
-                            : <ChevronDown size={16} />
-                          }
-                        </button>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => handleEdit(user)}
-                        >
-                          Edit
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
+                    </p>
+                  </div>
+                </div>
 
-                  {/* Expanded Edit Row */}
-                  {expandedUser === user.id && (
-                    <tr key={`${user.id}-expanded`}>
-                      <td colSpan={7} className="px-6 py-4 bg-[#F8FAFC] dark:bg-gray-700 border-t border-[#E2E8F0] dark:border-gray-600">
-                        {editingUser === user.id ? (
-                          <div className="flex flex-wrap items-end gap-4">
-                            <div>
-                              <label className="block text-xs font-semibold text-[#64748B] dark:text-gray-400 mb-1">Plan</label>
-                              <select
-                                value={editValues.plan}
-                                onChange={(e) => setEditValues((p) => ({ ...p, plan: e.target.value }))}
-                                className="px-3 py-2 text-sm border border-[#E2E8F0] dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
-                              >
-                                <option value="free">Basic Plan</option>
-                                <option value="starter">Starter</option>
-                                <option value="pro">Pro</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-[#64748B] dark:text-gray-400 mb-1">Credits</label>
-                              <input
-                                type="number"
-                                value={editValues.credits}
-                                onChange={(e) => setEditValues((p) => ({ ...p, credits: Number(e.target.value) }))}
-                                className="w-24 px-3 py-2 text-sm border border-[#E2E8F0] dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-[#64748B] dark:text-gray-400 mb-1">Role</label>
-                              <select
-                                value={editValues.role}
-                                onChange={(e) => setEditValues((p) => ({ ...p, role: e.target.value }))}
-                                className="px-3 py-2 text-sm border border-[#E2E8F0] dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
-                              >
-                                <option value="client">Client</option>
-                                <option value="admin">Admin</option>
-                              </select>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => handleSave(user.id)}
-                                disabled={saving}
-                              >
-                                {saving ? "Saving..." : "Save"}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setEditingUser(null)}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <p className="text-xs text-[#64748B] dark:text-gray-400 mb-1">Monthly Usage</p>
-                              <p className="font-semibold text-[#1E293B] dark:text-white">{user.monthly_usage_count} / month</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-[#64748B] dark:text-gray-400 mb-1">Total Applications</p>
-                              <p className="font-semibold text-[#1E293B] dark:text-white">{user.total_applications}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-[#64748B] dark:text-gray-400 mb-1">User ID</p>
-                              <p className="font-mono text-xs text-[#64748B] dark:text-gray-400">{user.id.slice(0, 16)}...</p>
-                            </div>
-                            <div className="flex flex-col gap-2">
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => handleEdit(user)}
-                              >
-                                Edit User
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleSendSummary(user)}
-                                disabled={sendingSummaryId === user.id || user.total_applications === 0}
-                              >
-                                <FileText size={14} className="mr-1.5" />
-                                {sendingSummaryId === user.id ? "Generating…" : "Send Summary"}
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                <div className={`flex items-center justify-between gap-3 border-t ${T.hairline} px-4 py-3`}>
+                  <span className={`text-[11.5px] ${T.muted}`}>
+                    Joined {format(new Date(user.created_at), "d MMM yyyy")}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <GhostButton
+                      onClick={() => {
+                        setExpandedUser(isOpen ? null : user.id);
+                        if (isOpen) setEditingUser(null);
+                      }}
+                    >
+                      {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </GhostButton>
+                    <PrimaryButton onClick={() => handleEdit(user)}>Edit</PrimaryButton>
+                  </div>
+                </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-[#64748B] dark:text-gray-400">Page {currentPage} of {totalPages}</p>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-1.5 text-sm border border-[#E2E8F0] dark:border-gray-600 rounded-lg text-[#64748B] dark:text-gray-400 hover:bg-[#F8FAFC] dark:hover:bg-gray-700 disabled:opacity-40"
-            >
-              ← Previous
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <button
-                key={page}
-                onClick={() => setCurrentPage(page)}
-                className={`px-3 py-1.5 text-sm border rounded-lg transition-colors ${
-                  currentPage === page
-                    ? "border-[#7C3AED] bg-[#7C3AED] text-white"
-                    : "border-[#E2E8F0] dark:border-gray-600 text-[#64748B] dark:text-gray-400 hover:bg-[#F8FAFC] dark:hover:bg-gray-700"
-                }`}
-              >
-                {page}
-              </button>
+                {isOpen && renderDetails(user)}
+              </Panel>
+            );
+          })
+        ) : (
+          <Panel>
+            {loadError ? (
+              <EmptyState icon={AlertTriangle} title="Couldn't load users" hint={loadError} />
+            ) : (
+              <EmptyState
+                icon={Inbox}
+                title={search ? "No matches" : "No users yet"}
+                hint={search ? "No users match that search." : "Registered users appear here."}
+              />
+            )}
+          </Panel>
+        )}
+      </div>
+
+      {/* ── Desktop: table ──────────────────────────────────────────────── */}
+      <Panel className="hidden overflow-hidden md:block">
+        {loading ? (
+          <div className={`divide-y ${T.divide}`}>
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-5 py-4">
+                <div className="h-8 w-8 animate-pulse rounded-full bg-[#EFEFEC] dark:bg-white/10" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 w-40 animate-pulse rounded bg-[#EFEFEC] dark:bg-white/10" />
+                  <div className="h-3 w-56 animate-pulse rounded bg-[#EFEFEC] dark:bg-white/10" />
+                </div>
+              </div>
             ))}
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1.5 text-sm border border-[#E2E8F0] dark:border-gray-600 rounded-lg text-[#64748B] dark:text-gray-400 hover:bg-[#F8FAFC] dark:hover:bg-gray-700 disabled:opacity-40"
-            >
-              Next →
-            </button>
           </div>
-        </div>
-      )}
+        ) : paginated.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px]">
+              <thead className={`border-b ${T.hairline} bg-[#FAFAF8] dark:bg-white/[0.02]`}>
+                <tr>
+                  <Th>User</Th>
+                  <Th>Role</Th>
+                  <Th>Plan</Th>
+                  <Th>Credits</Th>
+                  <Th>Applications</Th>
+                  <Th>Joined</Th>
+                  <Th className="text-right">Actions</Th>
+                </tr>
+              </thead>
+              <tbody className={`divide-y ${T.divide}`}>
+                {paginated.map((user) => {
+                  const isOpen = expandedUser === user.id;
+                  const isEditing = editingUser === user.id;
+
+                  return (
+                    <React.Fragment key={user.id}>
+                      <tr className={`transition-colors ${T.hover}`}>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <Avatar name={user.full_name || "?"} />
+                            <div className="min-w-0">
+                              <p className={`truncate text-[13px] font-semibold ${T.ink}`}>
+                                {user.full_name}
+                              </p>
+                              <p className={`truncate text-[11px] ${T.muted}`}>{user.email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span className={`inline-flex items-center gap-1.5 text-[11.5px] font-medium capitalize ${T.ink2}`}>
+                            {user.role === "admin"
+                              ? <Shield size={11} className="text-[#D03B3B]" />
+                              : <User size={11} className={T.muted} />}
+                            {user.role}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span className={`inline-flex rounded-md border ${T.hairline} px-1.5 py-0.5 text-[11px] font-medium ${T.ink}`}>
+                            {PLAN_LABEL[user.plan || "free"] || user.plan}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[12.5px] font-semibold tabular-nums ${T.ink}`}>
+                              {user.credits_remaining}
+                            </span>
+                            <button
+                              onClick={() => handleAddCredits(user.id, 200)}
+                              title="Add 200 credits"
+                              className={`inline-flex items-center gap-0.5 rounded-md border ${T.hairline} px-1.5 py-0.5
+                                          text-[10.5px] font-semibold ${T.ink2} transition-colors
+                                          hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+                            >
+                              <Plus size={9} strokeWidth={3} />200
+                            </button>
+                          </div>
+                        </td>
+                        <td className={`px-5 py-3.5 text-[12.5px] tabular-nums ${T.ink2}`}>
+                          {user.total_applications}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <p className={`text-[12px] tabular-nums ${T.ink2}`}>
+                            {format(new Date(user.created_at), "d MMM yyyy")}
+                          </p>
+                          <p className={`text-[10.5px] ${T.muted}`}>
+                            {formatDistanceToNow(new Date(user.created_at), { addSuffix: true })}
+                          </p>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center justify-end gap-2">
+                            <GhostButton
+                              onClick={() => {
+                                setExpandedUser(isOpen ? null : user.id);
+                                if (isOpen) setEditingUser(null);
+                              }}
+                            >
+                              {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                            </GhostButton>
+                            <PrimaryButton onClick={() => handleEdit(user)}>Edit</PrimaryButton>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {isOpen && (
+                        <tr>
+                          <td colSpan={7} className="p-0">
+                            {renderDetails(user)}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : loadError ? (
+          <EmptyState icon={AlertTriangle} title="Couldn't load users" hint={loadError} />
+        ) : (
+          <EmptyState
+            icon={Inbox}
+            title={search ? "No matches" : "No users yet"}
+            hint={search ? "No users match that search." : "Registered users appear here."}
+          />
+        )}
+      </Panel>
+
+      <Pagination page={currentPage} totalPages={totalPages} onChange={setCurrentPage} />
     </div>
   );
 };

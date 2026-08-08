@@ -1,9 +1,16 @@
-import { useState, useEffect } from "react";
-import { Search, ExternalLink, CheckCircle, Clock, Send } from "lucide-react";
-import { Button } from "../ui/Button";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import {
+  ExternalLink, CheckCircle2, Send, Info, ChevronDown, ChevronUp,
+  ClipboardCheck, AlertTriangle,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/admin/toast/ToastContext";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import {
+  T, Panel, Th, Avatar, SearchInput, PrimaryButton, GhostButton,
+  Pagination, EmptyState, ConfirmDialog,
+} from "@/admin/ui/system";
+import { useRegisterExport } from "@/admin/context/AdminActionsContext";
 
 interface ApprovedApplication {
   id: string;
@@ -21,23 +28,32 @@ interface ApprovedApplication {
 
 const ITEMS_PER_PAGE = 10;
 
+const csvCell = (v: unknown) => {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
 const SubmissionQueuePage = (): JSX.Element => {
   const [applications, setApplications] = useState<ApprovedApplication[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [submittingAll, setSubmittingAll] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [expandedApp, setExpandedApp] = useState<string | null>(null);
   const { pushToast } = useToast();
 
   useEffect(() => {
     fetchApprovedApps();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchApprovedApps = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
 
       const { data: apps, error } = await supabase
         .from("applications")
@@ -46,7 +62,9 @@ const SubmissionQueuePage = (): JSX.Element => {
         .order("updated_at", { ascending: true }); // oldest approved first
 
       if (error) {
-        pushToast({ variant: "error", title: "Error", message: "Failed to load queue" });
+        console.error("[SubmissionQueue] query failed:", error);
+        setLoadError(error.message || "Failed to load queue");
+        pushToast({ variant: "error", title: "Error", message: error.message || "Failed to load queue" });
         return;
       }
 
@@ -62,7 +80,7 @@ const SubmissionQueuePage = (): JSX.Element => {
         .in("id", userIds);
 
       const profileMap = new Map(
-        (profiles || []).map((p) => [p.id, { full_name: p.full_name, email: p.email }])
+        (profiles || []).map((p) => [p.id, { full_name: p.full_name, email: p.email }]),
       );
 
       const enriched: ApprovedApplication[] = apps.map((app) => {
@@ -75,7 +93,9 @@ const SubmissionQueuePage = (): JSX.Element => {
       });
 
       setApplications(enriched);
-    } catch (err) {
+    } catch (err: any) {
+      console.error("[SubmissionQueue] unexpected error:", err);
+      setLoadError(err?.message || "Unexpected error");
       pushToast({ variant: "error", title: "Error", message: "Unexpected error" });
     } finally {
       setLoading(false);
@@ -108,7 +128,11 @@ const SubmissionQueuePage = (): JSX.Element => {
         return;
       }
       if (!data || data.length === 0) {
-        pushToast({ variant: "warning", title: "Skipped", message: "This application is no longer awaiting submission." });
+        pushToast({
+          variant: "warning",
+          title: "Skipped",
+          message: "This application is no longer awaiting submission.",
+        });
         setApplications((prev) => prev.filter((a) => a.id !== appId)); // drop stale row
         return;
       }
@@ -126,10 +150,6 @@ const SubmissionQueuePage = (): JSX.Element => {
   // chunked to stay within request limits, race-guarded, audit-stamped.
   const handleSubmitAll = async () => {
     if (filtered.length === 0) return;
-    const ok = window.confirm(
-      `Mark all ${filtered.length} approved application${filtered.length === 1 ? "" : "s"} as submitted? This cannot be undone.`
-    );
-    if (!ok) return;
 
     setSubmittingAll(true);
     try {
@@ -165,210 +185,350 @@ const SubmissionQueuePage = (): JSX.Element => {
           message: `${submittedIds.size} application${submittedIds.size === 1 ? "" : "s"} marked as submitted.`,
         });
       } else {
-        pushToast({ variant: "warning", title: "Nothing submitted", message: "No approved applications were updated." });
+        pushToast({
+          variant: "warning",
+          title: "Nothing submitted",
+          message: "No approved applications were updated.",
+        });
       }
     } catch (e: any) {
       pushToast({ variant: "error", title: "Error", message: e.message });
     } finally {
       setSubmittingAll(false);
+      setConfirmOpen(false);
     }
   };
 
-  const filtered = applications.filter((app) =>
-    app.company_name.toLowerCase().includes(search.toLowerCase()) ||
-    app.job_title.toLowerCase().includes(search.toLowerCase()) ||
-    app.user_full_name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return applications.filter(
+      (app) =>
+        app.company_name.toLowerCase().includes(q) ||
+        app.job_title.toLowerCase().includes(q) ||
+        app.user_full_name.toLowerCase().includes(q),
+    );
+  }, [applications, search]);
+
+  const exportCsv = useCallback(() => {
+    const header = ["Applicant", "Email", "Company", "Job title", "Job URL", "Approved on"];
+    const rows = filtered.map((a) => [
+      a.user_full_name, a.user_email, a.company_name, a.job_title, a.job_url ?? "",
+      format(new Date(a.updated_at || a.created_at), "yyyy-MM-dd"),
+    ]);
+    const csv = [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `submission-queue-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filtered]);
+
+  useRegisterExport(exportCsv);
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated = filtered.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
+    currentPage * ITEMS_PER_PAGE,
+  );
+
+  // Oldest item in the queue — the thing most at risk of going stale.
+  const oldest = filtered.length
+    ? filtered[0].updated_at || filtered[0].created_at
+    : null;
+
+  /** Cover letter + notes panel — shared by the desktop table and mobile cards. */
+  const renderLetter = (app: ApprovedApplication) => (
+    <div className={`border-t ${T.hairline} bg-[#FAFAF8] px-4 py-4 dark:bg-white/[0.02] sm:px-5`}>
+      <p className={`mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] ${T.muted}`}>
+        Cover letter
+      </p>
+      <div className={`max-h-60 overflow-y-auto rounded-xl border ${T.hairline} bg-white p-4 dark:bg-[#1A1A19]`}>
+        <p className={`whitespace-pre-wrap text-[12.5px] leading-relaxed ${T.ink}`}>
+          {app.cover_letter || (
+            <span className={`italic ${T.muted}`}>No cover letter available.</span>
+          )}
+        </p>
+      </div>
+      {app.admin_notes && (
+        <div className="mt-3 rounded-xl border border-[#FAB219]/30 bg-[#FAB219]/10 p-3">
+          <p className={`text-[10px] font-semibold uppercase tracking-[0.08em] ${T.muted}`}>
+            Admin notes
+          </p>
+          <p className={`mt-1 text-[12px] ${T.ink}`}>{app.admin_notes}</p>
+        </div>
+      )}
+    </div>
   );
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+    <div className="space-y-4">
+      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[#1E293B] dark:text-white">Submission Queue</h1>
-          <p className="text-sm text-[#64748B] mt-1">
-            {loading ? "Loading..." : `${filtered.length} approved application${filtered.length !== 1 ? "s" : ""} ready to submit`}
+          <h1 className={`text-[20px] font-bold tracking-[-0.01em] ${T.ink}`}>Submission Queue</h1>
+          <p className={`text-[12px] ${T.muted}`}>
+            {loading
+              ? "Loading…"
+              : `${filtered.length} approved application${filtered.length !== 1 ? "s" : ""} ready to submit`}
+            {oldest && !loading && (
+              <> · oldest {formatDistanceToNow(new Date(oldest), { addSuffix: true })}</>
+            )}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="flex flex-wrap items-center gap-2">
+          <SearchInput
+            value={search}
+            onChange={(v) => { setSearch(v); setCurrentPage(1); }}
+            placeholder="Applicant, company, role…"
+          />
           {!loading && filtered.length > 0 && (
-            <button
-              onClick={handleSubmitAll}
-              disabled={submittingAll}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-[#10B981] rounded-lg hover:bg-[#059669] transition-colors disabled:opacity-50"
-            >
-              <Send size={14} />
-              {submittingAll ? "Submitting…" : `Submit All (${filtered.length})`}
-            </button>
+            <PrimaryButton onClick={() => setConfirmOpen(true)}>
+              <Send size={13} />
+              {submittingAll ? "Submitting…" : `Submit all (${filtered.length})`}
+            </PrimaryButton>
           )}
-          <div className="relative w-64">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-              className="w-full pl-9 pr-4 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED] dark:bg-gray-800 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500"
-            />
-          </div>
         </div>
       </div>
 
-      {/* Info Banner */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-        <Clock size={18} className="text-blue-500 mt-0.5 shrink-0" />
+      {/* ── How-to banner ───────────────────────────────────────────────── */}
+      <Panel className="flex items-start gap-3 px-5 py-3.5">
+        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#2a78d6]/10 text-[#2a78d6] dark:bg-[#3987e5]/15 dark:text-[#3987e5]">
+          <Info size={14} />
+        </span>
         <div>
-          <p className="text-sm font-semibold text-blue-800">How to use this queue</p>
-          <p className="text-xs text-blue-600 mt-0.5">
-            These applications have been reviewed and approved. Open the job URL, submit manually using the user's cover letter, then click "Mark as Submitted".
+          <p className={`text-[12.5px] font-semibold ${T.ink}`}>How this queue works</p>
+          <p className={`mt-0.5 text-[11.5px] leading-relaxed ${T.ink2}`}>
+            These applications are reviewed and approved. Open the job posting, submit manually
+            using the applicant&apos;s cover letter, then mark it as submitted here.
           </p>
         </div>
+      </Panel>
+
+      {/* ── Mobile: one card per application ────────────────────────────── */}
+      <div className="space-y-3 md:hidden">
+        {loading ? (
+          [...Array(3)].map((_, i) => (
+            <Panel key={i} className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 animate-pulse rounded-full bg-[#EFEFEC] dark:bg-white/10" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 w-32 animate-pulse rounded bg-[#EFEFEC] dark:bg-white/10" />
+                  <div className="h-3 w-44 animate-pulse rounded bg-[#EFEFEC] dark:bg-white/10" />
+                </div>
+              </div>
+            </Panel>
+          ))
+        ) : paginated.length > 0 ? (
+          paginated.map((app) => {
+            const isOpen = expandedApp === app.id;
+            const busy = submitting === app.id || submittingAll;
+
+            return (
+              <Panel key={app.id} className="overflow-hidden">
+                <div className="flex items-start gap-3 p-4">
+                  <Avatar name={app.user_full_name} size={40} />
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate text-[14px] font-bold ${T.ink}`}>{app.user_full_name}</p>
+                    <p className={`truncate text-[12px] ${T.muted}`}>{app.user_email}</p>
+                  </div>
+                </div>
+
+                <div className={`border-t ${T.hairline} p-4`}>
+                  <p className={`text-[13px] font-semibold ${T.ink}`}>{app.company_name}</p>
+                  <p className={`text-[12px] ${T.ink2}`}>{app.job_title}</p>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className={`text-[11px] ${T.muted}`}>
+                      Approved {formatDistanceToNow(new Date(app.updated_at || app.created_at), { addSuffix: true })}
+                    </span>
+                    {app.job_url && (
+                      <a
+                        href={app.job_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-0.5 text-[11px] font-medium text-[#2a78d6] hover:underline dark:text-[#3987e5]"
+                      >
+                        Open posting <ExternalLink size={10} />
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Mark submitted is the primary action here, so it gets the
+                    full width rather than competing in a button row. */}
+                <div className={`space-y-2 border-t ${T.hairline} p-4`}>
+                  <button
+                    onClick={() => !busy && handleMarkSubmitted(app.id)}
+                    disabled={busy}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#111110]
+                               px-3 py-2.5 text-[13px] font-semibold text-white transition-opacity
+                               hover:opacity-90 disabled:opacity-50 dark:bg-white dark:text-[#111110]"
+                  >
+                    <CheckCircle2 size={14} />
+                    {submitting === app.id ? "Marking…" : "Mark submitted"}
+                  </button>
+
+                  <button
+                    onClick={() => setExpandedApp(isOpen ? null : app.id)}
+                    className={`flex w-full items-center justify-center gap-1.5 rounded-xl border ${T.hairline}
+                                px-3 py-2 text-[12.5px] font-medium ${T.ink2} transition-colors
+                                hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+                  >
+                    {isOpen ? <><ChevronUp size={13} /> Hide letter</> : <><ChevronDown size={13} /> View letter</>}
+                  </button>
+                </div>
+
+                {isOpen && renderLetter(app)}
+              </Panel>
+            );
+          })
+        ) : (
+          <Panel>
+            {loadError ? (
+              <EmptyState icon={AlertTriangle} title="Couldn't load the queue" hint={loadError} />
+            ) : (
+              <EmptyState
+                icon={search ? ClipboardCheck : CheckCircle2}
+                title={search ? "No matches" : "Queue is empty"}
+                hint={
+                  search
+                    ? "No approved applications match that search."
+                    : "Nothing approved is waiting to be submitted."
+                }
+              />
+            )}
+          </Panel>
+        )}
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7C3AED]" />
-        </div>
-      ) : paginated.length > 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-[#E2E8F0] dark:border-gray-700 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-[#7C3AED] text-white">
-                <th className="px-6 py-4 text-left text-sm font-semibold">Applicant</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">Company</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">Job Title</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">Approved On</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E2E8F0] dark:divide-gray-700">
-              {paginated.map((app) => (
-                <>
-                  <tr key={app.id} className="hover:bg-[#F8FAFC] dark:hover:bg-gray-700 transition-colors">
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="text-sm font-semibold text-[#1E293B] dark:text-white">{app.user_full_name}</p>
-                        <p className="text-xs text-[#64748B] dark:text-gray-400">{app.user_email}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="text-sm font-medium text-[#1E293B] dark:text-white">{app.company_name}</p>
-                        {app.job_url && (
-                          <a
-                            href={app.job_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-[#7C3AED] dark:text-purple-400 hover:underline flex items-center gap-0.5"
-                          >
-                            Open Job <ExternalLink size={10} />
-                          </a>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-[#64748B] dark:text-gray-400">{app.job_title}</td>
-                    <td className="px-6 py-4 text-sm text-[#64748B] dark:text-gray-400">
-                      {format(new Date(app.updated_at || app.created_at), "d MMM yyyy")}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setExpandedApp(expandedApp === app.id ? null : app.id)}
-                          className="text-xs text-[#7C3AED] hover:underline"
-                        >
-                          {expandedApp === app.id ? "Hide Letter" : "View Letter"}
-                        </button>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => handleMarkSubmitted(app.id)}
-                          disabled={submitting === app.id || submittingAll}
-                        >
-                          {submitting === app.id ? "..." : (
-                            <span className="flex items-center gap-1">
-                              <CheckCircle size={12} />
-                              Mark Submitted
-                            </span>
-                          )}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {expandedApp === app.id && (
-                    <tr key={`${app.id}-cover`}>
-                      <td colSpan={5} className="px-6 py-4 bg-[#F8FAFC] dark:bg-gray-700 border-t border-[#E2E8F0] dark:border-gray-600">
-                        <p className="text-xs font-semibold text-[#64748B] dark:text-gray-400 uppercase mb-2">Cover Letter</p>
-                        <div className="bg-white dark:bg-gray-800 border border-[#E2E8F0] dark:border-gray-700 rounded-lg p-4 max-h-60 overflow-y-auto">
-                          <p className="text-sm text-[#1E293B] dark:text-gray-200 leading-relaxed whitespace-pre-wrap">
-                            {app.cover_letter || "No cover letter available."}
-                          </p>
-                        </div>
-                        {app.admin_notes && (
-                          <div className="mt-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3">
-                            <p className="text-xs font-semibold text-yellow-700 dark:text-yellow-400">Admin Notes:</p>
-                            <p className="text-xs text-yellow-800 dark:text-yellow-300 mt-1">{app.admin_notes}</p>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-[#E2E8F0] dark:border-gray-700 p-12 text-center">
-          <div className="w-16 h-16 bg-[#D1FAE5] dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle size={32} className="text-[#10B981]" />
-          </div>
-          <h3 className="text-xl font-semibold text-[#1E293B] dark:text-white mb-2">Queue is empty!</h3>
-          <p className="text-sm text-[#64748B] dark:text-gray-400">No approved applications waiting to be submitted.</p>
-        </div>
-      )}
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-[#64748B] dark:text-gray-400">Page {currentPage} of {totalPages}</p>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-1.5 text-sm border border-[#E2E8F0] dark:border-gray-600 rounded-lg text-[#64748B] dark:text-gray-400 hover:bg-[#F8FAFC] dark:hover:bg-gray-700 disabled:opacity-40"
-            >
-              ← Previous
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <button
-                key={page}
-                onClick={() => setCurrentPage(page)}
-                className={`px-3 py-1.5 text-sm border rounded-lg ${
-                  currentPage === page
-                    ? "border-[#7C3AED] bg-[#7C3AED] text-white"
-                    : "border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]"
-                }`}
-              >
-                {page}
-              </button>
+      {/* ── Desktop: table ──────────────────────────────────────────────── */}
+      <Panel className="hidden overflow-hidden md:block">
+        {loading ? (
+          <div className={`divide-y ${T.divide}`}>
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-5 py-4">
+                <div className="h-8 w-8 animate-pulse rounded-full bg-[#EFEFEC] dark:bg-white/10" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 w-40 animate-pulse rounded bg-[#EFEFEC] dark:bg-white/10" />
+                  <div className="h-3 w-56 animate-pulse rounded bg-[#EFEFEC] dark:bg-white/10" />
+                </div>
+              </div>
             ))}
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg text-[#64748B] hover:bg-[#F8FAFC] disabled:opacity-40"
-            >
-              Next →
-            </button>
           </div>
-        </div>
-      )}
+        ) : paginated.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px]">
+              <thead className={`border-b ${T.hairline} bg-[#FAFAF8] dark:bg-white/[0.02]`}>
+                <tr>
+                  <Th>Applicant</Th>
+                  <Th>Company</Th>
+                  <Th>Job title</Th>
+                  <Th>Approved</Th>
+                  <Th className="text-right">Actions</Th>
+                </tr>
+              </thead>
+              <tbody className={`divide-y ${T.divide}`}>
+                {paginated.map((app) => {
+                  const isOpen = expandedApp === app.id;
+                  const busy = submitting === app.id || submittingAll;
+
+                  return (
+                    <React.Fragment key={app.id}>
+                      <tr className={`transition-colors ${T.hover}`}>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <Avatar name={app.user_full_name} />
+                            <div className="min-w-0">
+                              <p className={`truncate text-[13px] font-semibold ${T.ink}`}>
+                                {app.user_full_name}
+                              </p>
+                              <p className={`truncate text-[11px] ${T.muted}`}>{app.user_email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <p className={`text-[12.5px] font-semibold ${T.ink}`}>{app.company_name}</p>
+                          {app.job_url && (
+                            <a
+                              href={app.job_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-0.5 text-[10.5px] font-medium text-[#2a78d6] hover:underline dark:text-[#3987e5]"
+                            >
+                              Open posting <ExternalLink size={9} />
+                            </a>
+                          )}
+                        </td>
+                        <td className={`px-5 py-3.5 text-[12.5px] ${T.ink2}`}>{app.job_title}</td>
+                        <td className="px-5 py-3.5">
+                          <p className={`text-[12px] tabular-nums ${T.ink2}`}>
+                            {format(new Date(app.updated_at || app.created_at), "d MMM yyyy")}
+                          </p>
+                          <p className={`text-[10.5px] ${T.muted}`}>
+                            {formatDistanceToNow(new Date(app.updated_at || app.created_at), { addSuffix: true })}
+                          </p>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center justify-end gap-2">
+                            <GhostButton onClick={() => setExpandedApp(isOpen ? null : app.id)}>
+                              {isOpen ? <><ChevronUp size={13} /> Hide</> : <><ChevronDown size={13} /> Letter</>}
+                            </GhostButton>
+                            <PrimaryButton onClick={() => !busy && handleMarkSubmitted(app.id)}>
+                              <CheckCircle2 size={13} />
+                              {submitting === app.id ? "Marking…" : "Mark submitted"}
+                            </PrimaryButton>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {isOpen && (
+                        <tr>
+                          <td colSpan={5} className="p-0">
+                            {renderLetter(app)}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : loadError ? (
+          <EmptyState icon={AlertTriangle} title="Couldn't load the queue" hint={loadError} />
+        ) : (
+          <EmptyState
+            icon={search ? ClipboardCheck : CheckCircle2}
+            title={search ? "No matches" : "Queue is empty"}
+            hint={
+              search
+                ? "No approved applications match that search."
+                : "Nothing approved is waiting to be submitted."
+            }
+          />
+        )}
+      </Panel>
+
+      <Pagination page={currentPage} totalPages={totalPages} onChange={setCurrentPage} />
+
+      <ConfirmDialog
+        open={confirmOpen}
+        busy={submittingAll}
+        title="Mark all as submitted?"
+        destructive
+        confirmLabel={`Submit ${filtered.length}`}
+        body={
+          <>
+            This marks <strong>{filtered.length}</strong> approved application
+            {filtered.length === 1 ? "" : "s"} as submitted
+            {search && <> matching “{search}”</>}. This cannot be undone.
+          </>
+        }
+        onConfirm={handleSubmitAll}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 };

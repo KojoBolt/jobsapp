@@ -1,8 +1,20 @@
-import { useState, useEffect } from "react";
-import { CheckCircle, XCircle, ExternalLink } from "lucide-react";
-import { StatCard } from "../dashboard/StatCard";
-import { format, formatDistanceToNow } from "date-fns";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import {
+  CheckCircle2, XCircle, ExternalLink, CalendarCheck, CalendarRange,
+  CalendarDays, Gauge, PieChart, LineChart as LineIcon, CalendarClock,
+  History, Inbox, AlertTriangle,
+} from "lucide-react";
+import { format, formatDistanceToNow, subMonths, startOfMonth } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  T, Panel, PanelHeader, StatTile, Pill, IconButton, LegendRow,
+  Pagination, EmptyState, CHART,
+} from "@/admin/ui/system";
+import {
+  PipelineGauge, TrendChart, TrendKey, ActivityHeatmap,
+  useRamp, type GaugeBand, type HeatCell,
+} from "@/admin/ui/charts";
+import { useRegisterExport, useAdminActions } from "@/admin/context/AdminActionsContext";
 
 interface Activity {
   id: string;
@@ -14,36 +26,29 @@ interface Activity {
   updated_at: string;
 }
 
+const PAGE_SIZE = 20;
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const BANDS = ["00–08", "08–16", "16–24"];
+
+const csvCell = (v: unknown) => {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
 const MyActivityPage = (): JSX.Element => {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    todayCount: 0,
-    weekCount: 0,
-    monthCount: 0,
-    approvalRate: 0,
-    todayPercent: 0,
-    weekPercent: 0,
-    monthPercent: 0,
-  });
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const { ramp } = useRamp();
+  const { inRange } = useAdminActions();
 
   useEffect(() => {
     const fetchActivity = async () => {
       try {
         setLoading(true);
+        setLoadError(null);
 
-        const now = new Date();
-        const todayStart = new Date(now);
-        todayStart.setHours(0, 0, 0, 0);
-
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - 7);
-
-        const monthStart = new Date(now);
-        monthStart.setDate(1);
-        monthStart.setHours(0, 0, 0, 0);
-
-        // Fetch all reviewed applications
         const { data, error } = await supabase
           .from("applications")
           .select("id, status, company_name, job_title, job_url, admin_notes, updated_at, created_at")
@@ -51,59 +56,25 @@ const MyActivityPage = (): JSX.Element => {
           .order("updated_at", { ascending: false });
 
         if (error) {
-          console.error("Error fetching activity:", error);
+          console.error("[MyActivity] query failed:", error);
+          setLoadError(error.message || "Failed to load activity");
           return;
         }
 
-        const apps = data || [];
-
-        // Map to activity format
-        const mapped: Activity[] = apps.map((app) => ({
-          id: app.id,
-          action: app.status === "approved" ? "approved" : "failed",
-          company_name: app.company_name,
-          job_title: app.job_title,
-          job_url: app.job_url,
-          admin_notes: app.admin_notes,
-          updated_at: app.updated_at || app.created_at,
-        }));
-
-        setActivities(mapped);
-
-        // Calculate stats
-        const todayApps = apps.filter((a) => {
-          const date = new Date(a.updated_at || a.created_at);
-          return date >= todayStart;
-        });
-
-        const weekApps = apps.filter((a) => {
-          const date = new Date(a.updated_at || a.created_at);
-          return date >= weekStart;
-        });
-
-        const monthApps = apps.filter((a) => {
-          const date = new Date(a.updated_at || a.created_at);
-          return date >= monthStart;
-        });
-
-        const totalApproved = apps.filter((a) => a.status === "approved").length;
-        const approvalRate = apps.length > 0
-          ? Math.round((totalApproved / apps.length) * 100)
-          : 0;
-
-        // Calculate percentages relative to total
-        const total = apps.length || 1;
-        setStats({
-          todayCount: todayApps.length,
-          weekCount: weekApps.length,
-          monthCount: monthApps.length,
-          approvalRate,
-          todayPercent: Math.min(Math.round((todayApps.length / total) * 100), 100),
-          weekPercent: Math.min(Math.round((weekApps.length / total) * 100), 100),
-          monthPercent: Math.min(Math.round((monthApps.length / total) * 100), 100),
-        });
-      } catch (err) {
-        console.error("Unexpected error:", err);
+        setActivities(
+          (data || []).map((app) => ({
+            id: app.id,
+            action: app.status === "approved" ? "approved" : "failed",
+            company_name: app.company_name,
+            job_title: app.job_title,
+            job_url: app.job_url,
+            admin_notes: app.admin_notes,
+            updated_at: app.updated_at || app.created_at,
+          })),
+        );
+      } catch (err: any) {
+        console.error("[MyActivity] unexpected error:", err);
+        setLoadError(err?.message || "Unexpected error");
       } finally {
         setLoading(false);
       }
@@ -112,218 +83,316 @@ const MyActivityPage = (): JSX.Element => {
     fetchActivity();
   }, []);
 
-  // Group activities by date
-  const groupedActivities = activities.reduce((groups, activity) => {
-    const date = format(new Date(activity.updated_at), "MMM d, yyyy");
-    if (!groups[date]) groups[date] = [];
-    groups[date].push(activity);
-    return groups;
-  }, {} as Record<string, Activity[]>);
+  // The header's date range scopes the whole page — tiles, charts and feed all
+  // read from this, so they can never disagree with each other.
+  const scoped = useMemo(
+    () => activities.filter((a) => inRange(a.updated_at)),
+    [activities, inRange],
+  );
+
+  /* ── Derived metrics + chart series ───────────────────────────────────── */
+  const m = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const weekStart = new Date(now); weekStart.setDate(now.getDate() - 7);
+    const monthStart = startOfMonth(now);
+
+    const at = (a: Activity) => new Date(a.updated_at);
+    const since = (from: Date) => scoped.filter((a) => at(a) >= from).length;
+
+    const approved = scoped.filter((a) => a.action === "approved").length;
+    const rejected = scoped.length - approved;
+    const approvalRate = scoped.length
+      ? Math.round((approved / scoped.length) * 100)
+      : 0;
+
+    const bands: GaugeBand[] = scoped.length
+      ? [
+          { name: "Approved", value: approved },
+          { name: "Rejected", value: rejected },
+        ].filter((b) => b.value > 0)
+      : [];
+
+    // Decisions per month, last 7 months.
+    const trend = Array.from({ length: 7 }, (_, i) => {
+      const from = startOfMonth(subMonths(now, 6 - i));
+      const to = startOfMonth(subMonths(now, 5 - i));
+      return {
+        month: format(from, "MMM"),
+        value: scoped.filter((a) => at(a) >= from && at(a) < to).length,
+      };
+    });
+    const nonZero = trend.filter((t) => t.value > 0);
+    const target = nonZero.length
+      ? Math.round(nonZero.reduce((s, t) => s + t.value, 0) / nonZero.length)
+      : 0;
+
+    // When reviewing actually happens — weekday × 8-hour band.
+    const cells: HeatCell[] = [];
+    scoped.forEach((a) => {
+      const t = at(a);
+      const day = DAYS[(t.getDay() + 6) % 7];
+      const band = BANDS[Math.min(2, Math.floor(t.getHours() / 8))];
+      const hit = cells.find((c) => c.day === day && c.band === band);
+      if (hit) hit.value += 1;
+      else cells.push({ day, band, value: 1 });
+    });
+
+    return {
+      today: since(todayStart),
+      week: since(weekStart),
+      month: since(monthStart),
+      approved, rejected, approvalRate, bands, trend, target, cells,
+    };
+  }, [scoped]);
+
+  const exportCsv = useCallback(() => {
+    const header = ["Decision", "Company", "Job title", "Notes", "When"];
+    const rows = scoped.map((a) => [
+      a.action === "approved" ? "Approved" : "Rejected",
+      a.company_name, a.job_title, a.admin_notes ?? "",
+      format(new Date(a.updated_at), "yyyy-MM-dd HH:mm"),
+    ]);
+    const csv = [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `review-activity-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [scoped]);
+
+  useRegisterExport(exportCsv);
+
+  /* ── Feed: paginate flat, then group the page by day ──────────────────── */
+  const totalPages = Math.max(1, Math.ceil(scoped.length / PAGE_SIZE));
+  const start = (page - 1) * PAGE_SIZE;
+  const paged = scoped.slice(start, start + PAGE_SIZE);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const grouped = useMemo(() => {
+    const out: Record<string, Activity[]> = {};
+    paged.forEach((a) => {
+      const key = format(new Date(a.updated_at), "EEEE, d MMM yyyy");
+      (out[key] ||= []).push(a);
+    });
+    return Object.entries(out);
+  }, [paged]);
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
+    <div className="space-y-4">
+      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <div>
-        <h1 className="text-2xl font-bold text-[#1E293B] dark:text-white">My Activity</h1>
-        <p className="text-sm text-[#64748B] dark:text-gray-400 mt-1">
-          Track your review history and performance
+        <h1 className={`text-[20px] font-bold tracking-[-0.01em] ${T.ink}`}>My Activity</h1>
+        <p className={`text-[12px] ${T.muted}`}>
+          {loading ? "Loading…" : `${scoped.length} review decisions logged`}
         </p>
       </div>
 
-      {/* Stats Cards */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-white dark:bg-gray-50 rounded-lg shadow-md p-6 animate-pulse">
-              <div className="h-8 bg-gray-200 rounded w-16 mb-2" />
-              <div className="h-4 bg-gray-200 rounded w-32" />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <StatCard
-            number={stats.todayCount}
-            label="Reviewed Today"
-            percentage={stats.todayPercent}
-            accentColor="#10B981"
-          />
-          <StatCard
-            number={stats.weekCount}
-            label="Reviewed This Week"
-            percentage={stats.weekPercent}
-            accentColor="#2563EB"
-          />
-          <StatCard
-            number={stats.monthCount}
-            label="Reviewed This Month"
-            percentage={stats.monthPercent}
-            accentColor="#64748B"
-          />
-        </div>
-      )}
+      {/* ── Stat row ────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile icon={CalendarCheck} label="Reviewed Today" value={m.today}
+                  delta={0} caption="since midnight" loading={loading} />
+        <StatTile icon={CalendarRange} label="This Week" value={m.week}
+                  delta={0} caption="last 7 days" loading={loading} />
+        <StatTile icon={CalendarDays} label="This Month" value={m.month}
+                  delta={0} caption="month to date" loading={loading} />
+        <StatTile icon={Gauge} label="Approval Rate" value={`${m.approvalRate}%`}
+                  delta={0} caption="lifetime" loading={loading} />
+      </div>
 
-      {/* Activity Feed */}
-      <div className="rounded-lg shadow-sm border border-[#E2E8F0] dark:border-gray-700 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-[#1E293B] dark:text-white">Recent Activity</h2>
-          <span className="text-sm text-[#64748B] dark:text-gray-400">
-            {activities.length} total reviews
-          </span>
-        </div>
-
-        {loading ? (
-          <div className="space-y-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="flex gap-4 animate-pulse">
-                <div className="w-20 h-4 bg-gray-200 rounded" />
-                <div className="flex-1 h-20 bg-gray-200 rounded-lg" />
-              </div>
-            ))}
-          </div>
-        ) : activities.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-lg font-medium text-[#1E293B]">No activity yet</p>
-            <p className="text-sm text-[#64748B] mt-1">
-              Start reviewing applications to see your activity here.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {Object.entries(groupedActivities).map(([date, dayActivities]) => (
-              <div key={date}>
-                {/* Date separator */}
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="h-px flex-1 bg-[#E2E8F0]" />
-                  <span className="text-xs font-semibold text-[#64748B] uppercase tracking-wider px-2">
-                    {date}
-                  </span>
-                  <div className="h-px flex-1 bg-[#E2E8F0]" />
-                </div>
-
-                <div className="space-y-4">
-                  {dayActivities.map((activity) => (
-                    <div key={activity.id} className="flex gap-4">
-                      {/* Time */}
-                      <div className="w-14 flex-shrink-0 text-xs text-[#64748B] pt-1 text-right">
-                        {format(new Date(activity.updated_at), "HH:mm")}
-                      </div>
-
-                      {/* Activity Card */}
-                      <div
-                        className={`flex-1 bg-[#F8FAFC] dark:bg-gray-800 rounded-lg p-4 border-l-4 ${
-                          activity.action === "approved"
-                            ? "border-[#10B981]"
-                            : "border-[#EF4444]"
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          {activity.action === "approved" ? (
-                            <CheckCircle size={18} className="text-[#10B981] flex-shrink-0 mt-0.5" />
-                          ) : (
-                            <XCircle size={18} className="text-[#EF4444] flex-shrink-0 mt-0.5" />
-                          )}
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className={`text-sm font-semibold ${
-                                activity.action === "approved"
-                                  ? "text-[#10B981]"
-                                  : "text-[#EF4444]"
-                              }`}>
-                                {activity.action === "approved" ? "Approved" : "Rejected"}
-                              </span>
-                              <span className="text-xs text-[#94A3B8]">
-                                {formatDistanceToNow(new Date(activity.updated_at), { addSuffix: true })}
-                              </span>
-                            </div>
-
-                            <div className="text-sm font-medium text-[#1E293B]">
-                              {activity.company_name}
-                            </div>
-                            <div className="text-sm text-[#64748B]">
-                              {activity.job_title}
-                            </div>
-
-                            {activity.admin_notes && (
-                              <div className="mt-2 text-sm text-[#64748B] italic bg-white dark:bg-gray-800 rounded p-2 border border-[#E2E8F0] dark:border-gray-700">
-                                "{activity.admin_notes}"
-                              </div>
-                            )}
-
-                            {activity.job_url && (
-                              <a
-                                href={activity.job_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-2 inline-flex items-center gap-1 text-xs text-[#2563EB] hover:underline"
-                              >
-                                <ExternalLink size={11} />
-                                View Job Posting
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+      {/* ── Charts ──────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Panel>
+          <PanelHeader icon={PieChart} title="Decision Split"
+                       right={<IconButton label="Open decision split" />} />
+          <div className="px-4 pb-4 sm:px-5">
+            {scoped.length > 0 ? (
+              <>
+                <PipelineGauge bands={m.bands} total={scoped.length} caption="Decisions" />
+                <div className={`mt-2 divide-y ${T.divide}`}>
+                  {m.bands.map((b, i) => (
+                    <LegendRow
+                      key={b.name}
+                      color={ramp[i % ramp.length]}
+                      name={b.name}
+                      sub={`${Math.round((b.value / scoped.length) * 100)}% of decisions`}
+                      value={String(b.value)}
+                    />
                   ))}
                 </div>
+              </>
+            ) : (
+              <p className={`py-14 text-center text-[12px] ${T.muted}`}>
+                {loading ? "Loading…" : "No decisions yet"}
+              </p>
+            )}
+          </div>
+        </Panel>
+
+        <Panel className="lg:col-span-2">
+          <PanelHeader icon={LineIcon} title="Decisions Over Time"
+                       right={<><Pill>Monthly</Pill><IconButton label="Open trend" /></>} />
+          <div className="px-4 pb-4 sm:px-5">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className={`text-[24px] font-bold leading-none tracking-[-0.02em] ${T.ink}`}>
+                  {m.trend.reduce((s, t) => s + t.value, 0)}
+                </p>
+                <p className={`mt-1 text-[11px] ${T.muted}`}>Last 7 months</p>
               </div>
-            ))}
+              <TrendKey />
+            </div>
+            <TrendChart data={m.trend} target={m.target} />
+          </div>
+        </Panel>
+      </div>
+
+      {scoped.length > 0 && (
+        <Panel>
+          <PanelHeader icon={CalendarClock} title="Review Rhythm"
+                       right={<IconButton label="Open rhythm" />} />
+          <div className="px-4 pb-5 sm:px-5">
+            <p className={`mb-3 text-[11px] ${T.muted}`}>
+              When decisions get made, by weekday and time of day
+            </p>
+            <ActivityHeatmap cells={m.cells} days={DAYS} bands={BANDS} />
+          </div>
+        </Panel>
+      )}
+
+      {/* ── Feed ────────────────────────────────────────────────────────── */}
+      <Panel>
+        <PanelHeader
+          icon={History}
+          title="Review History"
+          right={
+            <span className={`text-[11px] ${T.muted}`}>
+              {m.approved} approved · {m.rejected} rejected
+            </span>
+          }
+        />
+
+        <div className="px-4 pb-4 sm:px-5">
+          {loading ? (
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex gap-3">
+                  <div className="h-4 w-12 animate-pulse rounded bg-[#EFEFEC] dark:bg-white/10" />
+                  <div className="h-16 flex-1 animate-pulse rounded-xl bg-[#EFEFEC] dark:bg-white/10" />
+                </div>
+              ))}
+            </div>
+          ) : loadError ? (
+            <EmptyState icon={AlertTriangle} title="Couldn't load activity" hint={loadError} />
+          ) : scoped.length === 0 ? (
+            <EmptyState
+              icon={Inbox}
+              title="No activity yet"
+              hint="Review decisions appear here once applications are approved or rejected."
+            />
+          ) : (
+            <div className="space-y-6">
+              {grouped.map(([date, dayActivities]) => (
+                <div key={date}>
+                  <div className="mb-3 flex items-center gap-3">
+                    <span className={`text-[10px] font-semibold uppercase tracking-[0.08em] ${T.muted}`}>
+                      {date}
+                    </span>
+                    <span className={`h-px flex-1 ${T.hairline} border-t`} />
+                    <span className={`text-[10px] tabular-nums ${T.muted}`}>
+                      {dayActivities.length}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {dayActivities.map((a) => {
+                      const approved = a.action === "approved";
+                      return (
+                        <div key={a.id} className="flex gap-3">
+                          {/* The time gutter costs ~56px of width — too much on a
+                              phone, where the time moves inside the card instead. */}
+                          <span className={`hidden w-11 shrink-0 pt-2.5 text-right text-[11px] tabular-nums sm:block ${T.muted}`}>
+                            {format(new Date(a.updated_at), "HH:mm")}
+                          </span>
+
+                          <div className={`flex-1 rounded-xl border ${T.hairline} p-3.5 transition-colors ${T.hover}`}>
+                            <div className="flex items-start gap-2.5">
+                              <span
+                                className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg"
+                                style={{
+                                  backgroundColor: `${approved ? CHART.good : CHART.critical}1A`,
+                                  color: approved ? CHART.good : CHART.critical,
+                                }}
+                              >
+                                {approved ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                              </span>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className={`text-[12.5px] font-semibold ${T.ink}`}>
+                                    {approved ? "Approved" : "Rejected"}
+                                    <span className={`ml-1.5 font-normal ${T.ink2}`}>
+                                      {a.company_name}
+                                    </span>
+                                  </span>
+                                  <span className={`shrink-0 text-[10.5px] tabular-nums ${T.muted}`}>
+                                    {/* Absolute time only on mobile, where the
+                                        gutter that carried it is hidden. */}
+                                    <span className="sm:hidden">
+                                      {format(new Date(a.updated_at), "HH:mm")} ·{" "}
+                                    </span>
+                                    {formatDistanceToNow(new Date(a.updated_at), { addSuffix: true })}
+                                  </span>
+                                </div>
+
+                                <p className={`mt-0.5 text-[12px] ${T.ink2}`}>{a.job_title}</p>
+
+                                {a.admin_notes && (
+                                  <p className={`mt-2 rounded-lg bg-[#FAFAF8] px-3 py-2 text-[12px] italic
+                                                 ${T.ink2} dark:bg-white/[0.03]`}>
+                                    “{a.admin_notes}”
+                                  </p>
+                                )}
+
+                                {a.job_url && (
+                                  <a
+                                    href={a.job_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="mt-2 inline-flex items-center gap-1 text-[10.5px] font-medium text-[#2a78d6] hover:underline dark:text-[#3987e5]"
+                                  >
+                                    <ExternalLink size={9} /> View job posting
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {!loading && !loadError && scoped.length > 0 && (
+          <div className={`border-t ${T.hairline} px-5 py-3`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className={`hidden text-[12px] sm:block ${T.muted}`}>
+                Showing {start + 1}–{Math.min(start + PAGE_SIZE, scoped.length)} of{" "}
+                {scoped.length}
+              </p>
+              <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+            </div>
           </div>
         )}
-      </div>
-
-      {/* Performance Summary */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-[#E2E8F0] dark:border-gray-700 p-6">
-        <h2 className="text-lg font-semibold text-[#1E293B] dark:text-gray-200 mb-4">
-          Performance Summary
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <div className="text-sm text-[#64748B] mb-2">Approval Rate</div>
-            <div className="flex items-end gap-2">
-              <div className="text-3xl font-bold text-[#10B981]">
-                {stats.approvalRate}%
-              </div>
-              <div className="text-sm text-[#64748B] mb-1">lifetime</div>
-            </div>
-            <div className="mt-2 h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#10B981] rounded-full transition-all"
-                style={{ width: `${stats.approvalRate}%` }}
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="text-sm text-[#64748B] mb-2">Total Reviewed</div>
-            <div className="flex items-end gap-2">
-              <div className="text-3xl font-bold text-[#2563EB]">
-                {activities.length}
-              </div>
-              <div className="text-sm text-[#64748B] mb-1">all time</div>
-            </div>
-            <div className="mt-2 text-xs text-[#64748B]">
-              {activities.filter((a) => a.action === "approved").length} approved,{" "}
-              {activities.filter((a) => a.action === "failed").length} rejected
-            </div>
-          </div>
-
-          <div>
-            <div className="text-sm text-[#64748B] mb-2">This Month</div>
-            <div className="flex items-end gap-2">
-              <div className="text-3xl font-bold text-[#64748B]">
-                {stats.monthCount}
-              </div>
-              <div className="text-sm text-[#64748B] mb-1">reviews</div>
-            </div>
-            <div className="mt-2 text-xs text-[#64748B]">
-              {stats.weekCount} in the last 7 days
-            </div>
-          </div>
-        </div>
-      </div>
+      </Panel>
     </div>
   );
 };

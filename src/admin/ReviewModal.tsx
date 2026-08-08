@@ -1,205 +1,8 @@
-// import React, { useState } from 'react';
-// import { X, ExternalLink, ChevronDown, ChevronUp, Download, User } from 'lucide-react';
-// import { Button } from './ui/Button';
-
-// // Real type matching DB schema
-// interface Application {
-//   id: string;
-//   user_id: string;
-//   company_name: string;
-//   job_title: string;
-//   job_url: string | null;
-//   job_description: string | null;
-//   cover_letter: string | null;
-//   status: string;
-//   admin_notes: string | null;
-//   created_at: string;
-//   campaign_id: string | null;
-//   match_score: number | null;
-// }
-
-// interface ReviewModalProps {
-//   application: Application;
-//   onClose: () => void;
-//   onApprove: (notes?: string) => void;
-//   onReject: (notes?: string) => void;
-// }
-
-// const ReviewModal = ({
-//   application,
-//   onClose,
-//   onApprove,
-//   onReject,
-// }: ReviewModalProps) => {
-//   const [reviewerNotes, setReviewerNotes] = useState('');
-//   const [showDescription, setShowDescription] = useState(false);
-//   const [coverLetterText, setCoverLetterText] = useState(
-//     application.cover_letter || '' // ✅ fixed field name
-//   );
-//   const [showConfirmReject, setShowConfirmReject] = useState(false);
-
-//   const handleApprove = () => {
-//     onApprove(reviewerNotes);
-//   };
-
-//   const handleReject = () => {
-//     if (!showConfirmReject) {
-//       setShowConfirmReject(true);
-//     } else {
-//       onReject(reviewerNotes);
-//     }
-//   };
-
-//   return (
-//     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
-//       <div className="bg-white sm:rounded-xl shadow-2xl w-full sm:max-w-[900px] h-full sm:h-auto sm:max-h-[90vh] flex flex-col sm:my-8">
-        
-//         {/* Header */}
-//         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[#E2E8F0]">
-//           <h2 className="text-lg sm:text-xl font-bold text-[#1E293B]">Review Application</h2>
-//           <button
-//             onClick={onClose}
-//             className="p-2 hover:bg-[#F8FAFC] rounded-lg transition-colors"
-//           >
-//             <X size={24} className="text-[#64748B]" />
-//           </button>
-//         </div>
-
-//         {/* Body */}
-//         <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6">
-//           <div className="space-y-6">
-
-//             {/* Job Info */}
-//             <div className="bg-[#F8FAFC] rounded-lg p-4 border border-[#E2E8F0]">
-//               <div className="flex items-start gap-3 mb-3">
-//                 <div className="w-10 h-10 bg-[#2563EB] rounded-full flex items-center justify-center flex-shrink-0">
-//                   <User size={20} className="text-white" />
-//                 </div>
-//                 <div>
-//                   {/*  Fixed field names */}
-//                   <div className="text-lg font-semibold text-[#1E293B]">
-//                     {application.company_name}
-//                   </div>
-//                   <div className="text-base font-medium text-[#64748B]">
-//                     {application.job_title}
-//                   </div>
-//                 </div>
-//               </div>
-
-//               {application.job_url && (
-//                 <a
-//                   href={application.job_url}
-//                   target="_blank"
-//                   rel="noopener noreferrer"
-//                   className="inline-flex items-center gap-1 text-sm text-[#2563EB] hover:underline"
-//                 >
-//                   View Job Posting
-//                   <ExternalLink size={14} />
-//                 </a>
-//               )}
-
-//               {/* Match Score */}
-//               {application.match_score !== null && (
-//                 <div className="mt-2 text-xs text-[#64748B]">
-//                   Match Score:{" "}
-//                   <span className="font-semibold text-[#2563EB]">
-//                     {application.match_score}%
-//                   </span>
-//                 </div>
-//               )}
-
-//               {/* Job Description */}
-//               {application.job_description && (
-//                 <>
-//                   <button
-//                     onClick={() => setShowDescription(!showDescription)}
-//                     className="flex items-center gap-2 mt-3 text-sm text-[#2563EB] hover:underline"
-//                   >
-//                     {showDescription ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-//                     {showDescription ? "Hide" : "View"} Full Description
-//                   </button>
-//                   {showDescription && (
-//                     <div className="mt-3 p-3 bg-white rounded-md text-sm text-[#64748B] leading-relaxed">
-//                       {application.job_description}
-//                     </div>
-//                   )}
-//                 </>
-//               )}
-//             </div>
-
-//             {/* Cover Letter */}
-//             <div>
-//               <h3 className="text-base font-semibold text-[#1E293B] mb-2">
-//                 Generated Cover Letter
-//               </h3>
-//               <textarea
-//                 value={coverLetterText}
-//                 onChange={(e) => setCoverLetterText(e.target.value)}
-//                 className="w-full min-h-[300px] p-4 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-sm text-[#1E293B] leading-relaxed resize-none"
-//                 placeholder="Cover letter content..."
-//               />
-//               <div className="text-xs text-[#64748B] mt-1 text-right">
-//                 {coverLetterText.length} characters
-//               </div>
-//             </div>
-
-//             {/* Reviewer Notes */}
-//             <div>
-//               <h3 className="text-base font-semibold text-[#1E293B] mb-2">
-//                 Reviewer Notes (Optional)
-//               </h3>
-//               <textarea
-//                 value={reviewerNotes}
-//                 onChange={(e) => setReviewerNotes(e.target.value)}
-//                 className="w-full min-h-[100px] p-4 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-sm text-[#1E293B] leading-relaxed resize-none"
-//                 placeholder="Add any notes about changes made or verification details..."
-//               />
-//             </div>
-
-//             {/* Existing Admin Notes */}
-//             {application.admin_notes && (
-//               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-//                 <p className="text-xs font-semibold text-yellow-700 mb-1">
-//                   Previous Admin Notes:
-//                 </p>
-//                 <p className="text-sm text-yellow-800">{application.admin_notes}</p>
-//               </div>
-//             )}
-//           </div>
-//         </div>
-
-//         {/* Footer */}
-//         <div className="px-4 sm:px-6 py-4 bg-[#F8FAFC] border-t border-[#E2E8F0] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
-//           <div className="flex items-center gap-3">
-//             <Button
-//               variant="outline-danger"
-//               onClick={handleReject}
-//               className="flex-1 sm:flex-none"
-//             >
-//               {showConfirmReject ? "Confirm Reject" : "Reject"}
-//             </Button>
-//             {showConfirmReject && (
-//               <span className="text-xs sm:text-sm text-[#EF4444]">Click again to confirm</span>
-//             )}
-//           </div>
-//           <Button
-//             variant="success"
-//             onClick={handleApprove}
-//             className="flex-1 sm:flex-none"
-//           >
-//             Approve & Submit
-//           </Button>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default ReviewModal;
-
-import React, { useState } from 'react';
-import { X, ExternalLink, ChevronDown, ChevronUp, User } from 'lucide-react';
-import { Button } from './ui/Button';
+import { useEffect, useState } from 'react';
+import { X, ExternalLink, ChevronDown, ChevronUp, Check, Ban } from 'lucide-react';
+import {
+  T, Avatar, ScoreMeter, GhostButton, ConfirmDialog,
+} from '@/admin/ui/system';
 
 interface Application {
   id: string;
@@ -219,7 +22,7 @@ interface Application {
 interface ReviewModalProps {
   application: Application;
   onClose: () => void;
-  onApprove: (notes?: string, coverLetter?: string) => void; // ✅ fixed signature
+  onApprove: (notes?: string, coverLetter?: string) => void;
   onReject: (notes?: string) => void;
 }
 
@@ -231,179 +34,226 @@ const ReviewModal = ({
 }: ReviewModalProps) => {
   const [reviewerNotes, setReviewerNotes] = useState('');
   const [showDescription, setShowDescription] = useState(false);
-  const [coverLetterText, setCoverLetterText] = useState(
-    application.cover_letter || ''
-  );
-  const [showConfirmReject, setShowConfirmReject] = useState(false);
+  const [coverLetterText, setCoverLetterText] = useState(application.cover_letter || '');
+  const [confirmReject, setConfirmReject] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const edited = coverLetterText !== (application.cover_letter || '');
+
+  // Escape closes, but never mid-submit or while the reject dialog is up.
+  // The backdrop deliberately does NOT close: this modal holds an editable
+  // cover letter, and a stray click outside would discard the edits silently.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSubmitting && !confirmReject) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isSubmitting, confirmReject, onClose]);
 
   const handleApprove = async () => {
     setIsSubmitting(true);
-    await onApprove(reviewerNotes, coverLetterText); // ✅ pass cover letter
+    await onApprove(reviewerNotes, coverLetterText);
     setIsSubmitting(false);
   };
 
   const handleReject = async () => {
-    if (!showConfirmReject) {
-      setShowConfirmReject(true);
-      return;
-    }
     setIsSubmitting(true);
     await onReject(reviewerNotes);
     setIsSubmitting(false);
+    setConfirmReject(false);
   };
 
+  const textarea = `w-full rounded-xl border ${T.hairline} bg-white p-3.5 text-[12.5px] leading-relaxed
+                    ${T.ink} resize-none focus:outline-none focus:ring-2 focus:ring-[#2a78d6]/30
+                    disabled:opacity-60 dark:bg-[#1A1A19]`;
+  const sectionLabel = `text-[10px] font-semibold uppercase tracking-[0.08em] ${T.muted}`;
+
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
-      <div className="bg-white sm:rounded-xl shadow-2xl w-full sm:max-w-[900px] h-full sm:h-auto sm:max-h-[90vh] flex flex-col sm:my-8">
+    <>
+      {/* z-[1900] clears the sticky header (z-[1000]) — at the previous z-50
+          the header painted over this modal. */}
+      <div className="fixed inset-0 z-[1900] flex items-start justify-center overflow-y-auto bg-black/40 p-0 backdrop-blur-sm sm:p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Review application"
+          className={`flex h-full w-full flex-col border ${T.hairline} bg-white shadow-2xl
+                      dark:bg-[#1A1A19] sm:my-8 sm:h-auto sm:max-h-[88vh] sm:max-w-[900px] sm:rounded-2xl`}
+        >
+          {/* ── Header ──────────────────────────────────────────────────── */}
+          <div className={`flex items-center justify-between gap-3 border-b ${T.hairline} px-5 py-3.5`}>
+            <div className="min-w-0">
+              <h2 className={`text-[15px] font-bold ${T.ink}`}>Review application</h2>
+              <p className={`truncate text-[11px] ${T.muted}`}>
+                {application.company_name} · {application.job_title}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              disabled={isSubmitting}
+              aria-label="Close"
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border ${T.hairline} ${T.ink2}
+                          transition-colors hover:bg-[#F4F4F2] disabled:opacity-50 dark:hover:bg-white/5`}
+            >
+              <X size={15} />
+            </button>
+          </div>
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[#E2E8F0]">
-          <h2 className="text-lg sm:text-xl font-bold text-[#1E293B]">Review Application</h2>
-          <button
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="p-2 hover:bg-[#F8FAFC] rounded-lg transition-colors"
-          >
-            <X size={24} className="text-[#64748B]" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6">
-          <div className="space-y-6">
-
-            {/* Job Info */}
-            <div className="bg-[#F8FAFC] rounded-lg p-4 border border-[#E2E8F0]">
-              <div className="flex items-start gap-3 mb-3">
-                <div className="w-10 h-10 bg-[#2563EB] rounded-full flex items-center justify-center flex-shrink-0">
-                  <User size={20} className="text-white" />
-                </div>
-                <div>
-                  <div className="text-lg font-semibold text-[#1E293B]">
+          {/* ── Body ────────────────────────────────────────────────────── */}
+          <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+            {/* Job info */}
+            <div className={`rounded-xl border ${T.hairline} p-4`}>
+              <div className="flex items-start gap-3">
+                <Avatar name={application.company_name || '?'} size={38} />
+                <div className="min-w-0 flex-1">
+                  <p className={`truncate text-[15px] font-bold ${T.ink}`}>
                     {application.company_name}
-                  </div>
-                  <div className="text-base font-medium text-[#64748B]">
-                    {application.job_title}
+                  </p>
+                  <p className={`truncate text-[12.5px] ${T.ink2}`}>{application.job_title}</p>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    {application.match_score !== null && (
+                      <span className="inline-flex items-center gap-2">
+                        <span className={sectionLabel}>Match</span>
+                        <ScoreMeter value={application.match_score} />
+                      </span>
+                    )}
+                    {application.job_url && (
+                      <a
+                        href={application.job_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11.5px] font-medium text-[#2a78d6] hover:underline dark:text-[#3987e5]"
+                      >
+                        View job posting <ExternalLink size={11} />
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {application.job_url && (
-                <a
-                  href={application.job_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-[#2563EB] hover:underline"
-                >
-                  View Job Posting
-                  <ExternalLink size={14} />
-                </a>
-              )}
-
-              {application.match_score !== null && (
-                <div className="mt-2 text-xs text-[#64748B]">
-                  Match Score:{" "}
-                  <span className={`font-semibold ${
-                    application.match_score >= 70 ? "text-[#10B981]" :
-                    application.match_score >= 40 ? "text-[#F59E0B]" :
-                    "text-[#EF4444]"
-                  }`}>
-                    {application.match_score}%
-                  </span>
-                </div>
-              )}
-
               {application.job_description && (
                 <>
                   <button
-                    onClick={() => setShowDescription(!showDescription)}
-                    className="flex items-center gap-2 mt-3 text-sm text-[#2563EB] hover:underline"
+                    onClick={() => setShowDescription((v) => !v)}
+                    className={`mt-3 flex items-center gap-1.5 text-[12px] font-semibold ${T.ink} hover:opacity-70`}
                   >
-                    {showDescription ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    {showDescription ? "Hide" : "View"} Full Description
+                    {showDescription ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    {showDescription ? 'Hide' : 'View'} full description
                   </button>
                   {showDescription && (
-                    <div className="mt-3 p-3 bg-white rounded-md text-sm text-[#64748B] leading-relaxed max-h-48 overflow-y-auto">
-                      {application.job_description}
+                    <div className={`mt-2 max-h-48 overflow-y-auto rounded-xl border ${T.hairline} bg-[#FAFAF8] p-3.5 dark:bg-white/[0.02]`}>
+                      <p className={`whitespace-pre-wrap text-[12.5px] leading-relaxed ${T.ink2}`}>
+                        {application.job_description}
+                      </p>
                     </div>
                   )}
                 </>
               )}
             </div>
 
-            {/* Cover Letter */}
+            {/* Cover letter */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-base font-semibold text-[#1E293B]">
-                  Generated Cover Letter
-                </h3>
-                <span className="text-xs text-[#64748B]">Editable</span>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className={sectionLabel}>Generated cover letter</span>
+                <span
+                  className={`text-[10.5px] ${
+                    edited ? 'font-semibold text-[#2a78d6] dark:text-[#3987e5]' : T.muted
+                  }`}
+                >
+                  {edited ? 'Edited' : 'Editable'}
+                </span>
               </div>
               <textarea
                 value={coverLetterText}
                 onChange={(e) => setCoverLetterText(e.target.value)}
                 disabled={isSubmitting}
-                className="w-full min-h-[300px] p-4 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-sm text-[#1E293B] leading-relaxed resize-none disabled:opacity-60"
-                placeholder="Cover letter content..."
+                className={`${textarea} min-h-[280px]`}
+                placeholder="Cover letter content…"
               />
-              <div className="text-xs text-[#64748B] mt-1 text-right">
-                {coverLetterText.length} characters
+              <div className="mt-1 flex items-center justify-between gap-3">
+                <span className={`text-[10.5px] ${T.muted}`}>
+                  {edited ? 'Edits are saved when you approve — rejecting discards them.' : ''}
+                </span>
+                <span className={`shrink-0 text-[10.5px] tabular-nums ${T.muted}`}>
+                  {coverLetterText.length} characters
+                </span>
               </div>
             </div>
 
-            {/* Reviewer Notes */}
+            {/* Reviewer notes */}
             <div>
-              <h3 className="text-base font-semibold text-[#1E293B] mb-2">
-                Reviewer Notes (Optional)
-              </h3>
+              <label className={`mb-1.5 block ${sectionLabel}`}>Reviewer notes (optional)</label>
               <textarea
                 value={reviewerNotes}
                 onChange={(e) => setReviewerNotes(e.target.value)}
                 disabled={isSubmitting}
-                className="w-full min-h-[100px] p-4 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-sm text-[#1E293B] leading-relaxed resize-none disabled:opacity-60"
-                placeholder="Add any notes about changes made or verification details..."
+                className={`${textarea} min-h-[90px]`}
+                placeholder="Notes about changes made or verification details…"
               />
             </div>
 
-            {/* Previous Admin Notes */}
+            {/* Previous notes */}
             {application.admin_notes && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-xs font-semibold text-yellow-700 mb-1">
-                  Previous Admin Notes:
-                </p>
-                <p className="text-sm text-yellow-800">{application.admin_notes}</p>
+              <div className="rounded-xl border border-[#FAB219]/30 bg-[#FAB219]/10 p-3.5">
+                <p className={sectionLabel}>Previous admin notes</p>
+                <p className={`mt-1 text-[12.5px] ${T.ink}`}>{application.admin_notes}</p>
               </div>
             )}
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="px-4 sm:px-6 py-4 bg-[#F8FAFC] border-t border-[#E2E8F0] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline-danger"
-              onClick={handleReject}
-              disabled={isSubmitting}
-              className="flex-1 sm:flex-none"
-            >
-              {isSubmitting ? "Processing..." : showConfirmReject ? "Confirm Reject" : "Reject"}
-            </Button>
-            {showConfirmReject && !isSubmitting && (
-              <span className="text-xs sm:text-sm text-[#EF4444]">Click again to confirm</span>
-            )}
-          </div>
-          <Button
-            variant="success"
-            onClick={handleApprove}
-            disabled={isSubmitting}
-            className="flex-1 sm:flex-none"
+          {/* ── Footer ──────────────────────────────────────────────────── */}
+          <div
+            className={`flex flex-col-reverse items-stretch justify-between gap-2 border-t ${T.hairline}
+                        bg-[#FAFAF8] px-5 py-3.5 dark:bg-white/[0.02] sm:flex-row sm:items-center`}
           >
-            {isSubmitting ? "Processing..." : "Approve & Submit"}
-          </Button>
+            <button
+              onClick={() => !isSubmitting && setConfirmReject(true)}
+              disabled={isSubmitting}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#D03B3B]/40
+                         px-3 py-1.5 text-[12px] font-semibold text-[#B32F2F] transition-colors
+                         hover:bg-[#D03B3B]/10 disabled:opacity-50 dark:text-[#EF7A7A]"
+            >
+              <Ban size={13} /> Reject
+            </button>
+
+            <div className="flex items-center gap-2 sm:justify-end">
+              <GhostButton onClick={() => !isSubmitting && onClose()}>Cancel</GhostButton>
+              <button
+                onClick={handleApprove}
+                disabled={isSubmitting}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#111110] px-3.5 py-1.5
+                           text-[12px] font-semibold text-white transition-opacity hover:opacity-90
+                           disabled:opacity-50 dark:bg-white dark:text-[#111110]"
+              >
+                <Check size={13} />
+                {isSubmitting ? 'Working…' : 'Approve'}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+
+      <ConfirmDialog
+        open={confirmReject}
+        busy={isSubmitting}
+        destructive
+        title="Reject this application?"
+        confirmLabel="Reject"
+        body={
+          <>
+            <strong>{application.job_title}</strong> at{' '}
+            <strong>{application.company_name}</strong> will be marked as rejected.
+            {reviewerNotes
+              ? ' Your reviewer notes will be saved with it.'
+              : ' No reviewer notes were added — consider explaining why.'}
+          </>
+        }
+        onConfirm={handleReject}
+        onCancel={() => setConfirmReject(false)}
+      />
+    </>
   );
 };
 

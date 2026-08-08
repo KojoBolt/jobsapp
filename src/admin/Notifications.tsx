@@ -1,7 +1,16 @@
-import { useState, useEffect } from "react";
-import { Bell, AlertCircle, CheckCircle, Clock, XCircle, Trash2 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  Bell, BellOff, FileText, UserPlus, CheckCircle2, AlertTriangle,
+  MessageSquare, Trash2, CheckCheck,
+} from "lucide-react";
+import { formatDistanceToNow, format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/admin/toast/ToastContext";
+import {
+  T, Panel, TabBar, GhostButton, EmptyState, ConfirmDialog, Pagination, CHART,
+} from "@/admin/ui/system";
+
+const PAGE_SIZE = 10;
 
 interface Notification {
   id: string;
@@ -11,91 +20,61 @@ interface Notification {
   created_at: string;
   is_read: boolean;
   user_id?: string;
-  data?: Record<string, any>;
 }
 
-interface NotificationTypeConfig {
-  icon: React.ReactNode;
-  bgColor: string;
-  textColor: string;
-  borderColor: string;
-}
+/**
+ * Per-type presentation. `fallback` is load-bearing: an unrecognised type used
+ * to return undefined here and the row crashed on the first property access.
+ */
+type TypeConfig = { icon: React.ElementType; tone: string; label: string };
 
-const notificationTypeConfig: Record<string, NotificationTypeConfig> = {
-  new_application: {
-    icon: <CheckCircle className="h-5 w-5" />,
-    bgColor: "bg-green-50",
-    textColor: "text-green-700",
-    borderColor: "border-green-200",
-  },
-  new_user: {
-    icon: <Bell className="h-5 w-5" />,
-    bgColor: "bg-blue-50",
-    textColor: "text-blue-700",
-    borderColor: "border-blue-200",
-  },
-  campaign_complete: {
-    icon: <CheckCircle className="h-5 w-5" />,
-    bgColor: "bg-green-50",
-    textColor: "text-green-700",
-    borderColor: "border-green-200",
-  },
-  campaign_failed: {
-    icon: <XCircle className="h-5 w-5" />,
-    bgColor: "bg-red-50",
-    textColor: "text-red-700",
-    borderColor: "border-red-200",
-  },
-  support_message: {
-    icon: <AlertCircle className="h-5 w-5" />,
-    bgColor: "bg-orange-50",
-    textColor: "text-orange-700",
-    borderColor: "border-orange-200",
-  },
-  info: {
-    icon: <Bell className="h-5 w-5" />,
-    bgColor: "bg-gray-50",
-    textColor: "text-gray-700",
-    borderColor: "border-gray-200",
-  },
+const TYPE_CONFIG: Record<string, TypeConfig> = {
+  new_application:   { icon: FileText,      tone: CHART.axis,     label: "Application" },
+  new_user:          { icon: UserPlus,      tone: CHART.good,     label: "New user" },
+  campaign_complete: { icon: CheckCircle2,  tone: CHART.good,     label: "Campaign" },
+  campaign_failed:   { icon: AlertTriangle, tone: CHART.critical, label: "Campaign" },
+  support_message:   { icon: MessageSquare, tone: CHART.warning,  label: "Support" },
+  info:              { icon: Bell,          tone: CHART.axis,     label: "Info" },
 };
+
+const FALLBACK: TypeConfig = { icon: Bell, tone: CHART.axis, label: "Notification" };
+const configFor = (type: string): TypeConfig => TYPE_CONFIG[type] ?? FALLBACK;
 
 export const Notifications = (): JSX.Element => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "unread">("all");
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const { pushToast } = useToast();
 
   useEffect(() => {
     fetchNotifications();
-    
-    // Subscribe to real-time notifications
-    const subscription = supabase
-      .channel("admin_notifications")
+
+    // Distinct topic from the header dropdown's channel — two channels sharing
+    // one name fight over the same subscription.
+    const channel = supabase
+      .channel("admin_notifications_page")
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "admin_notifications",
-        },
-        (payload) => {
-          if (payload.eventType === "INSERT") {
-            setNotifications((prev) => [payload.new as Notification, ...prev]);
-          }
-        }
+        { event: "INSERT", schema: "public", table: "admin_notifications" },
+        (payload) => setNotifications((prev) => [payload.new as Notification, ...prev]),
       )
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
+      supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchNotifications = async () => {
     try {
       setLoading(true);
-      
+      setLoadError(null);
+
       const { data, error } = await supabase
         .from("admin_notifications")
         .select("*")
@@ -103,210 +82,262 @@ export const Notifications = (): JSX.Element => {
         .limit(50);
 
       if (error) {
-        console.error("Error fetching notifications:", error);
+        console.error("[Notifications] query failed:", error);
+        setLoadError(error.message || "Failed to load notifications");
         return;
       }
 
-      setNotifications(data as Notification[]);
-    } catch (err) {
-      console.error("Unexpected error:", err);
+      setNotifications((data as Notification[]) || []);
+    } catch (err: any) {
+      console.error("[Notifications] unexpected error:", err);
+      setLoadError(err?.message || "Unexpected error");
     } finally {
       setLoading(false);
     }
   };
 
   const markAsRead = async (id: string) => {
-    try {
-      await supabase
-        .from("admin_notifications")
-        .update({ is_read: true })
-        .eq("id", id);
+    const { error } = await supabase
+      .from("admin_notifications")
+      .update({ is_read: true })
+      .eq("id", id);
 
-      setNotifications((prev) =>
-        prev.map((notif) =>
-          notif.id === id ? { ...notif, is_read: true } : notif
-        )
-      );
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
+    if (error) {
+      pushToast({ variant: "error", title: "Error", message: error.message });
+      return;
     }
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+  };
+
+  const markAllRead = async () => {
+    const { error } = await supabase
+      .from("admin_notifications")
+      .update({ is_read: true })
+      .eq("is_read", false);
+
+    if (error) {
+      pushToast({ variant: "error", title: "Error", message: error.message });
+      return;
+    }
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   };
 
   const deleteNotification = async (id: string) => {
-    try {
-      await supabase
-        .from("admin_notifications")
-        .delete()
-        .eq("id", id);
+    const previous = notifications;
+    setNotifications((prev) => prev.filter((n) => n.id !== id)); // optimistic
 
-      setNotifications((prev) => prev.filter((notif) => notif.id !== id));
-    } catch (err) {
-      console.error("Error deleting notification:", err);
+    const { error } = await supabase.from("admin_notifications").delete().eq("id", id);
+
+    if (error) {
+      setNotifications(previous); // put it back — the delete didn't happen
+      pushToast({ variant: "error", title: "Error", message: error.message });
     }
   };
 
   const clearAllRead = async () => {
+    const readIds = notifications.filter((n) => n.is_read).map((n) => n.id);
+    if (readIds.length === 0) return;
+
+    setClearing(true);
     try {
-      const readIds = notifications
-        .filter((n) => n.is_read)
-        .map((n) => n.id);
+      const { error } = await supabase.from("admin_notifications").delete().in("id", readIds);
 
-      if (readIds.length === 0) return;
+      if (error) {
+        pushToast({ variant: "error", title: "Error", message: error.message });
+        return;
+      }
 
-      await supabase
-        .from("admin_notifications")
-        .delete()
-        .in("id", readIds);
-
-      setNotifications((prev) => prev.filter((notif) => !notif.is_read));
-    } catch (err) {
-      console.error("Error clearing read notifications:", err);
+      setNotifications((prev) => prev.filter((n) => !n.is_read));
+      pushToast({
+        variant: "success",
+        title: "Cleared",
+        message: `${readIds.length} notification${readIds.length === 1 ? "" : "s"} removed.`,
+      });
+    } finally {
+      setClearing(false);
+      setConfirmClear(false);
     }
   };
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
-  const filteredNotifications =
-    filter === "unread"
-      ? notifications.filter((n) => !n.is_read)
-      : notifications;
+  const readCount = notifications.length - unreadCount;
 
-  const config = notificationTypeConfig[notifications[0]?.type || "info"];
+  const visible = useMemo(
+    () => (filter === "unread" ? notifications.filter((n) => !n.is_read) : notifications),
+    [notifications, filter],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const start = (page - 1) * PAGE_SIZE;
+  const paged = visible.slice(start, start + PAGE_SIZE);
+
+  // Deleting or clearing can shrink the list out from under the current page —
+  // and marking one read empties a page on the Unread tab. Pull back in range.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Bell className="h-6 w-6 text-primary" />
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Notifications</h2>
+    <div className="space-y-4">
+      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className={`text-[20px] font-bold tracking-[-0.01em] ${T.ink}`}>Notifications</h1>
+          <p className={`text-[12px] ${T.muted}`}>
+            {loading
+              ? "Loading…"
+              : `${notifications.length} recent · ${unreadCount} unread`}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
           {unreadCount > 0 && (
-            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-red-500 text-white text-xs font-bold">
-              {unreadCount}
-            </span>
+            <GhostButton onClick={markAllRead}>
+              <CheckCheck size={13} /> Mark all read
+            </GhostButton>
+          )}
+          {readCount > 0 && (
+            <GhostButton onClick={() => setConfirmClear(true)}>
+              <Trash2 size={13} /> Clear read ({readCount})
+            </GhostButton>
           )}
         </div>
-        {notifications.filter((n) => n.is_read).length > 0 && (
-          <button
-            onClick={clearAllRead}
-            className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            Clear read
-          </button>
-        )}
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex gap-4 mb-6 border-b border-gray-200 dark:border-gray-700">
-        <button
-          onClick={() => setFilter("all")}
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            filter === "all"
-              ? "text-primary border-b-2 border-primary -mb-1"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          All ({notifications.length})
-        </button>
-        <button
-          onClick={() => setFilter("unread")}
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            filter === "unread"
-              ? "text-primary border-b-2 border-primary -mb-1"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Unread ({unreadCount})
-        </button>
-      </div>
+      <TabBar
+        tabs={[
+          // `as const` so TabBar's generic infers the union, not `string`.
+          { key: "all" as const, label: "All", count: notifications.length },
+          { key: "unread" as const, label: "Unread", count: unreadCount },
+        ]}
+        active={filter}
+        // Wrapped, not passed directly: a setState dispatcher also accepts an
+        // updater function, which defeats TabBar's generic inference.
+        onChange={(k) => { setFilter(k); setPage(1); }}
+      />
 
-      {/* Notifications List */}
-      <div className="space-y-3">
+      {/* ── List ────────────────────────────────────────────────────────── */}
+      <Panel className="overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-gray-500">Loading notifications...</div>
+          <div className={`divide-y ${T.divide}`}>
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex gap-3 px-5 py-4">
+                <div className="h-9 w-9 shrink-0 animate-pulse rounded-xl bg-[#EFEFEC] dark:bg-white/10" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 w-40 animate-pulse rounded bg-[#EFEFEC] dark:bg-white/10" />
+                  <div className="h-3 w-64 animate-pulse rounded bg-[#EFEFEC] dark:bg-white/10" />
+                </div>
+              </div>
+            ))}
           </div>
-        ) : filteredNotifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Bell className="h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" />
-            <p className="text-gray-500 dark:text-gray-400">
-              {filter === "unread" ? "No unread notifications" : "No notifications yet"}
-            </p>
-          </div>
+        ) : loadError ? (
+          <EmptyState icon={AlertTriangle} title="Couldn't load notifications" hint={loadError} />
+        ) : visible.length === 0 ? (
+          <EmptyState
+            icon={BellOff}
+            title={filter === "unread" ? "Nothing unread" : "No notifications yet"}
+            hint={
+              filter === "unread"
+                ? "You're all caught up."
+                : "New applications and campaign events appear here."
+            }
+          />
         ) : (
-          filteredNotifications.map((notification) => {
-            const typeConfig = notificationTypeConfig[notification.type];
-            const isExpanded = expanded === notification.id;
+          <ul className={`divide-y ${T.divide}`}>
+            {paged.map((n) => {
+              const cfg = configFor(n.type);
+              const Icon = cfg.icon;
 
-            return (
-              <div
-                key={notification.id}
-                className={`border rounded-lg p-4 transition-all ${typeConfig.borderColor} ${
-                  !notification.is_read ? "bg-white shadow-sm" : typeConfig.bgColor
-                }`}
-                onClick={() => {
-                  if (!notification.is_read) {
-                    markAsRead(notification.id);
-                  }
-                  setExpanded(isExpanded ? null : notification.id);
-                }}
-              >
-                <div className="flex items-start gap-4">
-                  <div className={`flex-shrink-0 ${typeConfig.textColor}`}>
-                    {typeConfig.icon}
-                  </div>
+              return (
+                <li
+                  key={n.id}
+                  onClick={() => !n.is_read && markAsRead(n.id)}
+                  className={`group flex gap-3 px-5 py-3.5 transition-colors ${T.hover} ${
+                    !n.is_read ? "cursor-pointer bg-[#2a78d6]/[0.03] dark:bg-[#3987e5]/[0.06]" : ""
+                  }`}
+                >
+                  <span className="relative mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#F4F4F2] text-[#6B6A66] dark:bg-white/5 dark:text-[#C3C2B7]">
+                    <Icon size={15} />
+                    <span
+                      aria-hidden
+                      className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ring-2 ring-white dark:ring-[#1A1A19]"
+                      style={{ backgroundColor: cfg.tone }}
+                    />
+                  </span>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <h3 className={`font-semibold ${typeConfig.textColor}`}>
-                          {notification.title}
-                        </h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {notification.message}
-                        </p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className={`text-[13px] font-semibold ${T.ink}`}>{n.title}</p>
+                        <p className={`mt-0.5 text-[12px] leading-relaxed ${T.ink2}`}>{n.message}</p>
                       </div>
-                      {!notification.is_read && (
-                        <div className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-500 mt-2" />
-                      )}
-                    </div>
 
-                    {/* Time */}
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs text-gray-500">
-                        {formatDistanceToNow(new Date(notification.created_at), {
-                          addSuffix: true,
-                        })}
-                      </span>
-
-                      {/* Actions */}
-                      <div className="flex gap-2">
+                      <div className="flex shrink-0 items-center gap-2">
+                        {!n.is_read && (
+                          <span
+                            aria-label="Unread"
+                            className="h-1.5 w-1.5 rounded-full bg-[#2a78d6] dark:bg-[#3987e5]"
+                          />
+                        )}
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteNotification(notification.id);
-                          }}
-                          className="text-gray-400 hover:text-red-600 transition-colors"
+                          aria-label="Delete notification"
+                          onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
+                          className={`grid h-6 w-6 place-items-center rounded-md ${T.muted}
+                                      opacity-0 transition-all hover:bg-[#D03B3B]/10 hover:text-[#D03B3B]
+                                      focus:opacity-100 group-hover:opacity-100`}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </div>
 
-                    {/* Expanded Data */}
-                    {isExpanded && notification.data && (
-                      <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400">
-                        <pre className="bg-gray-50 dark:bg-gray-900 p-2 rounded overflow-auto max-h-40">
-                          {JSON.stringify(notification.data, null, 2)}
-                        </pre>
-                      </div>
-                    )}
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <span className={`text-[10px] font-semibold uppercase tracking-[0.08em] ${T.muted}`}>
+                        {cfg.label}
+                      </span>
+                      <span className={T.muted}>·</span>
+                      <span
+                        className={`text-[10.5px] ${T.muted}`}
+                        title={format(new Date(n.created_at), "d MMM yyyy, HH:mm")}
+                      >
+                        {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </div>
-            );
-          })
+                </li>
+              );
+            })}
+          </ul>
         )}
-      </div>
+
+        {!loading && !loadError && visible.length > 0 && (
+          <div className={`border-t ${T.hairline} px-5 py-3`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className={`hidden text-[12px] sm:block ${T.muted}`}>
+                Showing {start + 1}–{Math.min(start + PAGE_SIZE, visible.length)} of{" "}
+                {visible.length}
+              </p>
+              <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+            </div>
+          </div>
+        )}
+      </Panel>
+
+      <ConfirmDialog
+        open={confirmClear}
+        busy={clearing}
+        destructive
+        title="Clear read notifications?"
+        confirmLabel={`Delete ${readCount}`}
+        body={
+          <>
+            This permanently deletes <strong>{readCount}</strong> read notification
+            {readCount === 1 ? "" : "s"}. Unread ones are kept. This cannot be undone.
+          </>
+        }
+        onConfirm={clearAllRead}
+        onCancel={() => setConfirmClear(false)}
+      />
     </div>
   );
 };

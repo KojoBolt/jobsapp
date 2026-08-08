@@ -22,7 +22,8 @@
     "noImplicitAny": false,
     "noFallthroughCasesInSwitch": false,
 
-    "baseUrl": ".",
+    // No baseUrl: deprecated in TS 6, removed in TS 7. Paths starting with "./"
+    // resolve relative to this file, so the alias works without it.
     "paths": {
       "@/*": ["./src/*"]
     }

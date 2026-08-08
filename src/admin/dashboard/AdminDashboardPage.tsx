@@ -1,371 +1,354 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ClipboardList, Clock, ArrowRight } from "lucide-react";
-import { StatCard } from "./StatCard";
-import { Button } from "../ui/Button";
+import {
+  Tag, ClipboardList, Users, Gauge, PieChart, LineChart as LineIcon,
+  BarChart3, CalendarClock, History,
+} from "lucide-react";
+import { format, formatDistanceToNow, subMonths, startOfMonth } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { Panel, PanelHeader, StatTile, Pill, IconButton, LegendRow, T } from "@/admin/ui/system";
+import { useRegisterExport, useAdminActions } from "@/admin/context/AdminActionsContext";
+import {
+  PipelineGauge, TrendChart, TrendKey, RankedBar, ActivityHeatmap,
+  useRamp, type GaugeBand, type HeatCell,
+} from "@/admin/ui/charts";
 
-interface AdminStats {
-  pendingCount: number;
-  approvedToday: number;
-  rejectedToday: number;
-  reviewedToday: number;
-  totalRejected: number;
-  completedThisWeek: number;
-  totalThisMonth: number;
-  approvalRate: number;
-  totalApps: number;
-  pendingApps: {
-    id: string;
-    company_name: string;
-    user_full_name: string;
-    created_at: string;
-  }[];
-}
+type AppRow = {
+  id: string;
+  status: string;
+  created_at: string;
+  updated_at: string | null;
+  company_name: string | null;
+  user_id: string | null;
+};
+
+const REVIEWED = ["approved", "submitted", "completed"];
+const PENDING = ["queued", "pending_review", "drafting"];
+
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const BANDS = ["00–08", "08–16", "16–24"];
+
+/** Percent change, guarding the divide-by-zero case that makes deltas lie. */
+const pctChange = (current: number, previous: number) =>
+  previous === 0 ? (current > 0 ? 100 : 0) : Math.round(((current - previous) / previous) * 100);
 
 const AdminDashboardPage = () => {
-  const [stats, setStats] = useState<AdminStats>({
-    pendingCount: 0,
-    approvedToday: 0,
-    rejectedToday: 0,
-    reviewedToday: 0,
-    totalRejected: 0,
-    completedThisWeek: 0,
-    totalThisMonth: 0,
-    approvalRate: 0,
-    totalApps: 0,
-    pendingApps: [],
-  });
+  const [apps, setApps] = useState<AppRow[]>([]);
+  const [userCount, setUserCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const { ramp } = useRamp();
 
   useEffect(() => {
-    const fetchStats = async () => {
+    const load = async () => {
       try {
         setLoading(true);
 
-        const now = new Date();
-
-        const todayStart = new Date(now);
-        todayStart.setHours(0, 0, 0, 0);
-
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - 7);
-
-        const monthStart = new Date(now);
-        monthStart.setDate(1);
-        monthStart.setHours(0, 0, 0, 0);
-
-        // Fetch ALL applications in one query
-        const { data: allApps, error } = await supabase
+        const { data, error } = await supabase
           .from("applications")
           .select("id, status, created_at, updated_at, company_name, user_id");
 
-
         if (error) {
-          console.error("Error fetching stats:", error);
+          console.error("[AdminDashboard] applications query failed:", error);
           return;
         }
+        setApps((data as AppRow[]) || []);
 
-        const apps = allApps || [];
-        const totalApps = apps.length;
-
-        // Pending
-        const pendingApps = apps.filter((a) =>
-          ["queued", "pending_review"].includes(a.status)
-        );
-
-        // ✅ Reviewed today — use created_at since updated_at may not exist
-        // Apps that changed to approved/failed today
-        // const approvedTodayApps = apps.filter((a) => {
-        //   const date = new Date(a.created_at);
-        //   return date >= todayStart && a.status === "approved";
-        // });
-
-        const approvedTodayApps = apps.filter((a) => {
-          const updateDate = new Date(a.updated_at || a.created_at);
-          return updateDate >= todayStart && a.status === "approved";
-        });
-
-        const rejectedTodayApps = apps.filter((a) => {
-          const updateDate = new Date(a.updated_at || a.created_at);
-          return updateDate >= todayStart && a.status === "failed";
-        });
-
-        // const rejectedTodayApps = apps.filter((a) => {
-        //   const date = new Date(a.created_at);
-        //   return date >= todayStart && a.status === "failed";
-        // });
-
-        const reviewedToday = approvedTodayApps.length + rejectedTodayApps.length;
-
-        // ✅ Total rejected all time
-        const totalRejected = apps.filter((a) => a.status === "failed").length;
-
-        // ✅ Completed this week — any terminal status created this week
-        const completedThisWeek = apps.filter((a) => {
-          const updatedDate = new Date(a.updated_at || a.created_at);
-          return (
-            updatedDate >= weekStart &&
-            ["completed", "interview", "submitted", "approved"].includes(a.status)
-          );
-    }).length;
-
-        // Total this month
-        const totalThisMonth = apps.filter((a) => {
-          const date = new Date(a.created_at);
-          return date >= monthStart;
-        }).length;
-
-        // Approval rate
-        const totalReviewed = apps.filter((a) =>
-          ["approved", "failed"].includes(a.status)
-        ).length;
-        const totalApproved = apps.filter(
-          (a) => a.status === "approved"
-        ).length;
-        const approvalRate =
-          totalReviewed > 0
-            ? Math.round((totalApproved / totalReviewed) * 100)
-            : 0;
-
-        // Fetch pending apps with user names for preview
-        const pendingUserIds = [...new Set(pendingApps.slice(0, 3).map((a) => a.user_id))];
-        const { data: profiles } = await supabase
+        const { count } = await supabase
           .from("profiles")
-          .select("id, full_name")
-          .in("id", pendingUserIds);
-
-        const profileMap = new Map(
-          (profiles || []).map((p) => [p.id, p.full_name])
-        );
-
-        const pendingPreview = pendingApps.slice(0, 3).map((a) => ({
-          id: a.id,
-          company_name: a.company_name,
-          user_full_name: profileMap.get(a.user_id) || "Unknown User",
-          created_at: a.created_at,
-        }));
-
-        setStats({
-          pendingCount: pendingApps.length,
-          approvedToday: approvedTodayApps.length,
-          rejectedToday: rejectedTodayApps.length,
-          reviewedToday,
-          totalRejected,
-          completedThisWeek,
-          totalThisMonth,
-          approvalRate,
-          totalApps,
-          pendingApps: pendingPreview,
-        });
-      } catch (err) {
-        console.error("Unexpected error:", err);
+          .select("id", { count: "exact", head: true });
+        setUserCount(count || 0);
       } finally {
         setLoading(false);
       }
     };
-
-    fetchStats();
+    load();
   }, []);
 
-  // ✅ Fixed percentages — use real totals as denominators
-  const pendingPercent = stats.totalApps > 0
-    ? Math.round((stats.pendingCount / stats.totalApps) * 100)
-    : 0;
+  const { inRange } = useAdminActions();
 
-  const reviewedTodayPercent = stats.totalApps > 0
-    ? Math.round((stats.reviewedToday / Math.max(stats.totalApps * 0.1, 1)) * 100)
-    : 0;
+  // The header's date range scopes every figure and chart on this page.
+  const scopedApps = useMemo(
+    () => apps.filter((a) => inRange(a.created_at)),
+    [apps, inRange],
+  );
 
-  const rejectedPercent = stats.totalApps > 0
-    ? Math.round((stats.totalRejected / stats.totalApps) * 100)
-    : 0;
+  const m = useMemo(() => {
+    const apps = scopedApps;
+    const now = new Date();
+    const d30 = new Date(now); d30.setDate(now.getDate() - 30);
+    const d60 = new Date(now); d60.setDate(now.getDate() - 60);
 
-  const completedPercent = stats.totalApps > 0
-    ? Math.round((stats.completedThisWeek / stats.totalApps) * 100)
-    : 0;
+    const inWindow = (a: AppRow, from: Date, to: Date) => {
+      const t = new Date(a.created_at);
+      return t >= from && t < to;
+    };
+
+    const last30 = apps.filter((a) => inWindow(a, d30, now));
+    const prev30 = apps.filter((a) => inWindow(a, d60, d30));
+
+    const pending = apps.filter((a) => PENDING.includes(a.status));
+    const reviewed = apps.filter((a) => REVIEWED.includes(a.status));
+    const failed = apps.filter((a) => a.status === "failed");
+    const decided = reviewed.length + failed.length;
+    const approvalRate = decided > 0 ? Math.round((reviewed.length / decided) * 100) : 0;
+
+    const prevDecided =
+      prev30.filter((a) => REVIEWED.includes(a.status)).length +
+      prev30.filter((a) => a.status === "failed").length;
+    const prevRate =
+      prevDecided > 0
+        ? Math.round((prev30.filter((a) => REVIEWED.includes(a.status)).length / prevDecided) * 100)
+        : 0;
+
+    // ── Pipeline bands: top three statuses, remainder folded into "Other" ──
+    const byStatus = new Map<string, number>();
+    apps.forEach((a) => byStatus.set(a.status, (byStatus.get(a.status) || 0) + 1));
+    const sorted = [...byStatus.entries()].sort((a, b) => b[1] - a[1]);
+    const top3 = sorted.slice(0, 3);
+    const otherTotal = sorted.slice(3).reduce((s, [, v]) => s + v, 0);
+    const bands: GaugeBand[] = [
+      ...top3.map(([name, value]) => ({ name: name.replace(/_/g, " "), value })),
+      ...(otherTotal > 0 ? [{ name: "other", value: otherTotal }] : []),
+    ];
+
+    // ── Monthly volume, last 7 months ──
+    const trend = Array.from({ length: 7 }, (_, i) => {
+      const monthDate = startOfMonth(subMonths(now, 6 - i));
+      const next = startOfMonth(subMonths(now, 5 - i));
+      return {
+        month: format(monthDate, "MMM"),
+        value: apps.filter((a) => {
+          const t = new Date(a.created_at);
+          return t >= monthDate && t < next;
+        }).length,
+      };
+    });
+    const nonZero = trend.filter((t) => t.value > 0);
+    const target = nonZero.length
+      ? Math.round(nonZero.reduce((s, t) => s + t.value, 0) / nonZero.length)
+      : 0;
+
+    // ── Top companies ──
+    const byCompany = new Map<string, number>();
+    apps.forEach((a) => {
+      const key = a.company_name?.trim() || "Unknown";
+      byCompany.set(key, (byCompany.get(key) || 0) + 1);
+    });
+    const topCompanies = [...byCompany.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name, value]) => ({ name: name.length > 12 ? `${name.slice(0, 11)}…` : name, value }));
+
+    // ── Review activity: decided apps by weekday × 8h band ──
+    const cells: HeatCell[] = [];
+    const bump = (day: string, band: string) => {
+      const hit = cells.find((c) => c.day === day && c.band === band);
+      if (hit) hit.value += 1;
+      else cells.push({ day, band, value: 1 });
+    };
+    apps
+      .filter((a) => REVIEWED.includes(a.status) || a.status === "failed")
+      .forEach((a) => {
+        const t = new Date(a.updated_at || a.created_at);
+        const day = DAYS[(t.getDay() + 6) % 7];
+        bump(day, BANDS[Math.min(2, Math.floor(t.getHours() / 8))]);
+      });
+
+    const recent = [...apps]
+      .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
+      .slice(0, 4);
+
+    return {
+      total: apps.length,
+      pending: pending.length,
+      reviewed: reviewed.length,
+      approvalRate,
+      bands,
+      trend,
+      target,
+      topCompanies,
+      cells,
+      recent,
+      deltaTotal: pctChange(last30.length, prev30.length),
+      deltaPending: pctChange(
+        last30.filter((a) => PENDING.includes(a.status)).length,
+        prev30.filter((a) => PENDING.includes(a.status)).length,
+      ),
+      deltaRate: approvalRate - prevRate,
+      todayCount: apps.filter(
+        (a) => new Date(a.created_at).toDateString() === new Date().toDateString(),
+      ).length,
+    };
+  }, [scopedApps]);
+
+  // Memoised: the header registers this by identity, so a new function every
+  // render would re-register on every render and loop.
+  const exportCsv = useCallback(() => {
+    const rows = [
+      ["metric", "value"],
+      ["total_applications", m.total],
+      ["pending_review", m.pending],
+      ["active_users", userCount],
+      ["approval_rate_pct", m.approvalRate],
+      [],
+      ["month", "applications"],
+      ...m.trend.map((t) => [t.month, t.value]),
+      [],
+      ["company", "applications"],
+      ...m.topCompanies.map((c) => [c.name, c.value]),
+    ];
+    const csv = rows.map((r) => r.join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `dashboard-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [m, userCount]);
+
+  // Publish this page's export so the header's Export button can run it.
+  useRegisterExport(exportCsv);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
+      {/* Date range, filters and Export live in the header — see AdminHeader. */}
       <div>
-        <h1 className="text-2xl font-bold text-[#1E293B] dark:text-white">Dashboard</h1>
-        <p className="text-sm text-[#64748B] mt-1">
-          Overview of your application review activity
-        </p>
+        <h1 className={`text-[20px] font-bold tracking-[-0.01em] ${T.ink}`}>Dashboard</h1>
+        <p className={`text-[12px] ${T.muted}`}>Application review activity</p>
       </div>
 
-      {/* Stats Grid */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 animate-pulse">
-              <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-16 mb-2" />
-              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-24" />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard
-            number={stats.pendingCount}
-            label="Pending Review"
-            percentage={Math.min(pendingPercent, 100)}
-            accentColor="#F59E0B"
-          />
-          <StatCard
-            number={stats.reviewedToday}
-            label="Reviewed Today"
-            percentage={Math.min(reviewedTodayPercent, 100)}
-            accentColor="#10B981"
-          />
-          <StatCard
-            number={stats.totalRejected}
-            label="Rejected Applications"
-            percentage={Math.min(rejectedPercent, 100)}
-            accentColor="#EF4444"
-          />
-          <StatCard
-            number={stats.completedThisWeek}
-            label="Completed This Week"
-            percentage={Math.min(completedPercent, 100)}
-            accentColor="#6366F1"
-          />
-        </div>
-      )}
+      {/* ── Stat row ────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile icon={Tag} label="Total Applications" value={m.total.toLocaleString()}
+                  delta={m.deltaTotal} caption="vs previous 30 days" loading={loading} />
+        <StatTile icon={ClipboardList} label="Pending Review" value={m.pending.toLocaleString()}
+                  note="in queue" delta={m.deltaPending} invertDelta caption="vs previous 30 days"
+                  loading={loading} />
+        <StatTile icon={Users} label="Registered Users" value={userCount.toLocaleString()}
+                  note="people" delta={0} caption="total on platform" loading={loading} />
+        <StatTile icon={Gauge} label="Approval Rate" value={`${m.approvalRate}%`}
+                  delta={m.deltaRate} caption="vs previous 30 days" loading={loading} />
+      </div>
 
-      {/* Quick Action Card */}
-      <div className="bg-white rounded-lg shadow-md p-6 dark:bg-gray-800">
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <ClipboardList size={24} className="text-[#2563EB]" />
-              <h2 className="text-xl font-semibold text-[#1E293B] dark:text-white">
-                Review Queue
-              </h2>
-            </div>
-            <p className="text-sm text-[#64748B] mb-4">
-              {stats.pendingCount} applications waiting for review
-            </p>
-            <Link to="/admin/review-queue">
-              <Button className="gap-2">
-                Start Reviewing
-                <ArrowRight size={16} />
-              </Button>
-            </Link>
-          </div>
-
-          <div className="w-full lg:w-96 bg-[#F8FAFC] rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-[#1E293B] mb-3">
-              Next in Queue
-            </h3>
-            {loading ? (
-              <div className="space-y-2">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="bg-white dark:bg-gray-800 rounded-md p-3 border border-[#E2E8F0] dark:border-gray-700 animate-pulse">
-                    <div className="h-4 bg-gray-200 rounded w-32 mb-1" />
-                    <div className="h-3 bg-gray-200 rounded w-24" />
-                  </div>
+      {/* ── Main grid ───────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Left column */}
+        <div className="space-y-4">
+          <Panel>
+            <PanelHeader icon={PieChart} title="Pipeline Breakdown" right={<IconButton label="Open pipeline" />} />
+            <div className="px-5 pb-4">
+              <PipelineGauge bands={m.bands} total={m.total} caption="Applications" />
+              <div className="mt-2 divide-y divide-[#EAEAE7] dark:divide-white/10">
+                {m.bands.map((b, i) => (
+                  <LegendRow
+                    key={b.name}
+                    color={ramp[i % ramp.length]}
+                    name={b.name.replace(/\b\w/g, (c) => c.toUpperCase())}
+                    sub={`${m.total ? Math.round((b.value / m.total) * 100) : 0}% of pipeline`}
+                    value={b.value.toLocaleString()}
+                  />
                 ))}
+                {m.bands.length === 0 && !loading && (
+                  <p className={`py-6 text-center text-[12px] ${T.muted}`}>No applications yet</p>
+                )}
               </div>
-            ) : stats.pendingApps.length > 0 ? (
-              <div className="space-y-2">
-                {stats.pendingApps.map((app) => (
-                  <div key={app.id} className="bg-white dark:bg-gray-800 rounded-md p-3 border border-[#E2E8F0] dark:border-gray-700">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-[#1E293B] truncate dark:text-white">
-                          {app.company_name}
+            </div>
+          </Panel>
+
+          <Panel>
+            <PanelHeader icon={History} title="Recent Activity" right={<IconButton label="Open applications" />} />
+            <div className="px-5 pb-4">
+              {m.recent.length ? (
+                <div className="divide-y divide-[#EAEAE7] dark:divide-white/10">
+                  {m.recent.map((a) => (
+                    <div key={a.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#F4F4F2] text-[11px] font-bold text-[#6B6A66] dark:bg-white/5 dark:text-[#C3C2B7]">
+                          {(a.company_name || "?").slice(0, 2).toUpperCase()}
                         </div>
-                        <div className="text-xs text-[#64748B] truncate">
-                          {app.user_full_name}
+                        <div className="min-w-0">
+                          <p className={`truncate text-[12.5px] font-semibold ${T.ink}`}>
+                            {a.company_name || "Unknown company"}
+                          </p>
+                          <p className={`truncate text-[11px] ${T.muted}`}>
+                            {formatDistanceToNow(new Date(a.created_at), { addSuffix: true })}
+                          </p>
                         </div>
                       </div>
-                      <Clock size={14} className="text-[#F59E0B] flex-shrink-0 mt-0.5" />
+                      <span className={`shrink-0 text-[11px] capitalize ${T.ink2}`}>
+                        {a.status.replace(/_/g, " ")}
+                      </span>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              ) : (
+                <p className={`py-6 text-center text-[12px] ${T.muted}`}>Nothing yet</p>
+              )}
+            </div>
+          </Panel>
+        </div>
+
+        {/* Right column */}
+        <div className="space-y-4 lg:col-span-2">
+          <Panel>
+            <PanelHeader
+              icon={LineIcon}
+              title="Applications Over Time"
+              right={<><Pill>Monthly</Pill><IconButton label="Open trend" /></>}
+            />
+            <div className="px-5 pb-4">
+              <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className={`text-[24px] font-bold leading-none tracking-[-0.02em] ${T.ink}`}>
+                    {m.trend.reduce((s, t) => s + t.value, 0).toLocaleString()}
+                  </p>
+                  <p className={`mt-1 text-[11px] ${T.muted}`}>Last 7 months</p>
+                </div>
+                <TrendKey />
               </div>
-            ) : (
-              <p className="text-sm text-[#64748B] text-center py-4">
-                No pending applications
-              </p>
-            )}
+              <TrendChart data={m.trend} target={m.target} />
+            </div>
+          </Panel>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Panel>
+              <PanelHeader icon={BarChart3} title="Top Companies" right={<Pill>All time</Pill>} />
+              <div className="px-5 pb-4">
+                <p className={`mb-1 text-[11px] ${T.muted}`}>
+                  Today&apos;s new applications:{" "}
+                  <span className={`font-semibold ${T.ink}`}>{m.todayCount}</span>
+                </p>
+                {m.topCompanies.length ? (
+                  <RankedBar data={m.topCompanies} />
+                ) : (
+                  <p className={`py-12 text-center text-[12px] ${T.muted}`}>No data yet</p>
+                )}
+              </div>
+            </Panel>
+
+            <Panel>
+              <PanelHeader icon={CalendarClock} title="Review Activity" right={<IconButton label="Open activity" />} />
+              <div className="px-5 pb-5">
+                <div className="mb-3 flex items-baseline gap-2">
+                  <span className={`text-[24px] font-bold leading-none tracking-[-0.02em] ${T.ink}`}>
+                    {m.reviewed.toLocaleString()}
+                  </span>
+                  <span className={`text-[11px] ${T.muted}`}>decisions logged</span>
+                </div>
+                <ActivityHeatmap cells={m.cells} days={DAYS} bands={BANDS} />
+              </div>
+            </Panel>
           </div>
         </div>
       </div>
 
-      {/* Activity Summary */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Today's Performance */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-          <h3 className="text-lg font-semibold text-[#1E293B] dark:text-gray-200 mb-4">
-            Today's Performance
-          </h3>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[#64748B]">Total Reviewed</span>
-              <span className="text-2xl font-bold text-[#2563EB]">
-                {stats.reviewedToday}
-              </span>
-            </div>
-            <div className="h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#2563EB] rounded-full transition-all"
-                style={{
-                  width: `${Math.min((stats.reviewedToday / Math.max(stats.totalApps * 0.1, 1)) * 100, 100)}%`,
-                }}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4 pt-2">
-              <div className="text-center p-3 bg-[#D1FAE5] rounded-lg">
-                <div className="text-2xl font-bold text-[#10B981]">
-                  {stats.approvedToday}
-                </div>
-                <div className="text-xs text-[#64748B] mt-1">Approved</div>
-              </div>
-              <div className="text-center p-3 bg-[#FEE2E2] rounded-lg">
-                <div className="text-2xl font-bold text-[#EF4444]">
-                  {stats.rejectedToday}
-                </div>
-                <div className="text-xs text-[#64748B] mt-1">Rejected</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-          <h3 className="text-lg font-semibold text-[#1E293B] dark:text-gray-200 mb-4">
-            Quick Stats
-          </h3>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between py-2 border-b border-[#E2E8F0] dark:border-gray-700">
-              <span className="text-sm text-[#64748B]">Total Applications</span>
-              <span className="text-sm font-semibold text-[#1E293B]">
-                {stats.totalApps}
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2 border-b border-[#E2E8F0]">
-              <span className="text-sm text-[#64748B]">Approval Rate</span>
-              <span className="text-sm font-semibold text-[#10B981]">
-                {stats.approvalRate}%
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2 border-b border-[#E2E8F0]">
-              <span className="text-sm text-[#64748B]">Completed This Week</span>
-              <span className="text-sm font-semibold text-[#1E293B]">
-                {stats.completedThisWeek}
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-[#64748B]">This Month</span>
-              <span className="text-sm font-semibold text-[#1E293B]">
-                {stats.totalThisMonth} applications
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Link
+        to="/admin/review-queue"
+        className={`block ${T.card} rounded-2xl px-5 py-3.5 text-[12.5px] font-semibold ${T.ink}
+                    transition-colors hover:bg-[#FAFAF8] dark:hover:bg-white/5`}
+      >
+        {m.pending} applications waiting for review →
+      </Link>
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { GROQ_QUALITY_MODELS, GROQ_CHAT_URL, reasoningParams } from "../_shared/models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -50,58 +51,74 @@ serve(async (req) => {
 
     console.log(`Humanizing ${text.length} chars with ${selectedTone} tone`);
 
-    // Call Groq API
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { 
-            role: "system", 
-            content: systemPrompt 
-          },
-          {
-            role: "user",
-            content: `Rewrite this text to be completely undetectable as AI-generated while preserving the original meaning and key points. Return ONLY the rewritten text, no explanations or preamble:\n\n${text}`,
-          },
-        ],
-        temperature: 0.8, // Higher for more human-like variation
-        max_tokens: 2000,
-        stream: true, // Enable streaming
-      }),
-    });
+    // Call Groq API, walking the fallback chain. Response headers arrive before
+    // the body, so a dead or overloaded model is caught on the status check —
+    // before a single byte has been streamed to the client.
+    let lastStatus = 0;
 
-    // Handle errors
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error("Groq API error:", response.status, errorData);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+    for (const model of GROQ_QUALITY_MODELS) {
+      const response = await fetch(GROQ_CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${GROQ_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "system",
+              content: systemPrompt
+            },
+            {
+              role: "user",
+              content: `Rewrite this text to be completely undetectable as AI-generated while preserving the original meaning and key points. Return ONLY the rewritten text, no explanations or preamble:\n\n${text}`,
+            },
+          ],
+          temperature: 0.8, // Higher for more human-like variation
+          // Input can be 5000 chars, the rewrite is about as long again, and
+          // reasoning draws from the same budget — 2000 no longer covers it.
+          max_completion_tokens: 4096,
+          // Reasoning stays out of the stream. The client reads delta.content
+          // only, but this keeps it off the wire entirely.
+          ...reasoningParams(model),
+          stream: true, // Enable streaming
+        }),
+      });
+
+      if (response.ok) {
+        // Stream response back to client
+        return new Response(response.body, {
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+          },
+        });
       }
-      
+
+      lastStatus = response.status;
+      const errorData = await response.json().catch(() => ({}));
+      console.error(`Groq [${model}] error:`, response.status, errorData);
+      // Fall through to the next model — including on 429, since a rate limit
+      // on one model says nothing about the next.
+    }
+
+    // Every model in the chain failed.
+    console.error(`All Groq models failed (${GROQ_QUALITY_MODELS.join(", ")})`);
+
+    if (lastStatus === 429) {
       return new Response(
-        JSON.stringify({ error: "AI processing failed" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Stream response back to client
-    return new Response(response.body, {
-      headers: { 
-        ...corsHeaders, 
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-      },
-    });
+    return new Response(
+      JSON.stringify({ error: "AI processing failed" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
 
   } catch (error) {
     console.error("Humanize function error:", error);

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { GROQ_FAST_MODELS, GROQ_CHAT_URL, reasoningParams } from "../_shared/models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -77,31 +78,58 @@ User you're talking to right now:
 - Plan: ${userContext?.plan || "free"}
 - Credits remaining: ${userContext?.credits ?? 0}`;
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        max_tokens: 300,
-        temperature: 0.7, // slight warmth — makes responses feel less robotic
-        messages: [
-          { role: "system", content: systemWithContext },
-          ...messages,
-        ],
-      }),
-    });
+    // Walk the shared fallback chain — if a model is deprecated or overloaded,
+    // move to the next one instead of failing the whole chat.
+    let message: string | undefined;
+    const failures: string[] = [];
 
-    const data = await response.json();
+    for (const model of GROQ_FAST_MODELS) {
+      const response = await fetch(GROQ_CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model,
+          // Reasoning models spend tokens thinking before they write, and that
+          // thinking draws from the same budget — the old 300 would have been
+          // eaten by reasoning alone. The prompt caps replies at 120 words.
+          max_completion_tokens: 1024,
+          temperature: 0.7, // slight warmth — makes responses feel less robotic
+          ...reasoningParams(model),
+          messages: [
+            { role: "system", content: systemWithContext },
+            ...messages,
+          ],
+        }),
+      });
 
-    if (!response.ok) {
-      throw new Error(data.error?.message || "Groq API error");
+      const data = await response.json();
+
+      if (!response.ok) {
+        const reason = data.error?.message || `HTTP ${response.status}`;
+        console.error(`Groq [${model}] failed: ${reason}`);
+        failures.push(`${model}: ${reason}`);
+        continue;
+      }
+
+      const text = data.choices?.[0]?.message?.content;
+      if (typeof text === "string" && text.trim()) {
+        message = text.trim();
+        break;
+      }
+
+      // Empty content usually means reasoning consumed the whole budget.
+      console.error(`Groq [${model}] returned empty content`);
+      failures.push(`${model}: empty content`);
     }
 
-    const message = data.choices?.[0]?.message?.content;
-    if (!message) throw new Error("No response from Groq");
+    // Every model in the chain is gone or failing — say so loudly rather than
+    // letting it look like a normal error.
+    if (!message) {
+      throw new Error(`All Groq models failed — ${failures.join(" | ")}`);
+    }
 
     return new Response(
       JSON.stringify({ message }),

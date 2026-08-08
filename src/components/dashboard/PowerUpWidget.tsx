@@ -20,6 +20,12 @@ const PowerUpWidget = ({
 }: PowerUpWidgetProps) => {
   const navigate = useNavigate();
 
+  const statusLabels = {
+    'Active': 'Active',
+    'Low-Balance': 'Low-Balance',
+    'Depleted': 'No-Credit',
+  };
+
   const planLabels = {
     free: "basic",
     starter: "starter",
@@ -55,7 +61,7 @@ const PowerUpWidget = ({
         <div>
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-foreground">Application Balance</span>
-            <Badge variant="human" className="text-[10px]">{status}</Badge>
+            <Badge variant="human" className="text-[10px]">{statusLabels[status]}</Badge>
           </div>
           <p className="text-2xl font-bold text-foreground">
             {remaining}

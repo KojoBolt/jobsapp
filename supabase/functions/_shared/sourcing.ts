@@ -6,6 +6,8 @@
 //  ARE bundled into any function that imports them.
 // =====================================================================
 
+import { GROQ_QUALITY_MODELS, GROQ_CHAT_URL, reasoningParams } from "./models.ts";
+
 const RAPIDAPI_KEY  = Deno.env.get("RAPIDAPI_KEY")!;
 const LINKEDIN_HOST = Deno.env.get("LINKEDIN_HOST")!;
 const JSEARCH_HOST  = Deno.env.get("JSEARCH_HOST")!;
@@ -160,27 +162,55 @@ async function scoreJobsChunk(jobs: any[], candidateProfile: any): Promise<any[]
   if (!jobs.length) return [];
   const GROQ_KEY = Deno.env.get("GROQ_API_KEY")!;
   const list = jobs.map((j, i) => `${i + 1}. ${j.title} @ ${j.company} | ${j.description?.slice(0, 120)}`).join("\n");
-  try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_KEY}` },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile", max_tokens: 256, temperature: 0.1,
-        messages: [{
-          role: "user",
-          content: `Score these ${jobs.length} jobs 0-100 for fit. Only return JSON array: [score1, score2, ...].
+  const content = `Score these ${jobs.length} jobs 0-100 for fit. Only return JSON array: [score1, score2, ...].
 Candidate Roles: ${candidateProfile.targetRoles.join(", ")} | Skills: ${candidateProfile.skills}
 JOBS:
-${list}`
-        }],
-      }),
-    });
-    const d = await res.json();
-    const scores = JSON.parse(d?.choices?.[0]?.message?.content?.match(/\[.*\]/s)?.[0] || "[]");
-    return jobs.map((j, i) => ({ ...j, match_score: scores[i] ?? 50 }));
-  } catch {
-    return jobs.map(j => ({ ...j, match_score: 50 }));
+${list}`;
+
+  for (const model of GROQ_QUALITY_MODELS) {
+    try {
+      const res = await fetch(GROQ_CHAT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_KEY}` },
+        body: JSON.stringify({
+          model,
+          // Reasoning is charged against this budget, so the old 256 — already
+          // tight for a 50-element array — would now return nothing at all.
+          max_completion_tokens: 2048,
+          temperature: 0.1,
+          ...reasoningParams(model),
+          messages: [{ role: "user", content }],
+        }),
+      });
+
+      // Without this check an error response fell straight through to all-50s:
+      // d.choices is undefined, the regex yields "[]", and every job scores 50.
+      // Scoring silently stopped working and nothing said so.
+      if (!res.ok) {
+        const err = await res.text().catch(() => "");
+        console.error(`Job scoring [${model}] failed: HTTP ${res.status} ${err.slice(0, 200)}`);
+        continue;
+      }
+
+      const d = await res.json();
+      const scores = JSON.parse(d?.choices?.[0]?.message?.content?.match(/\[.*\]/s)?.[0] || "[]");
+      if (Array.isArray(scores) && scores.length) {
+        return jobs.map((j, i) => ({ ...j, match_score: scores[i] ?? 50 }));
+      }
+      console.error(`Job scoring [${model}] returned no usable scores`);
+    } catch (err) {
+      console.error(`Job scoring [${model}] threw:`, err);
+    }
   }
+
+  // Every model failed. Neutral 50 clears the default floor of 25, so the
+  // campaign keeps running on UNRANKED jobs rather than stalling — the safer
+  // failure, but the user is applying to poorly-matched roles until it's fixed.
+  console.error(
+    `Job scoring unavailable (${GROQ_QUALITY_MODELS.join(", ")}) — ` +
+    `${jobs.length} job(s) passed through unranked at the neutral score of 50.`
+  );
+  return jobs.map(j => ({ ...j, match_score: 50 }));
 }
 
 const MUSE_CATEGORY_MAP: Record<string, string> = {

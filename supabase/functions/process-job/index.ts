@@ -1,17 +1,12 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.0";
+import { GROQ_FAST_MODELS, GROQ_CHAT_URL, reasoningParams } from "../_shared/models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const GROQ_MODELS = [
-  "llama-3.1-8b-instant",
-  "llama3-8b-8192",
-  "gemma2-9b-it",
-];
 
 async function generateCoverLetterWithGroq(
   resumeText: string,
@@ -25,7 +20,7 @@ async function generateCoverLetterWithGroq(
     phone: string;
     location: string;
   }
-): Promise<string> {
+): Promise<{ text: string; usedFallback: boolean }> {
   const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY")!;
 
   const prompt = `You are a professional cover letter writer.
@@ -62,7 +57,7 @@ Requirements:
 
 Write only the cover letter, nothing else.`;
 
-  for (const model of GROQ_MODELS) {
+  for (const model of GROQ_FAST_MODELS) {
     console.log(`Trying model: ${model}`);
 
     // 3 attempts per model; backoff 3 s / 6 s / 9 s → max 18 s per model.
@@ -76,7 +71,7 @@ Write only the cover letter, nothing else.`;
 
         let response: Response;
         try {
-          response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          response = await fetch(GROQ_CHAT_URL, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -84,7 +79,12 @@ Write only the cover letter, nothing else.`;
             },
             body: JSON.stringify({
               model,
-              max_tokens: 1024,
+              // Budget covers thinking + writing. The old 1024 was sized for a
+              // 300-word letter with no reasoning, so it would truncate here.
+              max_completion_tokens: 4096,
+              // Chain-of-thought must never reach message.content — this letter
+              // goes straight to an employer.
+              ...reasoningParams(model),
               messages: [{ role: "user", content: prompt }],
             }),
             signal: ctrl.signal,
@@ -124,7 +124,7 @@ Write only the cover letter, nothing else.`;
 
         if (text && text.trim().length > 50) {
           console.log(`✓ Cover letter generated using ${model}`);
-          return text.trim();
+          return { text: text.trim(), usedFallback: false };
         }
 
         console.warn(`Empty response from ${model}`);
@@ -142,11 +142,14 @@ Write only the cover letter, nothing else.`;
     }
   }
 
-  console.warn("All Groq models failed — using fallback cover letter with real user data");
+  console.error(
+    `All Groq models failed (${GROQ_FAST_MODELS.join(", ")}) — falling back to the ` +
+    `generic template. This letter is NOT tailored to the resume or the job.`
+  );
   const today = new Date().toLocaleDateString("en-US", {
     year: "numeric", month: "long", day: "numeric"
   });
-  return `${userInfo.fullName}
+  return { usedFallback: true, text: `${userInfo.fullName}
 ${userInfo.email}
 ${userInfo.phone}
 ${userInfo.location}
@@ -164,7 +167,7 @@ I would welcome the opportunity to discuss how my experience aligns with your ne
 
 Sincerely,
 ${userInfo.fullName}
-${userInfo.email} | ${userInfo.phone}`;
+${userInfo.email} | ${userInfo.phone}` };
 }
 
 async function appendLog(supabase: any, campaignId: string, message: string) {
@@ -260,7 +263,7 @@ serve(async (req) => {
     console.log("userInfo resolved:", userInfo);
 
     // ── Generate cover letter ─────────────────────────────────────────────
-    const coverLetter = await generateCoverLetterWithGroq(
+    const { text: coverLetter, usedFallback } = await generateCoverLetterWithGroq(
       resumeText,
       job.title       || "Unknown Role",
       job.company     || "Unknown Company",
@@ -270,6 +273,16 @@ serve(async (req) => {
     );
 
     console.log("Cover letter ready for:", job.title, "at", job.company);
+
+    // Surface template letters in the campaign log — an untailored letter that
+    // reads as a normal success is worse than a visible failure.
+    if (usedFallback) {
+      await appendLog(
+        supabase,
+        campaignId,
+        `⚠️ AI unavailable — generic template used for "${job.title}" at ${job.company}. Regenerate this one before it goes out.`,
+      );
+    }
 
     // ── Insert application ────────────────────────────────────────────────
     const { error: insertError } = await supabase

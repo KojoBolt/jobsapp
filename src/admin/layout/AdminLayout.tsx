@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import AdminHeader from "./AdminHeader";
-import AdminSidebar from "./AdminSidebar";
+import AdminSidebar, { SIDEBAR_W, SIDEBAR_W_COLLAPSED } from "./AdminSidebar";
+import AdminBottomNav from "./AdminBottomNav";
 import { useSidebar } from "../context/SidebarContext";
+import { AdminActionsProvider } from "../context/AdminActionsContext";
 
 const AdminLayout = () => {
   const { isExpanded, isHovered } = useSidebar();
@@ -19,22 +21,27 @@ const AdminLayout = () => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const sidebarWidth = isExpanded || isHovered ? 290 : 90;
+  // Width comes from the sidebar module so the two can never disagree.
+  const sidebarWidth = isExpanded || isHovered ? SIDEBAR_W : SIDEBAR_W_COLLAPSED;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-gray-950">
-      <AdminSidebar />
+    <AdminActionsProvider>
+      <div className="min-h-screen bg-[#F4F4F2] dark:bg-[#0D0D0D]">
+        <AdminSidebar />
 
-      <div
-        className="transition-all duration-300"
-        style={{ marginLeft: isMobile ? 0 : sidebarWidth }}
-      >
-        <AdminHeader />
-        <main className="p-4 sm:p-6 lg:p-8">
-          <Outlet />
-        </main>
+        <div
+          className="transition-all duration-300"
+          style={{ marginLeft: isMobile ? 0 : sidebarWidth }}
+        >
+          <AdminHeader />
+          {/* pb-24 below lg clears the fixed bottom nav. */}
+          <main className="p-4 pb-24 sm:p-5 lg:pb-5">
+            <Outlet />
+          </main>
+          <AdminBottomNav />
+        </div>
       </div>
-    </div>
+    </AdminActionsProvider>
   );
 };
 

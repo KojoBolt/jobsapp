@@ -1,423 +1,269 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import Logo from "../../assets/images/job-black.png";
-import { MdSpaceDashboard } from "react-icons/md";
-import { FaBook, FaUsers, FaTasks, FaChartLine } from "react-icons/fa";
-import { HiNewspaper } from "react-icons/hi2";
-import { IoMdTrendingUp } from "react-icons/io";
-import { RxDotsHorizontal } from "react-icons/rx";
-import { supabase } from "@/integrations/supabase/client";
-import LogoLightMode from "../../assets/images/job-logo.png";
-
-
-// Keep using your existing icons + context exactly the same
 import {
-  ChevronDownIcon,
-} from "../icons";
-
+  LayoutDashboard, ClipboardCheck, Files, Radio, Send, Users2,
+  Bell, Activity, ChevronsUpDown, Zap, X,
+} from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { useSidebar } from "../context/SidebarContext";
-// import SidebarWidget from "./SidebarWidget";
+
+/* Shared with AdminLayout so the content offset can never drift from the rail. */
+export const SIDEBAR_W = 248;
+export const SIDEBAR_W_COLLAPSED = 84;
 
 type NavItem = {
   name: string;
-  icon: React.ReactNode;
-  path?: string;
-  subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
+  icon: React.ElementType;
+  path: string;
+  badge?: "pending" | "unread";
 };
 
-/**
- * sidebar nav
- */
-const navItems: NavItem[] = [
+type NavSection = { label: string; items: NavItem[] };
+
+/* Grouped exactly like the reference: MAIN / OTHER / ACCOUNT. */
+const SECTIONS: NavSection[] = [
   {
-    icon: <MdSpaceDashboard size={30} />,
-    name: "Dashboard",
-    path: "/admin/dashboard",
+    label: "Main",
+    items: [
+      { name: "Dashboard",        icon: LayoutDashboard, path: "/admin/dashboard" },
+      { name: "Review Queue",     icon: ClipboardCheck,  path: "/admin/review-queue", badge: "pending" },
+      { name: "All Applications", icon: Files,           path: "/admin/applications" },
+      { name: "Campaign Monitor", icon: Radio,           path: "/admin/campaigns" },
+    ],
   },
   {
-    icon: <FaBook size={20} />,
-    name: "Review Queue",
-    path: "/admin/review-queue",
+    label: "Other",
+    items: [
+      { name: "Submission Queue", icon: Send,   path: "/admin/submission-queue" },
+      { name: "User Management",  icon: Users2, path: "/admin/users" },
+      { name: "Notifications",    icon: Bell,   path: "/admin/notifications", badge: "unread" },
+    ],
   },
   {
-    icon: <HiNewspaper size={30} />,
-    name: "All Applications",
-    path: "/admin/applications",
-  },
-  {
-    icon: <FaUsers size={20} />,
-    name: "User Management",
-    path: "/admin/users",
-  },
-  {
-    icon: <FaTasks size={20} />,
-    name: "Submission Queue",
-    path: "/admin/submission-queue",
-  },
-  {
-    icon: <FaChartLine size={20} />,
-    name: "Campaign Monitor",
-    path: "/admin/campaigns",
-  },
-  {
-    icon: <IoMdTrendingUp size={30} />,
-    name: "My Activity",
-    path: "/admin/activity",
+    label: "Account",
+    items: [{ name: "My Activity", icon: Activity, path: "/admin/activity" }],
   },
 ];
 
+const initials = (name: string) =>
+  name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "AD";
+
 const AdminSidebar: React.FC = () => {
-  const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
+  const { isExpanded, isMobileOpen, isHovered, setIsHovered, toggleMobileSidebar } = useSidebar();
   const location = useLocation();
 
-  const [todayStats, setTodayStats] = useState({
-    reviewed: 0,
-    approved: 0,
-    rejected: 0,
-  });
+  const open = isExpanded || isHovered || isMobileOpen;
 
-  const [openSubmenu, setOpenSubmenu] = useState<{
-    type: "main" | "others";
-    index: number;
-  } | null>(null);
-
-  const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>({});
-  const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [counts, setCounts] = useState({ pending: 0, unread: 0 });
+  const [me, setMe] = useState({ full_name: "Admin", email: "" });
 
   const isActive = useCallback(
-    (path: string) => location.pathname === path,
-    [location.pathname]
+    (path: string) =>
+      location.pathname === path ||
+      // /admin and /admin/dashboard are the same screen
+      (path === "/admin/dashboard" && location.pathname === "/admin"),
+    [location.pathname],
   );
 
-  // Auto-open submenu when a sub-route is active
   useEffect(() => {
-    let submenuMatched = false;
+    const load = async () => {
+      const { count: pending } = await supabase
+        .from("applications")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["queued", "pending_review"]);
 
-    (["main", "others"] as const).forEach((menuType) => {
-      const items = menuType === "main" ? navItems : []; 
+      const { count: unread } = await supabase
+        .from("admin_notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("is_read", false);
 
-      items.forEach((nav, index) => {
-        if (nav.subItems) {
-          nav.subItems.forEach((subItem) => {
-            if (isActive(subItem.path)) {
-              setOpenSubmenu({ type: menuType, index });
-              submenuMatched = true;
-            }
+      setCounts({ pending: pending || 0, unread: unread || 0 });
+
+      const { data: auth } = await supabase.auth.getUser();
+      if (auth?.user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", auth.user.id)
+          .maybeSingle();
+        if (profile) {
+          setMe({
+            full_name: profile.full_name || "Admin",
+            email: profile.email || auth.user.email || "",
           });
         }
-      });
-    });
-
-    if (!submenuMatched) setOpenSubmenu(null);
-  }, [location, isActive]);
-
-  // Fetch today's stats
-  useEffect(() => {
-    const fetchTodayStats = async () => {
-      try {
-        const now = new Date();
-        const todayStart = new Date(now);
-        todayStart.setHours(0, 0, 0, 0);
-
-        const { data, error } = await supabase
-          .from("applications")
-          .select("status")
-          .gte("updated_at", todayStart.toISOString())
-          .in("status", ["approved", "failed"]);
-
-        if (error) {
-          console.error("Error fetching today's stats:", error);
-          return;
-        }
-
-        const apps = data || [];
-        const approved = apps.filter((a) => a.status === "approved").length;
-        const rejected = apps.filter((a) => a.status === "failed").length;
-
-        setTodayStats({
-          reviewed: apps.length,
-          approved,
-          rejected,
-        });
-      } catch (err) {
-        console.error("Unexpected error fetching stats:", err);
       }
     };
 
-    fetchTodayStats();
-
-    // Refresh stats every 30 seconds
-    const interval = setInterval(fetchTodayStats, 30000);
-    return () => clearInterval(interval);
+    load();
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
   }, []);
 
-  // Measure submenu height for smooth expand/collapse animation
+  const badgeValue = (b?: NavItem["badge"]) =>
+    b === "pending" ? counts.pending : b === "unread" ? counts.unread : 0;
+
+  // Escape closes the mobile drawer, alongside the X and the backdrop.
   useEffect(() => {
-    if (openSubmenu !== null) {
-      const key = `${openSubmenu.type}-${openSubmenu.index}`;
-      if (subMenuRefs.current[key]) {
-        setSubMenuHeight((prev) => ({
-          ...prev,
-          [key]: subMenuRefs.current[key]?.scrollHeight || 0,
-        }));
-      }
-    }
-  }, [openSubmenu]);
-
-  const handleSubmenuToggle = (index: number, menuType: "main" | "others") => {
-    setOpenSubmenu((prev) => {
-      if (prev && prev.type === menuType && prev.index === index) return null;
-      return { type: menuType, index };
-    });
-  };
-
-  const renderMenuItems = (items: NavItem[], menuType: "main" | "others") => (
-    <ul className="flex flex-col gap-4">
-      {items.map((nav, index) => (
-        <li key={nav.name}>
-          {nav.subItems ? (
-            <button
-              onClick={() => handleSubmenuToggle(index, menuType)}
-              className={`flex items-center gap-3 px-3 py-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-gray-800 ${
-                openSubmenu?.type === menuType && openSubmenu?.index === index
-                  ? "bg-slate-100 dark:bg-gray-800"
-                  : "menu-item-inactive"
-              } cursor-pointer ${
-                !isExpanded && !isHovered ? "lg:justify-center" : "lg:justify-start"
-              }`}
-            >
-              <span
-                className={`w-6 h-6 flex items-center justify-center shrink-0 ${
-                  openSubmenu?.type === menuType && openSubmenu?.index === index
-                    ? "menu-item-icon-active"
-                    : "menu-item-icon-inactive"
-                }`}
-              >
-                {nav.icon}
-              </span>
-
-              {(isExpanded || isHovered || isMobileOpen) && (
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{nav.name}</span>
-              )}
-
-              {(isExpanded || isHovered || isMobileOpen) && (
-                <ChevronDownIcon
-                  className={`ml-auto w-5 h-5 transition-transform duration-200 ${
-                    openSubmenu?.type === menuType && openSubmenu?.index === index
-                      ? "rotate-180 text-brand-500"
-                      : ""
-                  }`}
-                />
-              )}
-            </button>
-          ) : (
-            nav.path && (
-              <Link
-                to={nav.path}
-                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-gray-800 ${
-                  isActive(nav.path) ? "bg-slate-100 dark:bg-gray-800" : "menu-item-inactive"
-                }`}
-              >
-                <span
-                  className={`w-6 h-6 flex items-center justify-center shrink-0 ${
-                    isActive(nav.path) ? "menu-item-icon-active" : "menu-item-icon-inactive"
-                  }`}
-                >
-                  {nav.icon}
-                </span>
-
-                {(isExpanded || isHovered || isMobileOpen) && (
-                  <span className="menu-item-text">{nav.name}</span>
-                )}
-              </Link>
-            )
-          )}
-
-          {nav.subItems && (isExpanded || isHovered || isMobileOpen) && (
-            <div
-              ref={(el) => {
-                subMenuRefs.current[`${menuType}-${index}`] = el;
-              }}
-              className="overflow-hidden transition-all duration-300"
-              style={{
-                height:
-                  openSubmenu?.type === menuType && openSubmenu?.index === index
-                    ? `${subMenuHeight[`${menuType}-${index}`]}px`
-                    : "0px",
-              }}
-            >
-              <ul className="mt-2 space-y-1 ml-9">
-                {nav.subItems.map((subItem) => (
-                  <li key={subItem.name}>
-                    <Link
-                      to={subItem.path}
-                      className={`menu-dropdown-item ${
-                        isActive(subItem.path)
-                          ? "menu-dropdown-item-active"
-                          : "menu-dropdown-item-inactive"
-                      }`}
-                    >
-                      {subItem.name}
-                      <span className="flex items-center gap-1 ml-auto">
-                        {subItem.new && (
-                          <span
-                            className={`ml-auto ${
-                              isActive(subItem.path)
-                                ? "menu-dropdown-badge-active"
-                                : "menu-dropdown-badge-inactive"
-                            } menu-dropdown-badge`}
-                          >
-                            new
-                          </span>
-                        )}
-                        {subItem.pro && (
-                          <span
-                            className={`ml-auto ${
-                              isActive(subItem.path)
-                                ? "menu-dropdown-badge-active"
-                                : "menu-dropdown-badge-inactive"
-                            } menu-dropdown-badge`}
-                          >
-                            pro
-                          </span>
-                        )}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
+    if (!isMobileOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && toggleMobileSidebar();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isMobileOpen, toggleMobileSidebar]);
 
   return (
+    <>
+      {/* Backdrop — the drawer had no way to dismiss by tapping outside. */}
+      {isMobileOpen && (
+        <div
+          onClick={toggleMobileSidebar}
+          aria-hidden
+          className="fixed inset-0 z-[1050] bg-black/40 backdrop-blur-sm lg:hidden"
+        />
+      )}
+
     <aside
-      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
-        ${
-          isExpanded || isMobileOpen
-            ? "w-[290px]"
-            : isHovered
-            ? "w-[290px]"
-            : "w-[90px]"
-        }
-        ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
-        lg:translate-x-0`}
       onMouseEnter={() => !isExpanded && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      style={{ width: open ? SIDEBAR_W : SIDEBAR_W_COLLAPSED }}
+      // z-[1100] puts the drawer above the sticky header (z-[1000]). At z-50 the
+      // header painted over the top of it, hiding the first nav item.
+      className={`fixed left-0 top-0 z-[1100] flex h-screen flex-col border-r border-[#EAEAE7]
+                  bg-white transition-all duration-300 ease-in-out
+                  dark:border-white/10 dark:bg-[#1A1A19]
+                  ${isMobileOpen ? "translate-x-0" : "-translate-x-full"} lg:z-50 lg:translate-x-0`}
     >
-      {/* Logo area */}
-      <div
-        className={`py-8 flex ${
-          !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
-        }`}
-      >
-        <Link to="/admin/dashboard">
-          {isExpanded || isHovered || isMobileOpen ? (
+      {/* ── Drawer header (mobile only) ──────────────────────────────────
+          The brand lives in the page header below lg, so this row exists to
+          give the drawer a visible way out. */}
+      <div className="flex items-center justify-between px-3 pt-3 lg:hidden">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#9A9995]">
+          Menu
+        </span>
+        <button
+          type="button"
+          onClick={toggleMobileSidebar}
+          aria-label="Close menu"
+          className="grid h-8 w-8 place-items-center rounded-lg border border-[#EAEAE7]
+                     text-[#6B6A66] transition-colors hover:bg-[#F4F4F2]
+                     dark:border-white/10 dark:text-[#C3C2B7] dark:hover:bg-white/5"
+        >
+          <X size={15} />
+        </button>
+      </div>
+
+      {/* ── Brand card ─────────────────────────────────────────────────────
+          Desktop only. Below lg the header carries the brand, so showing it
+          here too would double it up whenever the drawer is open. */}
+      <div className="hidden p-3 lg:block">
+        <Link
+          to="/admin/dashboard"
+          className={`flex items-center gap-2.5 rounded-xl border border-[#EAEAE7] p-2.5
+                      transition-colors hover:bg-[#F4F4F2]
+                      dark:border-white/10 dark:hover:bg-white/5
+                      ${open ? "" : "justify-center"}`}
+        >
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#111110] text-white dark:bg-white dark:text-[#111110]">
+            <Zap size={15} strokeWidth={2.5} />
+          </span>
+          {open && (
             <>
-              <img
-                className="dark:hidden ml-5 mb-0"
-                src={Logo}
-                alt="Logo"
-                width={130}
-                height={30}
-              />
-              <img
-                className="hidden dark:block ml-5 mb-0"
-                src={LogoLightMode}
-                alt="Logo"
-                width={130}
-                height={30}
-              />
-            </>
-          ) : (
-            <>
-            <img
-              className="dark:hidden"
-              src={Logo}
-              alt="Logo"
-              width={110}
-              height={30}
-            />
-            <img
-              className="hidden dark:block"
-              src={LogoLightMode}
-              alt="Logo"
-              width={120}
-              height={40}
-            />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-bold leading-tight text-[#111110] dark:text-white">
+                  JobApp
+                </span>
+                <span className="block truncate text-[10.5px] leading-tight text-[#9A9995]">
+                  Admin Console
+                </span>
+              </span>
+              <ChevronsUpDown size={13} className="shrink-0 text-[#9A9995]" />
             </>
           )}
         </Link>
       </div>
 
-      <div className="flex flex-col overflow-y-hidden duration-300 ease-linear no-scrollbar">
-        <nav className="mb-6">
-          <div className="flex flex-col gap-4">
-            {/* MAIN */}
-            <div>
-              <h2
-                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
-                }`}
-              >
-                {isExpanded || isHovered || isMobileOpen ? (
-                  "Menu"
-                ) : (
-                  <RxDotsHorizontal className="size-6" />
-                )}
-              </h2>
+      {/* ── Nav ──────────────────────────────────────────────────────────── */}
+      <nav className="no-scrollbar flex-1 overflow-y-auto px-3 pb-2">
+        {SECTIONS.map((section) => (
+          <div key={section.label} className="mb-1">
+            <p
+              className={`px-2 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#9A9995]
+                          ${open ? "" : "text-center"}`}
+            >
+              {open ? section.label : "•"}
+            </p>
 
-              {renderMenuItems(navItems, "main")}
+            <ul className="space-y-0.5">
+              {section.items.map((item) => {
+                const active = isActive(item.path);
+                const count = badgeValue(item.badge);
+                const Icon = item.icon;
 
-            </div>
-
-            {/* OTHERS */}
-            <div>
-              <h2
-                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
-                }`}
-              >
-                {isExpanded || isHovered || isMobileOpen ? (
-                  "Others"
-                ) : (
-                  <RxDotsHorizontal className="size-6" />
-                )}
-              </h2>
-
-              <div className={`p-4 border-t border-[#E2E8F0] dark:border-gray-700 ${ !isExpanded && !isHovered ? "hidden" : "justify-start"}`}>
-          <div className="bg-[#F8FAFC] dark:bg-gray-800 rounded-lg p-4">
-            <h4 className="text-sm font-semibold text-[#1E293B] dark:text-gray-200 mb-3">Today's Activity</h4>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-[#64748B] dark:text-gray-400">Reviewed</span>
-                <span className="font-semibold text-[#1E293B] dark:text-white">{todayStats.reviewed}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-[#64748B] dark:text-gray-400">Approved</span>
-                <span className="font-semibold text-[#10B981]">{todayStats.approved}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-[#64748B] dark:text-gray-400">Rejected</span>
-                <span className="font-semibold text-[#EF4444]">{todayStats.rejected}</span>
-              </div>
-            </div>
+                return (
+                  <li key={item.path} className="relative">
+                    {/* Left indicator bar on the active row */}
+                    {active && (
+                      <span
+                        aria-hidden
+                        className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-[#111110] dark:bg-white"
+                      />
+                    )}
+                    <Link
+                      to={item.path}
+                      title={open ? undefined : item.name}
+                      // Navigating on mobile should dismiss the drawer, or it
+                      // stays open on top of the page you just opened.
+                      onClick={() => isMobileOpen && toggleMobileSidebar()}
+                      className={`flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13px] transition-colors
+                        ${open ? "" : "justify-center"}
+                        ${
+                          active
+                            ? "bg-[#F4F4F2] font-semibold text-[#111110] dark:bg-white/[0.07] dark:text-white"
+                            : "font-medium text-[#6B6A66] hover:bg-[#F7F7F5] hover:text-[#111110] dark:text-[#C3C2B7] dark:hover:bg-white/5 dark:hover:text-white"
+                        }`}
+                    >
+                      <Icon size={16} strokeWidth={active ? 2.2 : 1.9} className="shrink-0" />
+                      {open && <span className="flex-1 truncate">{item.name}</span>}
+                      {open && count > 0 && (
+                        <span className="grid h-[17px] min-w-[17px] shrink-0 place-items-center rounded-full bg-[#D03B3B] px-1 text-[10px] font-bold text-white">
+                          {count > 99 ? "99+" : count}
+                        </span>
+                      )}
+                      {!open && count > 0 && (
+                        <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#D03B3B]" />
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
+        ))}
+      </nav>
+
+      {/* ── User card ────────────────────────────────────────────────────── */}
+      <div className="p-3">
+        <div
+          className={`flex items-center gap-2.5 rounded-xl border border-[#EAEAE7] p-2.5
+                      dark:border-white/10 ${open ? "" : "justify-center"}`}
+        >
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#F4F4F2] text-[11px] font-bold text-[#6B6A66] dark:bg-white/10 dark:text-[#C3C2B7]">
+            {initials(me.full_name)}
+          </span>
+          {open && (
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12.5px] font-semibold leading-tight text-[#111110] dark:text-white">
+                {me.full_name}
+              </span>
+              <span className="block truncate text-[10.5px] leading-tight text-[#9A9995]">
+                {me.email}
+              </span>
+            </span>
+          )}
         </div>
-            </div>
-          </div>
-        </nav>
-
-        {isExpanded || isHovered || isMobileOpen ? null : (
-          <div className="p-4 text-center text-sm text-gray-500 hidden">
-            <p>Admin Sidebar is collapsed</p>
-          </div>
-        )}
       </div>
     </aside>
+    </>
   );
 };
 

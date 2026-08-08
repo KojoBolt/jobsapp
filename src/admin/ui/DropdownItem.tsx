@@ -1,5 +1,6 @@
 import type React from "react";
 import { Link } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
 interface DropdownItemProps {
   tag?: "a" | "button";
@@ -20,7 +21,9 @@ export const DropdownItem: React.FC<DropdownItemProps> = ({
   className = "",
   children,
 }) => {
-  const combinedClasses = `${baseClassName} ${className}`.trim();
+  // Merged, not concatenated — otherwise a caller's padding/colour loses to
+  // the defaults depending on where Tailwind emitted each class.
+  const combinedClasses = cn(baseClassName, className);
 
   const handleClick = (event: React.MouseEvent) => {
     if (tag === "button") {

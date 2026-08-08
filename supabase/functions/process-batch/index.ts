@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.0";
 import { sourceJobs, jobKey } from "../_shared/sourcing.ts";
+import { GROQ_FAST_MODELS, GROQ_CHAT_URL, reasoningParams } from "../_shared/models.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,8 +27,6 @@ const CAMPAIGN_MAX_AGE_MS = 7 * 24 * 60 * 60_000;  // 7 days
 const PAGES_PER_TOPUP  = 2;
 const MAX_SOURCE_PAGE  = 20;        // past this, reset cursor to 1 (front pages = fresh posts)
 const STALE_DRAFT_MS   = 10 * 60_000;
-
-const GROQ_MODELS = ["llama-3.1-8b-instant", "llama3-8b-8192", "gemma2-9b-it"];
 
 function fastDelayMs(): number {
   return Math.floor(FAST_MIN_MS + Math.random() * (FAST_MAX_MS - FAST_MIN_MS));
@@ -59,7 +58,7 @@ async function countApps(supabase: any, campaignId: string, build: (q: any) => a
 async function generateCoverLetter(
   resumeText: string, jobTitle: string, company: string, jobDescription: string, tone: string,
   userInfo: { fullName: string; email: string; phone: string; location: string },
-): Promise<string> {
+): Promise<{ text: string; usedFallback: boolean }> {
   const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY")!;
   const prompt = `You are a professional cover letter writer.
 Write a compelling, complete cover letter using ONLY the real data provided below.
@@ -95,17 +94,24 @@ Requirements:
 
 Write only the cover letter, nothing else.`;
 
-  for (const model of GROQ_MODELS) {
+  for (const model of GROQ_FAST_MODELS) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 25_000);
         let response: Response;
         try {
-          response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          response = await fetch(GROQ_CHAT_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
-            body: JSON.stringify({ model, max_tokens: 1024, messages: [{ role: "user", content: prompt }] }),
+            body: JSON.stringify({
+              model,
+              // Budget covers thinking + writing; 1024 would truncate a letter.
+              max_completion_tokens: 4096,
+              // Chain-of-thought must never reach the letter an employer reads.
+              ...reasoningParams(model),
+              messages: [{ role: "user", content: prompt }],
+            }),
             signal: ctrl.signal,
           });
         } finally { clearTimeout(timer); }
@@ -115,7 +121,7 @@ Write only the cover letter, nothing else.`;
         if (!response.ok) break;
         const data = await response.json();
         const text = data?.choices?.[0]?.message?.content;
-        if (text && text.trim().length > 50) return text.trim();
+        if (text && text.trim().length > 50) return { text: text.trim(), usedFallback: false };
         break;
       } catch (err: any) {
         if (err?.name === "AbortError") break;
@@ -124,8 +130,12 @@ Write only the cover letter, nothing else.`;
     }
   }
 
+  console.error(
+    `All Groq models failed (${GROQ_FAST_MODELS.join(", ")}) — falling back to the ` +
+    `generic template. This letter is NOT tailored to the resume or the job.`
+  );
   const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  return `${userInfo.fullName}
+  return { usedFallback: true, text: `${userInfo.fullName}
 ${userInfo.email}
 ${userInfo.phone}
 ${userInfo.location}
@@ -143,7 +153,7 @@ I would welcome the opportunity to discuss how my experience aligns with your ne
 
 Sincerely,
 ${userInfo.fullName}
-${userInfo.email} | ${userInfo.phone}`;
+${userInfo.email} | ${userInfo.phone}` };
 }
 
 function resolveUserInfo(profileData: any) {
@@ -245,6 +255,7 @@ async function processCampaignBatch(supabase: any, campaign: any) {
   const { data: claimed } = await supabase.rpc("claim_jobs_for_drafting", { p_campaign_id: campaignId, p_limit: limit });
 
   let drafted = 0;
+  let templated = 0;   // drafted, but with the generic fallback — needs regeneration
   if (claimed?.length) {
     const { data: resume } = await supabase
       .from("resumes").select("extracted_text, tone_preference")
@@ -257,12 +268,13 @@ async function processCampaignBatch(supabase: any, campaign: any) {
       const sub = claimed.slice(i, i + CONCURRENCY);
       await Promise.allSettled(sub.map(async (app: any) => {
         try {
-          const letter = await generateCoverLetter(
+          const { text: letter, usedFallback } = await generateCoverLetter(
             resumeText, app.job_title || "Unknown Role", app.company_name || "Unknown Company",
             app.job_description || "", tone, userInfo,
           );
           await supabase.rpc("complete_application", { p_app_id: app.id, p_cover_letter: letter });
           drafted++;
+          if (usedFallback) templated++;
         } catch (err: any) {
           await supabase.rpc("fail_application", { p_app_id: app.id });
           await appendLog(supabase, campaignId, `Failed to draft "${app.job_title}": ${err?.message || "error"}`);
@@ -271,6 +283,14 @@ async function processCampaignBatch(supabase: any, campaign: any) {
       if (i + CONCURRENCY < claimed.length) await new Promise(r => setTimeout(r, SUBBATCH_GAP_MS));
     }
     if (drafted) await appendLog(supabase, campaignId, `Drafted ${drafted} cover letter(s) this batch.`);
+    // Surface template letters — untailored drafts that read as normal successes
+    // are worse than a visible failure. One line per batch, not per letter.
+    if (templated) {
+      await appendLog(
+        supabase, campaignId,
+        `⚠️ AI unavailable for ${templated} of ${drafted} letter(s) — generic template used. Regenerate before they go out.`,
+      );
+    }
     await notify(supabase, userId, campaignId, `✅ ${drafted} new application(s) ready for review.`);
   }
 
