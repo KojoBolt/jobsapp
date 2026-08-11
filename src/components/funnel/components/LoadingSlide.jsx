@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Brain, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
+import FunnelLayout from './FunnelLayout';
+import { FUNNEL } from './theme';
 
 const STAGES = ['Analyzing your profile', 'Matching with opportunities', 'Optimizing for success', 'Creating your plan'];
 
-export default function LoadingSlide({ firstName, onComplete }) {
+export default function LoadingSlide({ firstName, onComplete, stage = 'Plan' }) {
   const [doneCount, setDoneCount] = useState(0);
 
   useEffect(() => {
@@ -18,33 +20,55 @@ export default function LoadingSlide({ firstName, onComplete }) {
   const progressPct = (doneCount / STAGES.length) * 100;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] px-8 text-center max-w-md mx-auto">
-      <div className="w-20 h-20 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-8">
-        <Brain size={32} strokeWidth={1.5} className="text-blue-400" />
-      </div>
-      <h1 className="text-2xl font-bold text-white">Hang tight, {firstName}!</h1>
-      <p className="text-white/40 mt-2 mb-10">We're building your personalized job search plan</p>
+    <FunnelLayout
+      stage={stage}
+      title={`Hang tight, ${firstName}!`}
+      subtitle="We're building your personalised job search plan"
+    >
+      <div
+        className="rounded-2xl p-6 sm:p-8 max-w-xl"
+        style={{ backgroundColor: FUNNEL.card, boxShadow: FUNNEL.cardShadow }}
+      >
+        <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: FUNNEL.hairline }}>
+          <div
+            className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${progressPct}%`, backgroundColor: FUNNEL.accent }}
+          />
+        </div>
 
-      <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden mb-8">
-        <div className="h-full bg-blue-500 transition-all duration-700" style={{ width: `${progressPct}%` }} />
+        <div className="flex flex-col gap-4 mt-7">
+          {STAGES.map((label, i) => {
+            const done = i < doneCount;
+            const current = i === doneCount;
+            return (
+              <div key={label} className="flex items-center gap-3.5">
+                <span
+                  className="w-[26px] h-[26px] rounded-full flex items-center justify-center shrink-0"
+                  style={
+                    done
+                      ? { backgroundColor: FUNNEL.accent }
+                      : current
+                      ? { border: `2px solid ${FUNNEL.accent}` }
+                      : { border: `1.5px solid ${FUNNEL.hairline}` }
+                  }
+                >
+                  {done && <Check size={14} strokeWidth={3} className="text-white" />}
+                  {current && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: FUNNEL.accent }} />}
+                </span>
+                <span
+                  className="text-sm"
+                  style={{
+                    color: done || current ? FUNNEL.ink : FUNNEL.muted,
+                    fontWeight: done || current ? 700 : 500,
+                  }}
+                >
+                  {label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
-
-      <div className="flex flex-col gap-4 w-full">
-        {STAGES.map((stage, i) => (
-          <div key={stage} className="flex items-center gap-3 text-left">
-            <span
-              className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-                i < doneCount ? 'bg-emerald-500 text-white' : i === doneCount ? 'border-2 border-blue-500 text-blue-400' : 'bg-white/5 text-white/20'
-              }`}
-            >
-              {i < doneCount && <Check size={14} strokeWidth={3} />}
-            </span>
-            <span className={i < doneCount ? 'text-emerald-400' : i === doneCount ? 'text-white font-medium' : 'text-white/30'}>
-              {stage}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
+    </FunnelLayout>
   );
 }

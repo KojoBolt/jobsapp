@@ -2,31 +2,30 @@ import { useState } from 'react';
 import { Mail, User as UserIcon } from 'lucide-react';
 import OptionCard from './OptionCard';
 import FunnelLayout from './FunnelLayout';
+import { FUNNEL } from './theme';
 
 const InputField = ({ icon: IconCmp, ...props }) => (
-  <div className="relative pl-80">
+  <div className="relative">
     {IconCmp && (
-      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30"
-      style={{
-      marginLeft: "10px"
-      }}
-      >
-        <IconCmp size={16} strokeWidth={1.75} />
+      <span className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: FUNNEL.muted }}>
+        <IconCmp size={17} strokeWidth={1.9} />
       </span>
     )}
     <input
       {...props}
-      className={`w-full bg-white/5 border border-white/10 rounded-xl py-4 text-white placeholder-white/30 outline-none focus:border-blue-500 transition-colors
-        ${
-        IconCmp ? 'pl-10 pr-4' : 'px-4'
-      }`
-      
-    }
+      className={`w-full rounded-2xl py-4 text-sm font-medium outline-none transition-shadow focus:shadow-[0_0_0_1.5px_#EFC59B] ${
+        IconCmp ? 'pl-12 pr-4' : 'px-4'
+      }`}
+      style={{
+        backgroundColor: FUNNEL.card,
+        color: FUNNEL.ink,
+        boxShadow: FUNNEL.cardShadow,
+      }}
     />
   </div>
 );
 
-export default function PersonalizeStep({ step, value, onAnswer, onNext }) {
+export default function PersonalizeStep({ step, value, onAnswer, onNext, onBack, isFirst, stepNumber }) {
   const [firstName, setFirstName] = useState(value?.firstName || '');
   const [email, setEmail] = useState(value?.email || '');
   const [industry, setIndustry] = useState(value?.industry || null);
@@ -41,35 +40,37 @@ export default function PersonalizeStep({ step, value, onAnswer, onNext }) {
   };
 
   return (
-    <FunnelLayout kicker={step.kicker} icon={step.icon} title={step.title} subtitle={step.subtitle} stage={step.stage}>
-      <div className="flex flex-col gap-4">
+    <FunnelLayout
+      stage={step.stage}
+      stepNumber={stepNumber}
+      title={step.title}
+      subtitle={step.subtitle}
+      onBack={onBack}
+      onNext={handleContinue}
+      isFirst={isFirst}
+      nextDisabled={!isValid}
+    >
+      <div className="flex flex-col gap-3">
         <InputField icon={Mail} type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
         <InputField icon={UserIcon} type="text" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-
-        <div className="mt-2">
-          <p className="text-sm font-semibold text-white/70 mb-3">{step.multiSelectField.label}</p>
-          <div className="grid grid-cols-2 gap-3">
-            {step.multiSelectField.options.map((option) => (
-              <OptionCard
-                key={option.value}
-                option={option}
-                selected={industry?.value === option.value}
-                onSelect={setIndustry}
-                grid
-              />
-            ))}
-          </div>
-        </div>
       </div>
 
-      <button
-        type="button"
-        onClick={handleContinue}
-        disabled={!isValid}
-        className="w-full mt-8 py-4 rounded-xl bg-blue-500 disabled:bg-white/10 disabled:text-white/30 text-white font-semibold hover:bg-blue-600 transition-colors"
-      >
-        Next
-      </button>
+      {/* Second question on the same screen, matching the reference's stacked layout */}
+      <div className="mt-7">
+        <p className="text-[19px] sm:text-[21px] font-bold tracking-tight mb-4" style={{ color: FUNNEL.ink }}>
+          {step.multiSelectField.label}
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {step.multiSelectField.options.map((option) => (
+            <OptionCard
+              key={option.value}
+              option={option}
+              selected={industry?.value === option.value}
+              onSelect={setIndustry}
+            />
+          ))}
+        </div>
+      </div>
     </FunnelLayout>
   );
 }

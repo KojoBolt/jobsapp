@@ -1,7 +1,6 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { QUIZ_STEPS } from './quizConfig';
 import { useFunnel } from './FunnelContext';
-import StepIndicator from './components/StepIndicator';
 import QuestionStep from './components/QuestionStep';
 import PersonalizeStep from './components/PersonalizeStep';
 import SocialProofSlide from './components/SocialProofSlide';
@@ -25,36 +24,35 @@ export default function OnboardingQuiz() {
     navigate(track === 'intern' ? '/start/checkout/intern' : '/start/checkout', { state: { answers } });
   };
 
-  return (
-    <div className="relative bg-[#0A0A0A] min-h-screen overflow-hidden">
-      {/* Ambient glow — subtle, single accent color, no neon */}
-      <div className="pointer-events-none absolute -top-40 -right-40 w-[480px] h-[480px] rounded-full bg-blue-600/10 blur-[120px]" />
-      <div className="pointer-events-none absolute -bottom-40 -left-40 w-[480px] h-[480px] rounded-full bg-blue-600/5 blur-[120px]" />
+  // Every step shares the same shell props: the layout owns the Back / Next
+  // footer now, so each slide only supplies its own body.
+  const shellProps = {
+    onNext: handleNext,
+    onBack: handleBack,
+    isFirst: stepIndex === 0,
+    stepNumber: stepIndex + 1,
+  };
 
-      <div className="relative">
-        {step.type !== 'loading' && (
-          <StepIndicator currentStage={step.stage} onBack={handleBack} isFirst={stepIndex === 0} />
-        )}
-        {renderStep()}
-      </div>
-    </div>
-  );
+  // FunnelLayout owns the full-page shell (dark backdrop + rounded app card),
+  // so each slide renders straight into the route.
+  return renderStep();
 
   function renderStep() {
     switch (step.type) {
       case 'single':
       case 'multi':
-        return <QuestionStep key={step.id} step={step} value={answers[step.id]} onAnswer={setAnswer} onNext={handleNext} />;
+        return <QuestionStep key={step.id} step={step} value={answers[step.id]} onAnswer={setAnswer} {...shellProps} />;
       case 'form':
-        return <PersonalizeStep key={step.id} step={step} value={answers[step.id]} onAnswer={setAnswer} onNext={handleNext} />;
+        return <PersonalizeStep key={step.id} step={step} value={answers[step.id]} onAnswer={setAnswer} {...shellProps} />;
       case 'social-proof':
-        return <SocialProofSlide key={step.id} step={step} onNext={handleNext} />;
+        return <SocialProofSlide key={step.id} step={step} {...shellProps} />;
       case 'reality-check':
-        return <RealityCheckSlide key={step.id} step={step} answers={answers} onNext={handleNext} />;
+        return <RealityCheckSlide key={step.id} step={step} answers={answers} {...shellProps} />;
       case 'loading':
         return (
           <LoadingSlide
             key={step.id}
+            stage={step.stage}
             firstName={answers.personalize?.firstName || 'there'}
             onComplete={handleFunnelComplete}
           />

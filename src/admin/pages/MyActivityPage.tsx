@@ -4,15 +4,15 @@ import {
   CalendarDays, Gauge, PieChart, LineChart as LineIcon, CalendarClock,
   History, Inbox, AlertTriangle,
 } from "lucide-react";
-import { format, formatDistanceToNow, subMonths, startOfMonth } from "date-fns";
+import { format, formatDistanceToNow, startOfMonth } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  T, Panel, PanelHeader, StatTile, Pill, IconButton, LegendRow,
+  T, Panel, PanelHeader, StatTile, PillMenu, IconButton, LegendRow,
   Pagination, EmptyState, CHART,
 } from "@/admin/ui/system";
 import {
-  PipelineGauge, TrendChart, TrendKey, ActivityHeatmap,
-  useRamp, type GaugeBand, type HeatCell,
+  PipelineGauge, TrendChart, TrendKey, ActivityHeatmap, useRamp,
+  buildTrend, GRAIN_OPTIONS, type GaugeBand, type HeatCell, type Grain,
 } from "@/admin/ui/charts";
 import { useRegisterExport, useAdminActions } from "@/admin/context/AdminActionsContext";
 
@@ -27,6 +27,7 @@ interface Activity {
 }
 
 const PAGE_SIZE = 20;
+
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const BANDS = ["00–08", "08–16", "16–24"];
 
@@ -40,6 +41,7 @@ const MyActivityPage = (): JSX.Element => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [grain, setGrain] = useState<Grain>("monthly");
   const { ramp } = useRamp();
   const { inRange } = useAdminActions();
 
@@ -113,19 +115,8 @@ const MyActivityPage = (): JSX.Element => {
         ].filter((b) => b.value > 0)
       : [];
 
-    // Decisions per month, last 7 months.
-    const trend = Array.from({ length: 7 }, (_, i) => {
-      const from = startOfMonth(subMonths(now, 6 - i));
-      const to = startOfMonth(subMonths(now, 5 - i));
-      return {
-        month: format(from, "MMM"),
-        value: scoped.filter((a) => at(a) >= from && at(a) < to).length,
-      };
-    });
-    const nonZero = trend.filter((t) => t.value > 0);
-    const target = nonZero.length
-      ? Math.round(nonZero.reduce((s, t) => s + t.value, 0) / nonZero.length)
-      : 0;
+    // Decisions bucketed at the selected granularity.
+    const { data: trend, target, caption: trendCaption } = buildTrend(scoped, at, grain);
 
     // When reviewing actually happens — weekday × 8-hour band.
     const cells: HeatCell[] = [];
@@ -142,9 +133,9 @@ const MyActivityPage = (): JSX.Element => {
       today: since(todayStart),
       week: since(weekStart),
       month: since(monthStart),
-      approved, rejected, approvalRate, bands, trend, target, cells,
+      approved, rejected, approvalRate, bands, trend, target, trendCaption, cells,
     };
-  }, [scoped]);
+  }, [scoped, grain]);
 
   const exportCsv = useCallback(() => {
     const header = ["Decision", "Company", "Job title", "Notes", "When"];
@@ -234,15 +225,28 @@ const MyActivityPage = (): JSX.Element => {
         </Panel>
 
         <Panel className="lg:col-span-2">
-          <PanelHeader icon={LineIcon} title="Decisions Over Time"
-                       right={<><Pill>Monthly</Pill><IconButton label="Open trend" /></>} />
+          <PanelHeader
+            icon={LineIcon}
+            title="Decisions Over Time"
+            right={
+              <>
+                <PillMenu
+                  value={grain}
+                  onChange={(v) => setGrain(v)}
+                  heading="Group by"
+                  options={GRAIN_OPTIONS}
+                />
+                <IconButton label="Open trend" />
+              </>
+            }
+          />
           <div className="px-4 pb-4 sm:px-5">
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className={`text-[24px] font-bold leading-none tracking-[-0.02em] ${T.ink}`}>
                   {m.trend.reduce((s, t) => s + t.value, 0)}
                 </p>
-                <p className={`mt-1 text-[11px] ${T.muted}`}>Last 7 months</p>
+                <p className={`mt-1 text-[11px] ${T.muted}`}>{m.trendCaption}</p>
               </div>
               <TrendKey />
             </div>

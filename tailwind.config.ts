@@ -2,7 +2,15 @@ import type { Config } from "tailwindcss";
 
 export default {
   darkMode: ["class"],
-  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  // .jsx/.js are included because the funnel (src/components/funnel) is
+  // authored in JSX — without them Tailwind silently drops every class that
+  // isn't also used somewhere in a .tsx file.
+  content: [
+    "./pages/**/*.{ts,tsx,js,jsx}",
+    "./components/**/*.{ts,tsx,js,jsx}",
+    "./app/**/*.{ts,tsx,js,jsx}",
+    "./src/**/*.{ts,tsx,js,jsx}",
+  ],
   prefix: "",
   theme: {
     container: {

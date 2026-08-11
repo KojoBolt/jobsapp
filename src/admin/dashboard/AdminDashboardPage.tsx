@@ -6,7 +6,9 @@ import {
 } from "lucide-react";
 import { format, formatDistanceToNow, subMonths, startOfMonth } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
-import { Panel, PanelHeader, StatTile, Pill, IconButton, LegendRow, T } from "@/admin/ui/system";
+import {
+  Panel, PanelHeader, StatTile, Pill, PillMenu, IconButton, LegendRow, T,
+} from "@/admin/ui/system";
 import { useRegisterExport, useAdminActions } from "@/admin/context/AdminActionsContext";
 import {
   PipelineGauge, TrendChart, TrendKey, RankedBar, ActivityHeatmap,
@@ -36,6 +38,7 @@ const AdminDashboardPage = () => {
   const [apps, setApps] = useState<AppRow[]>([]);
   const [userCount, setUserCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [topCount, setTopCount] = useState<"3" | "5" | "10">("3");
   const { ramp } = useRamp();
 
   useEffect(() => {
@@ -134,10 +137,11 @@ const AdminDashboardPage = () => {
       const key = a.company_name?.trim() || "Unknown";
       byCompany.set(key, (byCompany.get(key) || 0) + 1);
     });
+    // Ranked full; the panel slices to whatever the Top N control is set to,
+    // so changing it doesn't re-run this whole computation.
     const topCompanies = [...byCompany.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([name, value]) => ({ name: name.length > 12 ? `${name.slice(0, 11)}…` : name, value }));
+      .map(([name, value]) => ({ name: name.length > 14 ? `${name.slice(0, 13)}…` : name, value }));
 
     // ── Review activity: decided apps by weekday × 8h band ──
     const cells: HeatCell[] = [];
@@ -312,14 +316,30 @@ const AdminDashboardPage = () => {
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Panel>
-              <PanelHeader icon={BarChart3} title="Top Companies" right={<Pill>All time</Pill>} />
-              <div className="px-5 pb-4">
+              <PanelHeader
+                icon={BarChart3}
+                title="Top Companies"
+                right={
+                  <PillMenu
+                    value={topCount}
+                    // Wrapped: a bare setState dispatcher defeats the generic.
+                    onChange={(v) => setTopCount(v)}
+                    heading="Show"
+                    options={[
+                      { value: "3", label: "Top 3" },
+                      { value: "5", label: "Top 5" },
+                      { value: "10", label: "Top 10" },
+                    ]}
+                  />
+                }
+              />
+              <div className="px-4 pb-4 sm:px-5">
                 <p className={`mb-1 text-[11px] ${T.muted}`}>
-                  Today&apos;s new applications:{" "}
-                  <span className={`font-semibold ${T.ink}`}>{m.todayCount}</span>
+                  {m.topCompanies.length} compan{m.topCompanies.length === 1 ? "y" : "ies"} ·{" "}
+                  <span className={`font-semibold ${T.ink}`}>{m.todayCount}</span> new today
                 </p>
                 {m.topCompanies.length ? (
-                  <RankedBar data={m.topCompanies} />
+                  <RankedBar data={m.topCompanies.slice(0, Number(topCount))} />
                 ) : (
                   <p className={`py-12 text-center text-[12px] ${T.muted}`}>No data yet</p>
                 )}

@@ -197,6 +197,30 @@ const CampaignMonitorPage = (): JSX.Element => {
     );
   }, [scoped, search]);
 
+  // Typeahead over the already-loaded campaigns — no extra round trip. The
+  // subtitle carries status and progress, since one user can have several.
+  const suggestions = useMemo(
+    () =>
+      search.trim()
+        ? filtered.slice(0, 6).map((c) => ({
+            id: c.id,
+            title: c.user_full_name,
+            subtitle: `${c.status.replace(/_/g, " ")} · ${c.processed_jobs}/${c.total_jobs || 0} drafted`,
+          }))
+        : [],
+    [filtered, search],
+  );
+
+  /** Picking a suggestion narrows to that user and opens the campaign. */
+  const selectSuggestion = (id: string) => {
+    const campaign = campaigns.find((c) => c.id === id);
+    if (!campaign) return;
+    setSearch(campaign.user_full_name);
+    setCurrentPage(1);
+    setExpandedCampaign(id);
+    fetchCampaignApps(id);
+  };
+
   /* ── Derived metrics + chart series ───────────────────────────────────── */
   const m = useMemo(() => {
     const running = scoped.filter((c) => c.status === "running").length;
@@ -330,6 +354,8 @@ const CampaignMonitorPage = (): JSX.Element => {
           value={search}
           onChange={(v) => { setSearch(v); setCurrentPage(1); }}
           placeholder="Search by user…"
+          suggestions={suggestions}
+          onSelectSuggestion={selectSuggestion}
         />
       </div>
 

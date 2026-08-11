@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Target } from 'lucide-react';
+import { CHECKOUT as C } from '../components/theme';
+import OfferPage from './OfferPage';
 
 const UPSELL_PRODUCT = { id: 'salary-negotiation-upsell', name: 'Salary Negotiation Masterclass', price: 47 };
+
+const HERO_PHOTO =
+  'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=900&q=80&auto=format&fit=crop';
 
 export default function UpsellPage() {
   const navigate = useNavigate();
@@ -34,37 +38,19 @@ export default function UpsellPage() {
   const handleDecline = () => navigate('/start/checkout/downsell');
 
   return (
-    <div className="bg-black min-h-screen px-5 pt-12 pb-10 text-white flex flex-col">
-      <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mx-auto mb-4">
-        <Target size={22} strokeWidth={1.75} className="text-blue-400" />
-      </div>
-      <h1 className="text-2xl font-bold text-center">Wait — One More Thing</h1>
-      <p className="text-white/50 text-center mt-2 mb-8">
-        Add {UPSELL_PRODUCT.name} for just ${UPSELL_PRODUCT.price} — shown one time only.
-      </p>
-
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex-1">
-        <p className="text-white/70">
-          Negotiate a stronger starting offer using the same scripts our top users relied on to
-          raise their average offer by thousands of dollars.
-        </p>
-      </div>
-
-      <button
-        type="button"
-        onClick={handleAccept}
-        disabled={loading}
-        className="w-full bg-indigo-500 disabled:opacity-60 text-white font-semibold py-4 rounded-full text-lg mt-6"
-      >
-        {loading ? 'Adding…' : `Yes, add it for $${UPSELL_PRODUCT.price}`}
-      </button>
-      <button
-        type="button"
-        onClick={handleDecline}
-        className="w-full text-white/40 py-4 text-sm"
-      >
-        No thanks, I'll skip this
-      </button>
-    </div>
+    <OfferPage
+      kicker="ONE TIME OFFER"
+      title={<>Wait — <span style={{ color: C.lime }}>One More Thing</span></>}
+      blurb={`Add ${UPSELL_PRODUCT.name} for just $${UPSELL_PRODUCT.price} — shown one time only.`}
+      photo={HERO_PHOTO}
+      productName={UPSELL_PRODUCT.name}
+      price={UPSELL_PRODUCT.price}
+      bodyCopy="Negotiate a stronger starting offer using the same scripts our top users relied on to raise their average offer by thousands of dollars."
+      acceptLabel={`YES, ADD IT FOR $${UPSELL_PRODUCT.price}`}
+      declineLabel="No thanks, I'll skip this"
+      onAccept={handleAccept}
+      onDecline={handleDecline}
+      loading={loading}
+    />
   );
 }

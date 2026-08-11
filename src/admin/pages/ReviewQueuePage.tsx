@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   CheckCircle2, ChevronDown, ChevronUp, ChevronRight, ExternalLink, Inbox, Briefcase,
 } from "lucide-react";
@@ -233,11 +233,37 @@ const ReviewQueuePage = (): JSX.Element => {
     }
   };
 
-  const filtered = users.filter(
-    (user) =>
-      user.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      user.email.toLowerCase().includes(search.toLowerCase()),
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return users.filter(
+      (user) =>
+        user.full_name.toLowerCase().includes(q) ||
+        user.email.toLowerCase().includes(q),
+    );
+  }, [users, search]);
+
+  // Typeahead over the already-loaded candidates — no extra round trip. The
+  // subtitle carries the pending count, which is what you're triaging by.
+  const suggestions = useMemo(
+    () =>
+      search.trim()
+        ? filtered.slice(0, 6).map((u) => ({
+            id: u.user_id,
+            title: u.full_name,
+            subtitle: `${u.email} · ${u.total_apps} application${u.total_apps === 1 ? "" : "s"}`,
+          }))
+        : [],
+    [filtered, search],
   );
+
+  /** Picking a suggestion narrows to that candidate and opens their jobs. */
+  const selectSuggestion = (userId: string) => {
+    const user = users.find((u) => u.user_id === userId);
+    if (!user) return;
+    setSearch(user.full_name);
+    setCurrentPage(1);
+    setExpandedUser(userId);
+  };
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated = filtered.slice(
@@ -357,6 +383,8 @@ const ReviewQueuePage = (): JSX.Element => {
           value={search}
           onChange={(v) => { setSearch(v); setCurrentPage(1); }}
           placeholder="Search by name or email…"
+          suggestions={suggestions}
+          onSelectSuggestion={selectSuggestion}
         />
       </div>
 

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ChevronDown, ChevronUp, Shield, User, FileText, Users2, Crown,
   Coins, PieChart, LineChart as LineIcon, BarChart3, Inbox, AlertTriangle, Plus,
@@ -7,11 +8,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/admin/toast/ToastContext";
 import { format, formatDistanceToNow, subMonths, startOfMonth } from "date-fns";
 import {
-  T, Panel, PanelHeader, Th, Avatar, StatTile, SearchInput, Pill,
+  T, Panel, PanelHeader, Th, Avatar, StatTile, SearchInput, Pill, PillMenu,
   PrimaryButton, GhostButton, IconButton, LegendRow, Pagination, EmptyState,
 } from "@/admin/ui/system";
 import {
-  PipelineGauge, TrendChart, TrendKey, RankedBar, useRamp, type GaugeBand,
+  PipelineGauge, TrendChart, TrendKey, RankedBar, useRamp, buildTrend,
+  GRAIN_OPTIONS, type GaugeBand, type Grain,
 } from "@/admin/ui/charts";
 import { useRegisterExport } from "@/admin/context/AdminActionsContext";
 
@@ -49,7 +51,10 @@ const UserManagementPage = (): JSX.Element => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  // Seeded from ?q= so the header search can land here pre-filtered.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const appliedQ = useRef<string | null>(searchParams.get("q"));
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<string | null>(null);
@@ -59,6 +64,7 @@ const UserManagementPage = (): JSX.Element => {
     role: "client",
   });
   const [saving, setSaving] = useState(false);
+  const [grain, setGrain] = useState<Grain>("monthly");
   const [sendingSummaryId, setSendingSummaryId] = useState<string | null>(null);
   const { pushToast } = useToast();
   const { ramp } = useRamp();
@@ -67,6 +73,24 @@ const UserManagementPage = (): JSX.Element => {
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * ?q= is a one-shot seed, not a source of truth. It's applied once per
+   * distinct value and then stripped from the URL — otherwise it lingers and
+   * the effect keeps snapping the field back to it while you type.
+   */
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q === null || appliedQ.current === q) return;
+
+    appliedQ.current = q;
+    setSearch(q);
+    setCurrentPage(1);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("q");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const fetchUsers = async () => {
     try {
@@ -220,6 +244,29 @@ const UserManagementPage = (): JSX.Element => {
     );
   }, [users, search]);
 
+  // Typeahead reads the already-loaded list — no extra round trip, so the
+  // suggestions appear as fast as you type.
+  const suggestions = useMemo(
+    () =>
+      search.trim()
+        ? filtered.slice(0, 6).map((u) => ({
+            id: u.id,
+            title: u.full_name || "No name",
+            subtitle: u.email || undefined,
+          }))
+        : [],
+    [filtered, search],
+  );
+
+  /** Picking a suggestion narrows to that user and opens their details. */
+  const selectSuggestion = (id: string) => {
+    const user = users.find((u) => u.id === id);
+    if (!user) return;
+    setSearch(user.full_name || user.email || "");
+    setCurrentPage(1);
+    setExpandedUser(id);
+  };
+
   /* ── Derived metrics + chart series ───────────────────────────────────── */
   const m = useMemo(() => {
     const paid = users.filter((u) => u.plan === "starter" || u.plan === "pro").length;
@@ -233,23 +280,10 @@ const UserManagementPage = (): JSX.Element => {
       .sort((a, b) => b[1] - a[1])
       .map(([name, value]) => ({ name: PLAN_LABEL[name] || name, value }));
 
-    // Signups per month, last 7 months.
-    const now = new Date();
-    const trend = Array.from({ length: 7 }, (_, i) => {
-      const from = startOfMonth(subMonths(now, 6 - i));
-      const to = startOfMonth(subMonths(now, 5 - i));
-      return {
-        month: format(from, "MMM"),
-        value: users.filter((u) => {
-          const t = new Date(u.created_at);
-          return t >= from && t < to;
-        }).length,
-      };
-    });
-    const nonZero = trend.filter((t) => t.value > 0);
-    const target = nonZero.length
-      ? Math.round(nonZero.reduce((s, t) => s + t.value, 0) / nonZero.length)
-      : 0;
+    // Signups bucketed at the selected granularity.
+    const {
+      data: trend, target, caption: trendCaption,
+    } = buildTrend(users, (u) => new Date(u.created_at), grain);
 
     // Most active users by application volume.
     const topUsers = [...users]
@@ -261,8 +295,8 @@ const UserManagementPage = (): JSX.Element => {
         return { name: n.length > 12 ? `${n.slice(0, 11)}…` : n, value: u.total_applications };
       });
 
-    return { paid, admins, credits, bands, trend, target, topUsers };
-  }, [users]);
+    return { paid, admins, credits, bands, trend, target, trendCaption, topUsers };
+  }, [users, grain]);
 
   const exportCsv = useCallback(() => {
     const header = ["Name", "Email", "Role", "Plan", "Credits", "Applications", "Joined"];
@@ -393,6 +427,8 @@ const UserManagementPage = (): JSX.Element => {
           value={search}
           onChange={(v) => { setSearch(v); setCurrentPage(1); }}
           placeholder="Search by name or email…"
+          suggestions={suggestions}
+          onSelectSuggestion={selectSuggestion}
         />
       </div>
 
@@ -438,15 +474,30 @@ const UserManagementPage = (): JSX.Element => {
         </Panel>
 
         <Panel className="lg:col-span-2">
-          <PanelHeader icon={LineIcon} title="Signups Over Time"
-                       right={<><Pill>Monthly</Pill><IconButton label="Open signups" /></>} />
+          <PanelHeader
+            icon={LineIcon}
+            title="Signups Over Time"
+            right={
+              <>
+                <PillMenu
+                  value={grain}
+                  onChange={(v) => setGrain(v)}
+                  heading="Group by"
+                  options={GRAIN_OPTIONS}
+                />
+                <IconButton label="Open signups" />
+              </>
+            }
+          />
           <div className="px-5 pb-4">
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className={`text-[24px] font-bold leading-none tracking-[-0.02em] ${T.ink}`}>
                   {m.trend.reduce((s, t) => s + t.value, 0)}
                 </p>
-                <p className={`mt-1 text-[11px] ${T.muted}`}>Joined in the last 7 months</p>
+                <p className={`mt-1 text-[11px] ${T.muted}`}>
+                  Joined · {m.trendCaption.toLowerCase()}
+                </p>
               </div>
               <TrendKey />
             </div>

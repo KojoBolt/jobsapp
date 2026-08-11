@@ -14,6 +14,7 @@ import InternUpsellPage from './checkout/InternUpsellPage';
 import InternDownsellPage from './checkout/InternDownsellPage';
 
 // Shared
+import PaymentSuccessPage from './checkout/PaymentSuccessPage';
 import ThankYouPage from './checkout/ThankYouPage';
 
 /**
@@ -57,6 +58,10 @@ export default function FunnelRoutes() {
         <Route path="checkout/intern" element={<InternCheckout />} />
         <Route path="checkout/intern/upsell" element={<InternUpsellPage />} />
         <Route path="checkout/intern/downsell" element={<InternDownsellPage />} />
+
+        {/* Paystack callback_url lands here after the core purchase, then the
+            buyer continues into the upsell chain from the Continue button. */}
+        <Route path="checkout/success" element={<PaymentSuccessPage />} />
 
         {/* Shared thank-you — both tracks land here */}
         <Route path="checkout/thank-you" element={<ThankYouPage />} />

@@ -6,6 +6,21 @@ verify_jwt = false
 [functions.paystack-checkout]
 verify_jwt = false
 
+# Funnel buyers are anonymous — they have no session until the account we
+# create for them at checkout is activated from the receipt email.
+[functions.initialize-paystack-funnel]
+verify_jwt = false
+
+# Payment providers call these server-to-server with a signature header and no
+# JWT, so platform JWT checks must be off or every delivery is rejected with 401
+# before the handler runs. Both functions authenticate the caller themselves by
+# verifying the provider's HMAC signature against the payload.
+[functions.paystack-webhook]
+verify_jwt = false
+
+[functions.cryptomus-webhook]
+verify_jwt = false
+
 [functions.subscription-checkout]
 verify_jwt = false
 

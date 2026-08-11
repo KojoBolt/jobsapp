@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Eye, X, ExternalLink, ChevronDown, ChevronUp, Inbox, AlertTriangle,
 } from 'lucide-react';
@@ -206,11 +207,32 @@ const AllApplicationsPage = () => {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  // Seeded from ?q= so the header search can land here pre-filtered.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get('q') ?? '');
+  const appliedQ = useRef<string | null>(searchParams.get('q'));
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const itemsPerPage = 25;
+
+  /**
+   * ?q= is a one-shot seed, not a source of truth. It's applied once per
+   * distinct value and then stripped from the URL — otherwise it lingers and
+   * the effect keeps snapping the field back to it while you type.
+   */
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q === null || appliedQ.current === q) return;
+
+    appliedQ.current = q;
+    setSearchTerm(q);
+    setCurrentPage(1);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('q');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     const fetchApplications = async () => {
@@ -279,6 +301,26 @@ const AllApplicationsPage = () => {
     });
   }, [applications, searchTerm, statusFilter, inRange]);
 
+  // Typeahead over the already-filtered set — no extra round trip, and it can't
+  // offer a row the table below wouldn't show.
+  const suggestions = useMemo(
+    () =>
+      searchTerm.trim()
+        ? filteredApps.slice(0, 6).map((a) => ({
+            id: a.id,
+            title: a.company_name || 'Unknown company',
+            subtitle: `${a.job_title} · ${a.user_full_name}`,
+          }))
+        : [],
+    [filteredApps, searchTerm],
+  );
+
+  /** Picking a suggestion opens that application directly. */
+  const selectSuggestion = (id: string) => {
+    const app = applications.find((a) => a.id === id);
+    if (app) setSelectedApp(app);
+  };
+
   const totalPages = Math.ceil(filteredApps.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentApps = filteredApps.slice(startIndex, startIndex + itemsPerPage);
@@ -327,6 +369,8 @@ const AllApplicationsPage = () => {
             onChange={(v) => { setSearchTerm(v); setCurrentPage(1); }}
             placeholder="Name, company, role…"
             className="w-full sm:w-64"
+            suggestions={suggestions}
+            onSelectSuggestion={selectSuggestion}
           />
 
           <select

@@ -4,8 +4,72 @@ import {
   CartesianGrid, ResponsiveContainer, ReferenceLine, LabelList,
   Tooltip as RTooltip,
 } from "recharts";
+import {
+  format, startOfDay, subDays, startOfWeek, subWeeks, startOfMonth, subMonths,
+} from "date-fns";
 import { useTheme } from "@/admin/context/ThemeContext";
 import { CHART, T } from "@/admin/ui/system";
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Trend bucketing — shared by every "over time" panel so the granularity
+   control behaves identically wherever it appears.
+   ══════════════════════════════════════════════════════════════════════════ */
+export type Grain = "daily" | "weekly" | "monthly";
+
+const GRAINS: Record<
+  Grain,
+  {
+    count: number;
+    start: (d: Date) => Date;
+    sub: (d: Date, n: number) => Date;
+    fmt: string;
+    caption: string;
+  }
+> = {
+  daily:   { count: 14, start: startOfDay,   sub: subDays,   fmt: "d MMM", caption: "Last 14 days" },
+  weekly:  { count: 8,  start: startOfWeek,  sub: subWeeks,  fmt: "d MMM", caption: "Last 8 weeks" },
+  monthly: { count: 7,  start: startOfMonth, sub: subMonths, fmt: "MMM",   caption: "Last 7 months" },
+};
+
+export const GRAIN_OPTIONS: { value: Grain; label: string }[] = [
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+];
+
+/**
+ * Buckets `items` by the chosen granularity, oldest → newest, and derives the
+ * average as the target line. The newest bucket's upper bound comes from
+ * `sub(now, -1)` — stepping forward one period — otherwise the current
+ * day/week/month is excluded and today's records never appear.
+ */
+export const buildTrend = <T,>(
+  items: T[],
+  getDate: (item: T) => Date,
+  grain: Grain,
+) => {
+  const g = GRAINS[grain];
+  const now = new Date();
+
+  const data = Array.from({ length: g.count }, (_, i) => {
+    const from = g.start(g.sub(now, g.count - 1 - i));
+    const to = g.start(g.sub(now, g.count - 2 - i));
+    return {
+      month: format(from, g.fmt),
+      value: items.filter((it) => {
+        const d = getDate(it);
+        return d >= from && d < to;
+      }).length,
+    };
+  });
+
+  const nonZero = data.filter((d) => d.value > 0);
+  const target = nonZero.length
+    ? Math.round(nonZero.reduce((s, d) => s + d.value, 0) / nonZero.length)
+    : 0;
+
+  return { data, target, caption: g.caption };
+};
 
 /* Ordinal neutral ramp, validated in both modes (light end 2.20:1 / 2.30:1).
    Identity is always carried by an adjacent label — never by shade alone. */
@@ -248,7 +312,13 @@ export const RankedBar = ({
           />
           <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={54}>
             {data.map((_, i) => (
-              <Cell key={i} fill={ramp[i % ramp.length]} />
+              // Spread rank across the ramp rather than cycling it: with more
+              // bars than steps, `i % length` would restart dark partway along
+              // and read as a second group.
+              <Cell
+                key={i}
+                fill={ramp[Math.min(ramp.length - 1, Math.floor((i / Math.max(1, data.length)) * ramp.length))]}
+              />
             ))}
             <LabelList
               dataKey="value" position="top" offset={8}

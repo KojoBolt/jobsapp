@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowUpRight, ArrowDownRight, ChevronDown, ChevronLeft, ChevronRight,
-  MoveUpRight, Search,
+  ArrowUpRight, ArrowDownRight, Check, ChevronDown, ChevronLeft, ChevronRight,
+  MoveUpRight, Search, X as XIcon,
 } from "lucide-react";
+import { Dropdown } from "./Dropdown";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Admin design system — the single source of truth for every admin screen.
@@ -94,6 +95,73 @@ export const Pill = ({
   </button>
 );
 
+/**
+ * A Pill that actually opens a menu. `Pill` above is presentation only — use
+ * this wherever the chevron implies a choice, so the affordance isn't a lie.
+ */
+export const PillMenu = <V extends string>({
+  value, options, onChange, heading,
+}: {
+  value: V;
+  options: { value: V; label: string }[];
+  onChange: (v: V) => void;
+  heading?: string;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const current = options.find((o) => o.value === value);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`dropdown-toggle inline-flex items-center gap-1.5 rounded-lg border ${T.hairline}
+                    px-2.5 py-1.5 text-[12px] font-medium ${T.ink2} transition-colors
+                    hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+      >
+        {current?.label ?? value}
+        <ChevronDown size={12} className="opacity-60" />
+      </button>
+
+      <Dropdown
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        className={`absolute right-0 mt-2 w-[164px] overflow-hidden rounded-2xl border ${T.hairline}
+                    bg-white p-1.5 shadow-xl dark:bg-[#1A1A19]`}
+      >
+        {heading && (
+          <p className={`px-2.5 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${T.muted}`}>
+            {heading}
+          </p>
+        )}
+        <ul role="menu">
+          {options.map((o) => {
+            const selected = o.value === value;
+            return (
+              <li key={o.value}>
+                <button
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  onClick={() => { onChange(o.value); setOpen(false); }}
+                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2
+                              text-left text-[12.5px] transition-colors ${
+                                selected ? `font-semibold ${T.ink}` : `font-medium ${T.ink2}`
+                              } hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+                >
+                  {o.label}
+                  {selected && <Check size={14} strokeWidth={3} className="shrink-0" />}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </Dropdown>
+    </div>
+  );
+};
+
 /** Dark filled button — the single primary action per screen. */
 export const PrimaryButton = ({
   children, onClick, type = "button",
@@ -122,25 +190,133 @@ export const GhostButton = ({
   </button>
 );
 
+export type Suggestion = { id: string; title: string; subtitle?: string };
+
+/**
+ * Search field. Pass `suggestions` to get a typeahead list beneath it —
+ * arrow keys to move, Enter to pick, Escape to dismiss. Without them it is a
+ * plain controlled input, so existing call sites are unaffected.
+ */
 export const SearchInput = ({
   value, onChange, placeholder = "Search…", className = "w-64",
+  suggestions, onSelectSuggestion,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   className?: string;
-}) => (
-  <div className={`relative ${className}`}>
-    <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9A9995]" />
-    <input
-      type="text" value={value} placeholder={placeholder}
-      onChange={(e) => onChange(e.target.value)}
-      className={`w-full rounded-lg border ${T.hairline} bg-white py-1.5 pl-8 pr-3 text-[12.5px]
-                  ${T.ink} placeholder:text-[#9A9995] focus:outline-none focus:ring-2
-                  focus:ring-[#2a78d6]/30 dark:bg-[#1A1A19]`}
-    />
-  </div>
-);
+  suggestions?: Suggestion[];
+  onSelectSuggestion?: (id: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+
+  const list = suggestions ?? [];
+  const canSuggest = !!onSelectSuggestion && value.trim().length > 0;
+  const show = open && canSuggest;
+
+  // Reset the highlight whenever the result set changes underneath it.
+  useEffect(() => setActive(-1), [value]);
+
+  const pick = (s: Suggestion) => {
+    onSelectSuggestion?.(s.id);
+    setOpen(false);
+    setActive(-1);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!canSuggest) return;
+    if (e.key === "Escape") return setOpen(false);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      setActive((i) => Math.min(list.length - 1, i + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((i) => Math.max(0, i - 1));
+    } else if (e.key === "Enter" && active >= 0 && list[active]) {
+      e.preventDefault();
+      pick(list[active]);
+    }
+  };
+
+  const initials = (n: string) =>
+    n.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?";
+
+  return (
+    <div className={`relative ${className}`}>
+      {/* dropdown-toggle so clicking the field doesn't dismiss the list. */}
+      <div className="dropdown-toggle relative">
+        <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9A9995]" />
+        <input
+          type="text" value={value} placeholder={placeholder}
+          onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+          onFocus={() => canSuggest && setOpen(true)}
+          onKeyDown={onKeyDown}
+          role={canSuggest ? "combobox" : undefined}
+          aria-expanded={canSuggest ? show : undefined}
+          aria-autocomplete={canSuggest ? "list" : undefined}
+          className={`w-full rounded-lg border ${T.hairline} bg-white py-1.5 pl-8 text-[12.5px]
+                      ${T.ink} placeholder:text-[#9A9995] focus:outline-none focus:ring-2
+                      focus:ring-[#2a78d6]/30 dark:bg-[#1A1A19] ${value ? "pr-8" : "pr-3"}`}
+        />
+        {value && (
+          <button
+            type="button"
+            aria-label="Clear search"
+            onClick={() => { onChange(""); setOpen(false); }}
+            className={`absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center
+                        rounded ${T.muted} hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+          >
+            <XIcon size={12} />
+          </button>
+        )}
+      </div>
+
+      {canSuggest && (
+        <Dropdown
+          isOpen={show}
+          onClose={() => setOpen(false)}
+          className={`absolute left-0 right-0 mt-2 max-h-[280px] w-auto overflow-y-auto rounded-2xl
+                      border ${T.hairline} bg-white p-1.5 shadow-xl dark:bg-[#1A1A19]`}
+        >
+          {list.length === 0 ? (
+            <p className={`px-3 py-3 text-[12px] ${T.muted}`}>No matches.</p>
+          ) : (
+            <ul role="listbox">
+              {list.map((s, i) => (
+                <li key={s.id}>
+                  <button
+                    role="option"
+                    aria-selected={i === active}
+                    onMouseEnter={() => setActive(i)}
+                    onClick={() => pick(s)}
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left
+                                transition-colors ${
+                                  i === active ? "bg-[#F4F4F2] dark:bg-white/5" : ""
+                                }`}
+                  >
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#F4F4F2] text-[9.5px] font-bold text-[#6B6A66] dark:bg-white/10 dark:text-[#C3C2B7]">
+                      {initials(s.title)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate text-[12.5px] font-semibold ${T.ink}`}>
+                        {s.title}
+                      </span>
+                      {s.subtitle && (
+                        <span className={`block truncate text-[11px] ${T.muted}`}>{s.subtitle}</span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Dropdown>
+      )}
+    </div>
+  );
+};
 
 /** Segmented tab strip — replaces the underline-tab pattern. */
 export const TabBar = <K extends string>({

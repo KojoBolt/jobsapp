@@ -1,4 +1,5 @@
 import FunnelLayout from './FunnelLayout';
+import { FUNNEL } from './theme';
 
 // pravatar.cc serves stable, real (anonymized) face photos specifically
 // intended for UI mockup/testimonial use — swap for real customer
@@ -9,47 +10,49 @@ const TESTIMONIALS = [
   { name: 'Emily R.', role: 'Data Scientist @ Netflix', stat: '3x more responses', quote: 'Finally broke through after months of silence.', avatar: 'https://i.pravatar.cc/80?img=32' },
 ];
 
-export default function SocialProofSlide({ onNext, step }) {
+export default function SocialProofSlide({ onNext, onBack, isFirst, stepNumber, step }) {
   return (
     <FunnelLayout
-      kicker={step.kicker}
-      icon={step.icon}
-      title="Join 47,000+ Job Seekers"
-      subtitle="Who landed their dream jobs"
       stage={step.stage}
+      stepNumber={stepNumber}
+      title="Join 47,000+ job seekers"
+      subtitle="Who landed their dream jobs"
+      onBack={onBack}
+      onNext={onNext}
+      isFirst={isFirst}
     >
-      <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {TESTIMONIALS.map((t) => (
-          <div key={t.name} className="bg-white/[0.03] border border-white/10 rounded-2xl p-4">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="flex items-center gap-3">
-                <img
-                  src={t.avatar}
-                  alt=""
-                  className="w-9 h-9 rounded-full object-cover bg-white/10"
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                />
-                <div>
-                  <p className="text-white font-semibold text-sm">{t.name}</p>
-                  <p className="text-white/30 text-xs">{t.role}</p>
-                </div>
+          <div
+            key={t.name}
+            className="rounded-2xl p-5"
+            style={{ backgroundColor: FUNNEL.card, boxShadow: FUNNEL.cardShadow }}
+          >
+            <div className="flex items-center gap-3">
+              <img
+                src={t.avatar}
+                alt=""
+                className="w-10 h-10 rounded-full object-cover shrink-0"
+                style={{ backgroundColor: FUNNEL.hairline }}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+              <div className="min-w-0">
+                <p className="font-bold text-[13.5px] leading-tight" style={{ color: FUNNEL.ink }}>{t.name}</p>
+                <p className="text-xs mt-0.5 truncate" style={{ color: FUNNEL.muted }}>{t.role}</p>
               </div>
-              <span className="text-emerald-400 text-xs bg-emerald-400/10 rounded-full px-2.5 py-1 whitespace-nowrap font-medium">
-                {t.stat}
-              </span>
             </div>
-            <p className="text-white/50 text-sm italic">"{t.quote}"</p>
+
+            <p className="text-sm mt-3.5 leading-relaxed" style={{ color: FUNNEL.body }}>"{t.quote}"</p>
+
+            <span
+              className="inline-block text-[11px] font-bold rounded-full px-3 py-1.5 mt-3.5"
+              style={{ backgroundColor: FUNNEL.accentSoft, color: FUNNEL.accent }}
+            >
+              {t.stat}
+            </span>
           </div>
         ))}
       </div>
-
-      <button
-        type="button"
-        onClick={onNext}
-        className="w-full mt-8 py-4 rounded-xl bg-blue-500 text-white font-semibold hover:bg-blue-600 transition-colors"
-      >
-        Next
-      </button>
     </FunnelLayout>
   );
 }
