@@ -1,15 +1,5 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   FileText,
   Upload,
@@ -18,10 +8,14 @@ import {
   Plus,
   CheckCircle2,
   Loader2,
+  X,
+  Cloud,
 } from "lucide-react";
 import VerifiedHumanBadge from "@/components/dashboard/VerifiedHumanBadge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { CHART, T, Panel, PanelHeader, EmptyState } from "@/admin/ui/system";
+import { useRamp } from "@/admin/ui/charts";
 
 export interface ResumeVersion {
   id: string;
@@ -36,6 +30,7 @@ export interface ResumeVersion {
 const MAX_RESUMES = 5;
 
 const ResumeManager = () => {
+  const { dark } = useRamp();
   const [resumes, setResumes] = useState<ResumeVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -47,10 +42,25 @@ const ResumeManager = () => {
   const [viewUrl, setViewUrl] = useState<string | null>(null);
   const [viewName, setViewName] = useState<string>("");
 
-  
+  const accent = dark ? CHART.accentDark : CHART.accent;
+  const danger = dark ? CHART.criticalDark : CHART.critical;
+
   useEffect(() => {
     fetchResumes();
   }, []);
+
+  // Escape closes whichever overlay is open — the shadcn Dialog used to give us
+  // this for free, so it has to be kept when hand-rolling the overlays.
+  useEffect(() => {
+    if (!uploadOpen && !viewUrl) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (viewUrl) setViewUrl(null);
+      else if (!uploading) setUploadOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [uploadOpen, viewUrl, uploading]);
 
   const fetchResumes = async () => {
     try {
@@ -151,7 +161,7 @@ const ResumeManager = () => {
     }
   };
 
-  
+
   const handleUpload = async () => {
     if (!newName.trim() || !newFile) {
       toast({
@@ -257,59 +267,236 @@ const ResumeManager = () => {
     }
   };
 
+  const atLimit = resumes.length >= MAX_RESUMES;
+
+  /* ── Row-level action button ─────────────────────────────────────────────
+     Quiet by default so three of them in a row don't compete with the
+     resume name; tint only appears on hover. */
+  const rowAction = `inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11.5px]
+                     font-medium transition-colors disabled:opacity-40`;
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="glass-card rounded-xl">
-      <div className="flex items-center justify-between border-b border-border/50 px-6 py-4">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">Resume Manager</h3>
-          <p className="text-xs text-muted-foreground">
-            {loading ? "Loading..." : `${resumes.length}/${MAX_RESUMES} versions stored`}
-          </p>
-        </div>
+    <>
+      <Panel className="overflow-hidden">
+        <PanelHeader
+          icon={FileText}
+          title="Resume manager"
+          right={
+            <>
+              <span className={`text-[11px] tabular-nums ${T.muted}`}>
+                {loading ? "Loading…" : `${resumes.length}/${MAX_RESUMES} stored`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setUploadOpen(true)}
+                disabled={atLimit || loading}
+                title={atLimit ? `Limit of ${MAX_RESUMES} versions reached` : undefined}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#111110] px-2.5 py-1.5
+                           text-[12px] font-semibold text-white transition-opacity
+                           hover:opacity-90 disabled:opacity-40
+                           dark:bg-white dark:text-[#111110]"
+              >
+                <Plus size={13} />
+                Add resume
+              </button>
+            </>
+          }
+        />
 
-        <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-          <DialogTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-xs text-primary"
-              disabled={resumes.length >= MAX_RESUMES || loading}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Resume
-            </Button>
-          </DialogTrigger>
+        {loading ? (
+          <div className={`space-y-2 border-t ${T.hairline} p-4`}>
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-14 animate-pulse rounded-xl bg-[#F7F7F5] dark:bg-white/[0.03]"
+              />
+            ))}
+          </div>
+        ) : resumes.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title="No resumes yet"
+            hint="Upload your first resume to get started — you can store up to 5 versions."
+          />
+        ) : (
+          <div className={`divide-y ${T.divide} border-t ${T.hairline}`}>
+            <AnimatePresence initial={false}>
+              {resumes.map((resume) => (
+                <motion.div
+                  key={resume.id}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div
+                    className={`flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 ${T.hover}`}
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+                        style={{ backgroundColor: `${accent}1A`, color: accent }}
+                      >
+                        <FileText size={16} />
+                      </span>
 
-          <DialogContent className="border-border/50 bg-card sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-foreground">Upload Resume Version</DialogTitle>
-            </DialogHeader>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className={`truncate text-[12.5px] font-bold ${T.ink}`}>
+                            {resume.name}
+                          </span>
+                          <VerifiedHumanBadge variant="emerald" size="sm" />
 
-            <div className="space-y-4">
+                          {resume.isPrimary && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5
+                                         text-[10px] font-semibold"
+                              style={{ backgroundColor: `${accent}1F`, color: accent }}
+                            >
+                              <Star size={9} strokeWidth={2.5} />
+                              Primary
+                            </span>
+                          )}
+
+                          {resume.filePath && (
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-md border
+                                          ${T.hairline} px-1.5 py-0.5 text-[10px] font-semibold ${T.muted}`}
+                            >
+                              <Cloud size={9} />
+                              Cloud
+                            </span>
+                          )}
+                        </div>
+
+                        <p className={`mt-0.5 truncate text-[11px] ${T.muted}`}>
+                          {resume.fileName} · {resume.uploadedAt}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      {!resume.isPrimary && (
+                        <button
+                          type="button"
+                          onClick={() => setPrimary(resume.id)}
+                          className={`${rowAction} ${T.ink2} hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+                        >
+                          <CheckCircle2 size={12} />
+                          Set primary
+                        </button>
+                      )}
+
+                      {resume.fileUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setViewUrl(resume.fileUrl);
+                            setViewName(resume.name);
+                          }}
+                          className={`${rowAction} ${T.ink2} hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+                        >
+                          View
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => deleteResume(resume.id)}
+                        disabled={deletingId === resume.id}
+                        className={`${rowAction} ${T.ink2} hover:bg-[#D03B3B]/10`}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = danger)}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "")}
+                      >
+                        {deletingId === resume.id ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={12} />
+                        )}
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </Panel>
+
+      {/* ── Upload overlay ─────────────────────────────────────────────────── */}
+      {uploadOpen && (
+        <div className="fixed inset-0 z-[1900] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => !uploading && setUploadOpen(false)}
+          />
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.18 }}
+            role="dialog"
+            aria-modal="true"
+            className={`relative w-full max-w-[420px] overflow-hidden rounded-2xl border ${T.hairline}
+                        bg-white shadow-xl dark:bg-[#1A1A19]`}
+          >
+            <div className={`flex items-center justify-between border-b ${T.hairline} px-5 py-3.5`}>
+              <h3 className={`text-[13.5px] font-bold ${T.ink}`}>Upload resume version</h3>
+              <button
+                type="button"
+                onClick={() => !uploading && setUploadOpen(false)}
+                aria-label="Close"
+                className={`grid h-7 w-7 place-items-center rounded-lg ${T.ink2}
+                            transition-colors hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 px-5 py-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  Version Name
+                <label
+                  htmlFor="resume-version-name"
+                  className={`block text-[10.5px] font-semibold uppercase tracking-[0.08em] ${T.muted}`}
+                >
+                  Version name
                 </label>
-                <Input
-                  placeholder="e.g., Data Science Resume"
+                <input
+                  id="resume-version-name"
+                  placeholder="e.g. Data Science Resume"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="bg-muted/50"
+                  className={`w-full rounded-lg border ${T.hairline} bg-[#FAFAF8] px-3 py-2
+                              text-[12.5px] ${T.ink} outline-none placeholder:text-[#9A9995]
+                              focus:border-[#C9C8C2] dark:bg-white/[0.03] dark:focus:border-white/25`}
                 />
               </div>
 
               <label
                 htmlFor="resume-upload"
-                className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border/60 bg-muted/30 p-6 text-center transition-colors hover:border-primary/40"
+                className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border
+                            border-dashed ${T.hairline} bg-[#FAFAF8] px-4 py-7 text-center
+                            transition-colors hover:bg-[#F4F4F2] dark:bg-white/[0.03]
+                            dark:hover:bg-white/[0.06]`}
               >
-                <Upload className="h-6 w-6 text-muted-foreground" />
+                <span
+                  className="grid h-9 w-9 place-items-center rounded-lg"
+                  style={{ backgroundColor: `${accent}1A`, color: accent }}
+                >
+                  <Upload size={16} />
+                </span>
                 {newFile ? (
-                  <span className="text-sm font-medium text-primary">{newFile.name}</span>
+                  <span className={`max-w-full truncate text-[12.5px] font-semibold ${T.ink}`}>
+                    {newFile.name}
+                  </span>
                 ) : (
                   <>
-                    <span className="text-sm text-foreground">Drop your resume here</span>
-                    <span className="text-xs text-muted-foreground">PDF, up to 10MB</span>
+                    <span className={`text-[12.5px] font-semibold ${T.ink}`}>
+                      Drop your resume here
+                    </span>
+                    <span className={`text-[11px] ${T.muted}`}>PDF, up to 10MB</span>
                   </>
                 )}
               </label>
@@ -321,140 +508,71 @@ const ResumeManager = () => {
                 className="hidden"
                 onChange={(e) => e.target.files?.[0] && setNewFile(e.target.files[0])}
               />
+            </div>
 
-              <Button
-                variant="hero"
-                className="w-full gap-2"
+            <div className={`flex justify-end gap-2 border-t ${T.hairline} px-5 py-3`}>
+              <button
+                type="button"
+                onClick={() => !uploading && setUploadOpen(false)}
+                className={`rounded-lg border ${T.hairline} px-3 py-1.5 text-[12px] font-medium
+                            ${T.ink} transition-colors hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
                 onClick={handleUpload}
                 disabled={uploading}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#111110] px-3.5 py-1.5
+                           text-[12px] font-semibold text-white transition-opacity
+                           hover:opacity-90 disabled:opacity-50
+                           dark:bg-white dark:text-[#111110]"
               >
-                {uploading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Uploading...
-                  </>
-                ) : (
-                  "Upload Resume"
-                )}
-              </Button>
+                {uploading && <Loader2 size={13} className="animate-spin" />}
+                {uploading ? "Uploading…" : "Upload resume"}
+              </button>
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+          </motion.div>
+        </div>
+      )}
 
-      {/* Resume list */}
-      <div className="divide-y divide-border/20">
-        {loading ? (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : resumes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-            <FileText className="h-8 w-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">No resumes yet</p>
-            <p className="text-xs text-muted-foreground">
-              Upload your first resume to get started
-            </p>
-          </div>
-        ) : (
-          <AnimatePresence>
-            {resumes.map((resume) => (
-              <motion.div
-                key={resume.id}
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="flex items-center justify-between px-6 py-4"
+      {/* ── Viewer overlay ─────────────────────────────────────────────────── */}
+      {viewUrl && (
+        <div className="fixed inset-0 z-[1900] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setViewUrl(null)}
+          />
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.18 }}
+            role="dialog"
+            aria-modal="true"
+            className={`relative flex h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl
+                        border ${T.hairline} bg-white shadow-xl dark:bg-[#1A1A19]`}
+          >
+            <div className={`flex items-center justify-between border-b ${T.hairline} px-5 py-3.5`}>
+              <h3 className={`min-w-0 truncate text-[13.5px] font-bold ${T.ink}`}>{viewName}</h3>
+              <button
+                type="button"
+                onClick={() => setViewUrl(null)}
+                aria-label="Close"
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${T.ink2}
+                            transition-colors hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
               >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                    <FileText className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-foreground">
-                        {resume.name}
-                      </span>
-                      <VerifiedHumanBadge variant="emerald" size="sm" />
-                      {resume.isPrimary && (
-                        <Badge variant="interview" className="text-[10px]">
-                          <Star className="mr-0.5 h-2.5 w-2.5" /> Primary
-                        </Badge>
-                      )}
-                      {resume.filePath && (
-                        <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                          Cloud
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {resume.fileName} · {resume.uploadedAt}
-                    </p>
-                  </div>
-                </div>
+                <X size={15} />
+              </button>
+            </div>
 
-                <div className="flex items-center gap-1">
-                  {!resume.isPrimary && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setPrimary(resume.id)}
-                      className="gap-1 text-xs text-muted-foreground hover:text-primary"
-                    >
-                      <CheckCircle2 className="h-3 w-3" />
-                      Set Primary
-                    </Button>
-                  )}
-                  {resume.fileUrl && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1 text-xs text-muted-foreground hover:text-primary"
-                      onClick={() => {
-                        setViewUrl(resume.fileUrl);
-                        setViewName(resume.name);
-                      }}
-                    >
-                      View
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1 text-xs text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteResume(resume.id)}
-                    disabled={deletingId === resume.id}
-                  >
-                    {deletingId === resume.id ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3 w-3" />
-                    )}
-                    Delete
-                  </Button>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        )}
-      </div>
-      <Dialog open={!!viewUrl} onOpenChange={(open) => !open && setViewUrl(null)}>
-        <DialogContent className="border-border/50 bg-card sm:max-w-3xl h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">{viewName}</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-hidden rounded-lg">
-            {viewUrl && (
-              <iframe
-                src={viewUrl}
-                className="w-full h-full rounded-lg border border-border/30"
-                title={viewName}
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <div className="flex-1 overflow-hidden bg-[#F4F4F2] dark:bg-[#0D0D0D]">
+              <iframe src={viewUrl} className="h-full w-full border-0" title={viewName} />
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </>
   );
 };
 

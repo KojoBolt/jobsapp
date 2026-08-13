@@ -1,67 +1,77 @@
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { BarChart3, Rocket, ArrowRight } from "lucide-react";
+import { CHART, T } from "@/admin/ui/system";
+import { useRamp } from "@/admin/ui/charts";
 
 interface CrossSellBannerProps {
   variant: "tracker" | "deployment";
 }
 
 const CrossSellBanner = ({ variant }: CrossSellBannerProps) => {
-  if (variant === "tracker") {
-    return (
-      <div className="flex flex-col items-center justify-between gap-4 rounded-xl border border-accent/20 bg-gradient-to-r from-[hsl(250_35%_14%)] to-[hsl(230_40%_10%)] p-5 sm:flex-row">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-            <BarChart3 className="h-5 w-5 text-accent" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              Tired of spreadsheets?
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Move these 200 apps into the Interactive Tracker for $29/mo.
-            </p>
-          </div>
-        </div>
-        <Link to="/job-tracker">
-          {/* <Button variant="heroOutline" size="sm" 
-          className="shrink-0 gap-1.5">
-            Open Tracker
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Button> */}
-          <Button
-        variant="outline"
-        disabled
-        className="opacity-60 cursor-not-allowed"
-      >
-        Coming Soon
-        </Button>
-        </Link>
-      </div>
-    );
-  }
+  const { dark } = useRamp();
+  const accent = dark ? CHART.accentDark : CHART.accent;
+
+  const copy =
+    variant === "tracker"
+      ? {
+          icon: BarChart3,
+          title: "Tired of spreadsheets?",
+          body: "Move these 200 apps into the Interactive Tracker for $29/mo.",
+          to: "/job-tracker",
+          cta: "Coming Soon",
+          disabled: true,
+        }
+      : {
+          icon: Rocket,
+          title: "Low on Job Applications?",
+          body: "Deploy a fresh 200-App Blitz for $99. AI + Human quality guaranteed.",
+          to: "/onboarding",
+          cta: "Start Blitz",
+          disabled: false,
+        };
+
+  const Icon = copy.icon;
 
   return (
-    <div className="flex flex-col items-center justify-between gap-4 rounded-xl border border-primary/20 bg-gradient-to-r from-card to-secondary/30 p-5 sm:flex-row">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <Rocket className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-foreground">
-            Low on Job Applications?
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Deploy a fresh 200-App Blitz for $99. AI + Human quality guaranteed.
-          </p>
+    // Same panel shell as the metric cards: white card, hairline border, 16px
+    // radius — no gradient, so it sits in the page rather than shouting over it.
+    <div
+      className={`flex flex-col items-start justify-between gap-3 rounded-2xl border ${T.hairline}
+                  bg-white p-4 sm:flex-row sm:items-center dark:bg-[#1A1A19]`}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <span
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+          style={{ backgroundColor: `${accent}1A`, color: accent }}
+        >
+          <Icon size={16} strokeWidth={2} />
+        </span>
+        <div className="min-w-0">
+          <p className={`text-[13.5px] font-bold leading-tight ${T.ink}`}>{copy.title}</p>
+          <p className={`mt-0.5 text-[11.5px] leading-relaxed ${T.muted}`}>{copy.body}</p>
         </div>
       </div>
-      <Link to="/onboarding">
-        <Button variant="hero" size="sm" className="shrink-0 gap-1.5">
-          Start Blitz
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Button>
-      </Link>
+
+      {copy.disabled ? (
+        // Not a Link: wrapping a disabled control still navigates on click.
+        <span
+          aria-disabled="true"
+          className={`shrink-0 rounded-lg border ${T.hairline} px-3 py-1.5 text-[12px]
+                      font-semibold ${T.muted} cursor-not-allowed`}
+        >
+          {copy.cta}
+        </span>
+      ) : (
+        <Link
+          to={copy.to}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#111110] px-3 py-1.5
+                     text-[12px] font-semibold text-white transition-opacity hover:opacity-90
+                     dark:bg-white dark:text-[#111110]"
+        >
+          {copy.cta}
+          <ArrowRight size={13} strokeWidth={2.5} />
+        </Link>
+      )}
     </div>
   );
 };

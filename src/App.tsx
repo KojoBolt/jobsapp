@@ -55,6 +55,10 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
+      {/* One ThemeProvider for the whole app. It has to sit above <Routes> so a
+          page can call useTheme/useRamp in its own body — a provider nested
+          inside a layout is out of scope for the page that renders the layout. */}
+      <ThemeProvider>
       <TooltipProvider>
         <Toaster />
         <Sonner />
@@ -225,12 +229,13 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <ToastProvider>
-                    <ThemeProvider>
-                      <SidebarProvider>
-                        <AdminLayout />
-                        <ToastViewport />
-                      </SidebarProvider>
-                    </ThemeProvider>
+                    {/* ThemeProvider is at the app root — a second instance here
+                        would hold its own state and drift from the class the
+                        root one wrote to <html>. */}
+                    <SidebarProvider>
+                      <AdminLayout />
+                      <ToastViewport />
+                    </SidebarProvider>
                   </ToastProvider>
                 </ProtectedRoute>
               }
@@ -251,6 +256,7 @@ const App = () => (
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
+      </ThemeProvider>
     </AuthProvider>
   </QueryClientProvider>
 );

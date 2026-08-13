@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import {
-  LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis,
+  LineChart, Line, AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis,
   CartesianGrid, ResponsiveContainer, ReferenceLine, LabelList,
   Tooltip as RTooltip,
 } from "recharts";
@@ -410,6 +410,160 @@ export const ActivityHeatmap = ({
                    rows={[["Reviewed", String(tip.c.value)]]} />
         </div>
       ) : null}
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sparkline — the small trend that sits inside a stat tile.
+
+   One series, so no legend: the tile's own label names it. Axes and grid are
+   dropped because the tile's headline number carries the magnitude; the line's
+   only job here is shape. The dashed rule is the period mean, giving the curve
+   something to be above or below.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export type SparkPoint = { label: string; value: number };
+
+/**
+ * Inline sparkline for a metric card: gradient area, thin line, and a pill
+ * callout marking the trend's extreme — the peak when rising, the trough when
+ * falling. That point, not the last one, is what carries the story; the final
+ * day is often zero and says nothing.
+ *
+ * `direction` drives the colour. Red and green are near-identical under
+ * deuteranopia, so the badge always draws an arrow and the card repeats one
+ * beside the percentage. Colour is never the only cue.
+ */
+export const Sparkline = ({
+  data,
+  height = 46,
+  direction = "flat",
+  showBadge = true,
+  valueSuffix = "",
+}: {
+  data: SparkPoint[];
+  height?: number;
+  direction?: "up" | "down" | "flat";
+  showBadge?: boolean;
+  valueSuffix?: string;
+}) => {
+  const { theme } = useTheme();
+  const dark = theme === "dark";
+
+  const stroke =
+    direction === "down"
+      ? (dark ? CHART.criticalDark : CHART.critical)
+      : direction === "up"
+      ? (dark ? CHART.goodDark : CHART.good)
+      : (dark ? CHART.accentDark : CHART.accent);
+
+  const surface = dark ? "#1A1A19" : "#FFFFFF";
+  const hairline = dark ? "#2C2C2A" : "#EAEAE7";
+  const ink = dark ? "#FFFFFF" : "#111110";
+  const uid = React.useId().replace(/:/g, "");
+
+  if (!data.length) return null;
+
+  const values = data.map((d) => d.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = max - min || Math.max(max, 1);
+
+  // Tight top padding keeps the curve high in the frame, so the fill below it
+  // has real depth. With a generous floor the line sank to the bottom and the
+  // gradient — which spans the plot area, not the area mark — had already faded
+  // to nothing by the time it reached the line.
+  const domain: [number, number] = [min - spread * 0.12, max + spread * 0.28];
+
+  // Peak when rising, trough when falling: the point worth pointing at.
+  const markIndex =
+    direction === "down" ? values.indexOf(min) : values.indexOf(max);
+  const nearEnd = markIndex > data.length - 4;
+  const withBadge = showBadge && values.some((v) => v > 0);
+
+  const renderMark = (props: { cx?: number; cy?: number; index?: number }) => {
+    const { cx, cy, index } = props;
+    if (index !== markIndex || cx == null || cy == null) return <g key={index} />;
+
+    const text = `${data[markIndex].value}${valueSuffix}`;
+    const w = 22 + text.length * 6;
+    // Centred over the point, but swung left near the end so it can't run past
+    // the right edge of the frame.
+    const x = Math.max(2, nearEnd ? cx - w + 6 : cx - w / 2);
+    const y = Math.max(1, cy - 22);
+
+    return (
+      <g key={index}>
+        {withBadge && (
+          <>
+            <rect x={x} y={y} width={w} height={17} rx={8.5} fill={surface} stroke={hairline} strokeWidth={1} />
+            <polygon
+              points={
+                direction === "down"
+                  ? `${x + 7},${y + 6} ${x + 10},${y + 11} ${x + 13},${y + 6}`
+                  : `${x + 7},${y + 11} ${x + 10},${y + 6} ${x + 13},${y + 11}`
+              }
+              fill={stroke}
+            />
+            <text x={x + 16} y={y + 12} fontSize={10} fontWeight={700} fill={ink}>
+              {text}
+            </text>
+          </>
+        )}
+        <circle cx={cx} cy={cy} r={3.5} fill={stroke} stroke={surface} strokeWidth={2} />
+      </g>
+    );
+  };
+
+  return (
+    <div style={{ height }} className="w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        {/* Top margin only reserves room when a badge is actually drawn. */}
+        <AreaChart data={data} margin={{ top: withBadge ? 22 : 5, right: 4, bottom: 1, left: 4 }}>
+          <defs>
+            {/* Fades only part-way. The gradient spans the plot area, not the
+                area mark, so a series that hugs the bottom of the frame would
+                meet a fully transparent stop and show no fill at all. */}
+            <linearGradient id={`fill-${uid}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={stroke} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={stroke} stopOpacity={0.12} />
+            </linearGradient>
+          </defs>
+
+          <YAxis hide domain={domain} />
+          <XAxis dataKey="label" hide />
+
+          <RTooltip
+            cursor={{ stroke: hairline, strokeWidth: 1 }}
+            content={({ active, payload, label }) =>
+              active && payload?.length ? (
+                <div
+                  className={`rounded-lg border ${T.hairline} px-2.5 py-1.5 shadow-lg`}
+                  style={{ backgroundColor: surface }}
+                >
+                  <p className={`text-[10px] ${T.muted}`}>{label}</p>
+                  <p className={`text-[12px] font-bold ${T.ink}`}>
+                    {payload[0].value}
+                    {valueSuffix}
+                  </p>
+                </div>
+              ) : null
+            }
+          />
+
+          <Area
+            type="monotone"
+            dataKey="value"
+            stroke={stroke}
+            strokeWidth={1.75}
+            fill={`url(#fill-${uid})`}
+            dot={renderMark}
+            activeDot={{ r: 3.5, fill: stroke, stroke: surface, strokeWidth: 2 }}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   );
 };

@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Wallet, RotateCcw } from "lucide-react";
+import { Wallet, RotateCcw, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
+import { CHART, T, Panel, PanelHeader } from "@/admin/ui/system";
+import { useRamp } from "@/admin/ui/charts";
 
 interface CashOutToggleProps {
   userId?: string;
@@ -16,11 +15,14 @@ interface CashOutToggleProps {
 // reward is credits-only. The cash option is shown as "coming soon" and is
 // disabled so we never promise a payout we can't deliver.
 const CashOutToggle = ({ userId, initialMode = "reapply" }: CashOutToggleProps) => {
+  const { dark } = useRamp();
   const [mode, setMode] = useState<"reapply" | "cashout">(
     initialMode === "cashout" ? "reapply" : initialMode
   );
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
+
+  const accent = dark ? CHART.accentDark : CHART.accent;
 
   const handleSelectReapply = async () => {
     setMode("reapply");
@@ -34,61 +36,78 @@ const CashOutToggle = ({ userId, initialMode = "reapply" }: CashOutToggleProps) 
     });
   };
 
+  const active = mode === "reapply";
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: 0.5 }}
-    >
-      <Card className="border-border/50">
-        <CardContent className="space-y-4 p-6">
-          <div className="flex items-center gap-2.5">
-            <Wallet className="h-5 w-5 text-gold" />
-            <h3 className="text-lg font-bold text-foreground">How Your Rewards Work</h3>
-          </div>
+    <Panel>
+      <PanelHeader icon={Wallet} title="How your rewards work" />
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            {/* Reapply — the active, real option */}
-            <button
-              onClick={handleSelectReapply}
-              disabled={saving}
-              className={`group relative flex flex-col items-start gap-3 rounded-xl border p-5 text-left transition-all ${
-                mode === "reapply"
-                  ? "border-primary/50 bg-primary/5 ring-1 ring-primary/30"
-                  : "border-border/50 bg-card hover:border-primary/30"
-              }`}
+      <div className="grid gap-3 px-5 pb-5 sm:grid-cols-2">
+        {/* Reapply — the active, real option */}
+        <button
+          type="button"
+          onClick={handleSelectReapply}
+          disabled={saving}
+          className={`relative rounded-xl border p-4 text-left transition-colors
+                      disabled:opacity-60 ${
+                        active
+                          ? "border-transparent"
+                          : `${T.hairline} hover:bg-[#FAFAF8] dark:hover:bg-white/5`
+                      }`}
+          style={
+            active
+              ? { backgroundColor: `${accent}0F`, boxShadow: `inset 0 0 0 1.5px ${accent}` }
+              : undefined
+          }
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+              style={{ backgroundColor: `${accent}1A`, color: accent }}
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/15">
-                <RotateCcw className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">Apply to Your Next Purchase</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Earned credits automatically discount your next pack.
-                </p>
-              </div>
-              {mode === "reapply" && (
-                <Badge className="absolute right-3 top-3 bg-primary/20 text-primary">Active</Badge>
-              )}
-            </button>
-
-            {/* Cash — coming soon, disabled */}
-            <div className="relative flex cursor-not-allowed flex-col items-start gap-3 rounded-xl border border-border/50 bg-card/50 p-5 text-left opacity-60">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gold/15">
-                <Wallet className="h-5 w-5 text-gold" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">Request Cash Payout</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Withdraw earnings directly. Coming soon.
-                </p>
-              </div>
-              <Badge className="absolute right-3 top-3 bg-muted text-muted-foreground">Coming soon</Badge>
-            </div>
+              <RotateCcw size={16} />
+            </span>
+            {active && (
+              <span
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold"
+                style={{ backgroundColor: `${accent}1F`, color: accent }}
+              >
+                <Check size={10} strokeWidth={3} />
+                Active
+              </span>
+            )}
           </div>
-        </CardContent>
-      </Card>
-    </motion.div>
+
+          <p className={`mt-3 text-[13px] font-bold ${T.ink}`}>Apply to your next purchase</p>
+          <p className={`mt-1 text-[11.5px] leading-relaxed ${T.muted}`}>
+            Earned credits automatically discount your next pack.
+          </p>
+        </button>
+
+        {/* Cash — coming soon, disabled */}
+        <div
+          aria-disabled
+          className={`relative rounded-xl border ${T.hairline} p-4 text-left opacity-60`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#F4F4F2] text-[#6B6A66] dark:bg-white/5 dark:text-[#C3C2B7]">
+              <Wallet size={16} />
+            </span>
+            <span
+              className={`rounded-md bg-[#F4F4F2] px-1.5 py-0.5 text-[10.5px] font-semibold
+                          ${T.muted} dark:bg-white/5`}
+            >
+              Coming soon
+            </span>
+          </div>
+
+          <p className={`mt-3 text-[13px] font-bold ${T.ink}`}>Request cash payout</p>
+          <p className={`mt-1 text-[11.5px] leading-relaxed ${T.muted}`}>
+            Withdraw earnings directly. Not available yet.
+          </p>
+        </div>
+      </div>
+    </Panel>
   );
 };
 

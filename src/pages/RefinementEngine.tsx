@@ -1,22 +1,27 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Zap,
-  ArrowLeft,
-  ScanLine,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
+import { ScanLine, ShieldCheck, Sparkles, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { HoverBorderGradient } from "@/components/ui/hover-border-gradient";
-import Logo from "@/assets/images/job-logo.png";
+import { supabase } from "@/integrations/supabase/client";
+import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import { scoreText, type HumanScore } from "@/lib/humanScore";
+import { CHART, T } from "@/admin/ui/system";
+import { useRamp } from "@/admin/ui/charts";
 
 type Tone = "technical" | "creative" | "executive";
+
+/** Normalised verdict from the detect-ai function (ZeroGPT). */
+type Verdict = {
+  provider: string;
+  humanScore: number;
+  aiProbability: number | null;
+  feedback: string | null;
+  aiWords: number | null;
+  textWords: number | null;
+  flaggedSentences: number;
+  language: string | null;
+};
 
 const toneOptions: { value: Tone; label: string; desc: string }[] = [
   { value: "technical", label: "Technical", desc: "Precise & data-driven" },
@@ -29,553 +34,585 @@ const HUMANIZE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/humanize
 const defaultDraft = `Artificial intelligence has revolutionized the way we process information and make decisions. Machine learning algorithms can analyze vast datasets to identify patterns that would be impossible for humans to detect. This technology enables organizations to optimize their operations, reduce costs, and improve customer experiences. Furthermore, AI-powered tools are increasingly being used in healthcare, finance, and education to drive innovation and create new opportunities for growth.`;
 
 const RefinementEngine = () => {
+  const { dark } = useRamp();
   const [rawText, setRawText] = useState(defaultDraft);
   const [humanizedText, setHumanizedText] = useState("");
   const [tone, setTone] = useState<Tone>("technical");
   const [isProcessing, setIsProcessing] = useState(false);
   const [humanScore, setHumanScore] = useState(0);
+  /** Local stylometric estimate for the humanized output. */
+  const [outputScore, setOutputScore] = useState<HumanScore | null>(null);
+  /** The detector's verdict — authoritative when present. */
+  const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [verdictState, setVerdictState] = useState<"idle" | "checking" | "unavailable">("idle");
+  const [verdictNote, setVerdictNote] = useState<string | null>(null);
   const [scanPhase, setScanPhase] = useState<"idle" | "scanning" | "done">("idle");
   const { toast } = useToast();
   const scoreRafRef = useRef<number | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
   useEffect(() => {
-  return () => {
+    return () => {
+      if (scoreRafRef.current !== null) {
+        cancelAnimationFrame(scoreRafRef.current);
+      }
+
+      if (readerRef.current) {
+        readerRef.current.cancel().catch(() => {});
+      }
+    };
+  }, []);
+
+  const animateScore = useCallback((target: number) => {
     if (scoreRafRef.current !== null) {
       cancelAnimationFrame(scoreRafRef.current);
     }
 
-    if (readerRef.current) {
-      readerRef.current.cancel().catch(() => {});
-    }
-  };
-}, []);
-  const animateScore = useCallback((target: number) => {
-  if (scoreRafRef.current !== null) {
-    cancelAnimationFrame(scoreRafRef.current);
-  }
+    let current = 0;
 
-  let current = 0;
+    const step = () => {
+      current += 1;
 
-  const step = () => {
-    current += 1;
+      if (current >= target) {
+        setHumanScore(target);
+        scoreRafRef.current = null;
+        return;
+      }
 
-    if (current >= target) {
-      setHumanScore(target);
-      scoreRafRef.current = null;
+      setHumanScore(current);
+      scoreRafRef.current = requestAnimationFrame(step);
+    };
+
+    scoreRafRef.current = requestAnimationFrame(step);
+  }, []);
+
+  /**
+   * Asks the detect-ai function for the detector's verdict. Never throws: an
+   * outage must not look like a failed refinement, so it degrades to the local
+   * estimate with a note saying which number is on screen.
+   */
+  const runDetection = useCallback(
+    async (text: string) => {
+      setVerdictState("checking");
+      setVerdictNote(null);
+
+      try {
+        const { data, error } = await supabase.functions.invoke("detect-ai", { body: { text } });
+
+        if (error) {
+          const body = await (error as any).context?.json?.().catch(() => null);
+          setVerdictState("unavailable");
+          setVerdictNote(
+            body?.code === "not_configured"
+              ? "AI detection isn't configured, so this is our own estimate."
+              : body?.code === "too_short"
+              ? "Too short for the detector — showing our estimate instead."
+              : body?.code === "no_credit"
+              ? "The detector account is out of credit — showing our estimate."
+              : body?.code === "bad_key"
+              ? "The detector rejected our API key — showing our estimate."
+              : body?.error || "The detector was unreachable — showing our estimate.",
+          );
+          return;
+        }
+
+        setVerdict(data as Verdict);
+        setVerdictState("idle");
+        animateScore((data as Verdict).humanScore);
+      } catch (err) {
+        console.error("detect-ai failed:", err);
+        setVerdictState("unavailable");
+        setVerdictNote("The detector was unreachable — showing our estimate.");
+      }
+    },
+    [animateScore],
+  );
+
+  const humanize = useCallback(async () => {
+    if (!rawText.trim()) {
+      toast({
+        title: "Empty text",
+        description: "Please enter some text to humanize.",
+        variant: "destructive",
+      });
       return;
     }
 
-    setHumanScore(current);
-    scoreRafRef.current = requestAnimationFrame(step);
-  };
-
-  scoreRafRef.current = requestAnimationFrame(step);
-}, []);
-
-const humanize = useCallback(async () => {
-  if (!rawText.trim()) {
-    toast({
-      title: "Empty text",
-      description: "Please enter some text to humanize.",
-      variant: "destructive",
-    });
-    return;
-  }
-
-  if (scoreRafRef.current !== null) {
-    cancelAnimationFrame(scoreRafRef.current);
-    scoreRafRef.current = null;
-  }
-
-  setIsProcessing(true);
-  setScanPhase("scanning");
-  setHumanizedText("");
-  setHumanScore(0);
-
-  let accumulated = "";
-
-  try {
-    const resp = await fetch(HUMANIZE_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-      },
-      body: JSON.stringify({ text: rawText, tone }),
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: "Processing failed" }));
-      throw new Error(err.error || "Processing failed");
+    if (scoreRafRef.current !== null) {
+      cancelAnimationFrame(scoreRafRef.current);
+      scoreRafRef.current = null;
     }
 
-    if (!resp.body) {
-      throw new Error("No response body");
-    }
+    setIsProcessing(true);
+    setScanPhase("scanning");
+    setHumanizedText("");
+    setHumanScore(0);
+    setOutputScore(null);
+    setVerdict(null);
+    setVerdictNote(null);
+    setVerdictState("idle");
 
-    const reader = resp.body.getReader();
-    readerRef.current = reader;
+    let accumulated = "";
 
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let streamDone = false;
+    try {
+      const resp = await fetch(HUMANIZE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ text: rawText, tone }),
+      });
 
-    while (!streamDone) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        streamDone = true;
-        break;
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: "Processing failed" }));
+        throw new Error(err.error || "Processing failed");
       }
 
-      buffer += decoder.decode(value, { stream: true });
+      if (!resp.body) {
+        throw new Error("No response body");
+      }
 
-      let newlineIndex: number;
-      while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-        let line = buffer.slice(0, newlineIndex);
-        buffer = buffer.slice(newlineIndex + 1);
+      const reader = resp.body.getReader();
+      readerRef.current = reader;
 
-        if (line.endsWith("\r")) line = line.slice(0, -1);
-        if (line.startsWith(":") || line.trim() === "") continue;
-        if (!line.startsWith("data: ")) continue;
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let streamDone = false;
 
-        const jsonStr = line.slice(6).trim();
+      while (!streamDone) {
+        const { done, value } = await reader.read();
 
-        if (jsonStr === "[DONE]") {
+        if (done) {
           streamDone = true;
           break;
         }
 
-        try {
-          const parsed = JSON.parse(jsonStr);
-          const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+        buffer += decoder.decode(value, { stream: true });
 
-          if (content) {
-            accumulated += content;
-            setHumanizedText(accumulated);
+        let newlineIndex: number;
+        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+
+          const jsonStr = line.slice(6).trim();
+
+          if (jsonStr === "[DONE]") {
+            streamDone = true;
+            break;
           }
-        } catch {
-          buffer = line + "\n" + buffer;
-          break;
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+
+            if (content) {
+              accumulated += content;
+              setHumanizedText(accumulated);
+            }
+          } catch {
+            buffer = line + "\n" + buffer;
+            break;
+          }
         }
       }
-    }
 
-    if (buffer.trim()) {
-      for (let raw of buffer.split("\n")) {
-        if (!raw) continue;
-        if (raw.endsWith("\r")) raw = raw.slice(0, -1);
-        if (raw.startsWith(":") || raw.trim() === "") continue;
-        if (!raw.startsWith("data: ")) continue;
+      if (buffer.trim()) {
+        for (let raw of buffer.split("\n")) {
+          if (!raw) continue;
+          if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+          if (raw.startsWith(":") || raw.trim() === "") continue;
+          if (!raw.startsWith("data: ")) continue;
 
-        const jsonStr = raw.slice(6).trim();
-        if (jsonStr === "[DONE]") continue;
+          const jsonStr = raw.slice(6).trim();
+          if (jsonStr === "[DONE]") continue;
 
-        try {
-          const parsed = JSON.parse(jsonStr);
-          const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
 
-          if (content) {
-            accumulated += content;
-            setHumanizedText(accumulated);
+            if (content) {
+              accumulated += content;
+              setHumanizedText(accumulated);
+            }
+          } catch {
+            // ignore
           }
+        }
+      }
+
+      setScanPhase("idle");
+      setIsProcessing(false);
+
+      // Local estimate first: instant, free, and the fallback if the detector is
+      // unreachable. Replaced the previous hardcoded animateScore(100), which
+      // made the meter a decoration.
+      const measured = scoreText(accumulated);
+      setOutputScore(measured);
+      animateScore(measured.score);
+
+      toast({
+        title: "Refinement complete",
+        description: "Checking it against the detector…",
+      });
+
+      void runDetection(accumulated);
+    } catch (err) {
+      console.error(err);
+      setScanPhase("idle");
+      setIsProcessing(false);
+
+      toast({
+        title: "Processing Error",
+        description: err instanceof Error ? err.message : "Something went wrong.",
+        variant: "destructive",
+      });
+    } finally {
+      if (readerRef.current) {
+        try {
+          await readerRef.current.cancel();
         } catch {
           // ignore
         }
+        readerRef.current = null;
       }
     }
+  }, [rawText, tone, toast, animateScore, runDetection]);
 
-    setScanPhase("idle");
-    setIsProcessing(false);
-    animateScore(100);
+  const accent = dark ? CHART.accentDark : CHART.accent;
 
-    toast({
-      title: "Humanization Complete ✓",
-      description: "Your text has been refined.",
-    });
-  } catch (err) {
-    console.error(err);
-    setScanPhase("idle");
-    setIsProcessing(false);
+  /** The input's own score, so the meter is live before anything is refined. */
+  const draftScore = useMemo(() => scoreText(rawText), [rawText]);
 
-    toast({
-      title: "Processing Error",
-      description: err instanceof Error ? err.message : "Something went wrong.",
-      variant: "destructive",
-    });
-  } finally {
-    if (readerRef.current) {
-      try {
-        await readerRef.current.cancel();
-      } catch {
-        // ignore
-      }
-      readerRef.current = null;
-    }
-  }
-}, [rawText, tone, toast, animateScore]);
+  const shown = outputScore ?? draftScore;
+  const displayScore = outputScore || verdict ? humanScore : draftScore.score;
+  const delta =
+    outputScore && !verdict && draftScore.signals.length
+      ? outputScore.score - draftScore.score
+      : null;
 
-  // const humanize = useCallback(async () => {
-  //   if (!rawText.trim()) {
-  //     toast({ title: "Empty text", description: "Please enter some text to humanize.", variant: "destructive" });
-  //     return;
-  //   }
+  const toneFor = (n: number) =>
+    n < 40
+      ? (dark ? CHART.criticalDark : CHART.critical)
+      : n < 70
+      ? CHART.warning
+      : (dark ? CHART.goodDark : CHART.good);
 
-  //   setIsProcessing(true);
-  //   setScanPhase("scanning");
-  //   setHumanizedText("");
-  //   setHumanScore(0);
-
-  //   let accumulated = "";
-
-  //   try {
-  //     const resp = await fetch(HUMANIZE_URL, {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //         Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-  //       },
-  //       body: JSON.stringify({ text: rawText, tone }),
-  //     });
-
-  //     if (!resp.ok) {
-  //       const err = await resp.json().catch(() => ({ error: "Processing failed" }));
-  //       throw new Error(err.error || "Processing failed");
-  //     }
-
-  //     if (!resp.body) throw new Error("No response body");
-
-  //     const reader = resp.body.getReader();
-  //     const decoder = new TextDecoder();
-  //     let buffer = "";
-  //     let streamDone = false;
-
-  //     // Start score animation after first token
-  //     let scoreStarted = false;
-
-  //     while (!streamDone) {
-  //       const { done, value } = await reader.read();
-  //       if (done) break;
-  //       buffer += decoder.decode(value, { stream: true });
-
-  //       let newlineIndex: number;
-  //       while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-  //         let line = buffer.slice(0, newlineIndex);
-  //         buffer = buffer.slice(newlineIndex + 1);
-
-  //         if (line.endsWith("\r")) line = line.slice(0, -1);
-  //         if (line.startsWith(":") || line.trim() === "") continue;
-  //         if (!line.startsWith("data: ")) continue;
-
-  //         const jsonStr = line.slice(6).trim();
-  //         if (jsonStr === "[DONE]") {
-  //           streamDone = true;
-  //           break;
-  //         }
-
-  //         try {
-  //           const parsed = JSON.parse(jsonStr);
-  //           const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-  //           if (content) {
-  //             accumulated += content;
-  //             setHumanizedText(accumulated);
-
-  //             if (!scoreStarted) {
-  //               scoreStarted = true;
-  //               setScanPhase("done");
-  //             }
-  //           }
-  //         } catch {
-  //           buffer = line + "\n" + buffer;
-  //           break;
-  //         }
-  //       }
-  //     }
-
-  //     // Final flush
-  //     if (buffer.trim()) {
-  //       for (let raw of buffer.split("\n")) {
-  //         if (!raw) continue;
-  //         if (raw.endsWith("\r")) raw = raw.slice(0, -1);
-  //         if (raw.startsWith(":") || raw.trim() === "") continue;
-  //         if (!raw.startsWith("data: ")) continue;
-  //         const jsonStr = raw.slice(6).trim();
-  //         if (jsonStr === "[DONE]") continue;
-  //         try {
-  //           const parsed = JSON.parse(jsonStr);
-  //           const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-  //           if (content) {
-  //             accumulated += content;
-  //             setHumanizedText(accumulated);
-  //           }
-  //         } catch { /* ignore */ }
-  //       }
-  //     }
-
-  //     // Animate score to 100%
-  //     animateScore(100);
-
-  //     toast({ title: "Humanization Complete ✓", description: "Your text has been refined and is undetectable." });
-  //   } catch (err) {
-  //     console.error(err);
-  //     toast({
-  //       title: "Processing Error",
-  //       description: err instanceof Error ? err.message : "Something went wrong.",
-  //       variant: "destructive",
-  //     });
-  //     setScanPhase("idle");
-  //   } finally {
-  //     setIsProcessing(false);
-  //   }
-  // }, [rawText, tone, toast]);
-
-  // const animateScore = (target: number) => {
-  //   let current = 0;
-  //   const step = () => {
-  //     current += 1;
-  //     if (current > target) {
-  //       setHumanScore(target);
-  //       return;
-  //     }
-  //     setHumanScore(current);
-  //     requestAnimationFrame(step);
-  //   };
-  //   requestAnimationFrame(step);
-  // };
-
-
-
-  const getScoreColor = () => {
-    if (humanScore < 40) return "text-destructive";
-    if (humanScore < 70) return "text-status-reviewing";
-    return "text-status-interview";
-  };
-
-  const getScoreBarColor = () => {
-    if (humanScore < 40) return "bg-destructive";
-    if (humanScore < 70) return "bg-status-reviewing";
-    return "bg-status-interview";
-  };
+  const scoreTone = toneFor(displayScore);
+  const scoreLabel =
+    displayScore < 40 ? "Machine-like" : displayScore < 70 ? "Mixed" : "Reads human";
 
   const isDisabled = isProcessing || !rawText.trim();
 
+  const PanelHead = ({ title, right }: { title: string; right?: React.ReactNode }) => (
+    <div className="mb-3 flex items-center justify-between gap-2">
+      <p className={`text-[13px] font-bold ${T.ink}`}>{title}</p>
+      {right}
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border/50 bg-background/80 backdrop-blur-sm">
-        <div className="container mx-auto flex h-16 items-center justify-between px-6">
-          <div className="flex items-center gap-4">
-            <Link to="/" className="flex items-center gap-2">
-            <img src={Logo} alt="Job app logo" className="h-8" />
-            </Link>
-            <span className="text-muted-foreground">/</span>
-            <span className="text-sm font-medium text-foreground">Refinement Engine</span>
-          </div>
-          <Link to="/dashboard">
-            <Button variant="ghost" size="sm" className="gap-1">
-              <ArrowLeft className="h-4 w-4" />
-              Dashboard
-            </Button>
-          </Link>
-        </div>
-      </header>
-
-      <div className="container mx-auto px-6 py-8">
-        {/* Title */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
-        >
-          <h1 className="text-2xl font-bold text-foreground">Refinement Engine</h1>
-          <p className="text-sm text-muted-foreground">
-            Transform AI-generated text into undetectable, human-quality writing.
+    <DashboardLayout>
+      <div className="space-y-4">
+        <div>
+          <h1 className={`text-[20px] font-bold tracking-[-0.01em] ${T.ink}`}>Refinement Engine</h1>
+          <p className={`text-[12px] ${T.muted}`}>
+            Turn AI-generated text into writing that reads like a person wrote it.
           </p>
-        </motion.div>
+        </div>
 
-        {/* Tone Selector */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mb-6"
-        >
-          <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Industry Tone
-          </label>
-          <div className="flex gap-2">
-            {toneOptions.map((t) => (
-              <button
-                key={t.value}
-                onClick={() => setTone(t.value)}
-                disabled={isProcessing}
-                className={`rounded-lg border px-4 py-2.5 text-left transition-all ${
-                  tone === t.value
-                    ? "border-primary bg-primary/10"
-                    : "border-border/50 bg-muted/30 hover:border-border"
-                } ${isProcessing ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                <p className={`text-sm font-medium ${tone === t.value ? "text-primary" : "text-foreground"}`}>
-                  {t.label}
-                </p>
-                <p className="text-xs text-muted-foreground">{t.desc}</p>
-              </button>
-            ))}
+        {/* ── Tone ─────────────────────────────────────────────────────── */}
+        <div className={`rounded-2xl border ${T.hairline} bg-white p-4 dark:bg-[#1A1A19]`}>
+          <PanelHead title="Industry tone" />
+          <div className="grid gap-2.5 sm:grid-cols-3">
+            {toneOptions.map((t) => {
+              const active = tone === t.value;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setTone(t.value)}
+                  disabled={isProcessing}
+                  aria-pressed={active}
+                  className={`rounded-xl border px-3.5 py-3 text-left transition-colors
+                              disabled:cursor-not-allowed disabled:opacity-50 ${
+                                active ? "" : `${T.hairline} hover:bg-[#F4F4F2] dark:hover:bg-white/5`
+                              }`}
+                  style={active ? { backgroundColor: `${accent}14`, borderColor: accent } : undefined}
+                >
+                  <p className="text-[13px] font-bold" style={active ? { color: accent } : undefined}>
+                    <span className={active ? "" : T.ink}>{t.label}</span>
+                  </p>
+                  <p className={`mt-0.5 text-[11.5px] ${T.muted}`}>{t.desc}</p>
+                </button>
+              );
+            })}
           </div>
-        </motion.div>
+        </div>
 
-        {/* Split Editor */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="mb-6 grid gap-4 lg:grid-cols-2"
-        >
-          {/* Left: Raw AI Draft */}
-          <div className="glass-card rounded-xl p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-foreground">AI generated text</h3>
-              <Badge variant="outline" className="text-muted-foreground">Input</Badge>
-            </div>
-            <Textarea
+        {/* ── Split editor ─────────────────────────────────────────────── */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className={`rounded-2xl border ${T.hairline} bg-white p-4 dark:bg-[#1A1A19]`}>
+            <PanelHead
+              title="AI generated text"
+              right={
+                <span className={`rounded-md border ${T.hairline} px-2 py-0.5 text-[10.5px] font-semibold ${T.muted}`}>
+                  Input
+                </span>
+              }
+            />
+            <textarea
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
-              placeholder="Paste your AI-generated text here..."
-              className="min-h-[280px] resize-none border-border/30 bg-muted/30 text-sm leading-relaxed"
+              placeholder="Paste your AI-generated text here…"
               disabled={isProcessing}
+              className={`min-h-[280px] w-full resize-y rounded-xl border ${T.hairline} bg-transparent
+                          p-3.5 text-[12.5px] leading-relaxed ${T.ink} placeholder:text-[#9A9995]
+                          focus:outline-none focus:ring-2 focus:ring-[#2a78d6]/30 disabled:opacity-60`}
             />
+            <p className={`mt-2 text-[11px] ${T.muted}`}>
+              {rawText.trim() ? `${rawText.trim().split(/\s+/).length} words` : "No text yet"}
+            </p>
           </div>
 
-          {/* Right: Humanized Version */}
-          <div className="glass-card relative overflow-hidden rounded-xl p-5">
-            {/* Scanning laser animation */}
+          <div
+            className={`relative overflow-hidden rounded-2xl border ${T.hairline} bg-white p-4
+                        dark:bg-[#1A1A19]`}
+          >
+            {/* Scanning sweep, recoloured to the validated accent. */}
             <AnimatePresence>
               {scanPhase === "scanning" && (
                 <motion.div
                   initial={{ top: 0 }}
                   animate={{ top: "100%" }}
                   transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  exit={{ opacity: 0, transition: { duration: 0.3, repeat: 0 } }} 
-                  className="pointer-events-none absolute left-0 right-0 z-10 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent"
-                  style={{ boxShadow: "0 0 20px 4px hsl(213 94% 55% / 0.5)" }}
+                  exit={{ opacity: 0, transition: { duration: 0.3, repeat: 0 } }}
+                  className="pointer-events-none absolute left-0 right-0 z-10 h-0.5"
+                  style={{
+                    background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
+                    boxShadow: `0 0 18px 3px ${accent}80`,
+                  }}
                 />
               )}
             </AnimatePresence>
 
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-foreground">Humanized Version</h3>
-              <Badge
-                variant={humanizedText ? "interview" : "outline"}
-                className={humanizedText ? "" : "text-muted-foreground"}
-              >
-                {humanizedText ? (
-                  <span className="flex items-center gap-1">
-                    <ShieldCheck className="h-3 w-3" /> Refined
+            <PanelHead
+              title="Humanized version"
+              right={
+                humanizedText ? (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-bold"
+                    style={{
+                      backgroundColor: `${dark ? CHART.goodDark : CHART.good}1F`,
+                      color: dark ? CHART.goodDark : CHART.good,
+                    }}
+                  >
+                    <ShieldCheck size={11} />
+                    Refined
                   </span>
                 ) : (
-                  "Output"
-                )}
-              </Badge>
-            </div>
-            <div className="min-h-[280px] rounded-lg border border-border/30 bg-muted/30 p-4">
+                  <span className={`rounded-md border ${T.hairline} px-2 py-0.5 text-[10.5px] font-semibold ${T.muted}`}>
+                    Output
+                  </span>
+                )
+              }
+            />
+
+            <div
+              className={`min-h-[280px] rounded-xl border ${T.hairline} p-3.5`}
+              style={{ backgroundColor: dark ? "rgba(255,255,255,0.02)" : "#FAFAF8" }}
+            >
               {humanizedText ? (
                 <motion.p
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="whitespace-pre-wrap text-sm leading-relaxed text-foreground"
+                  className={`whitespace-pre-wrap text-[12.5px] leading-relaxed ${T.ink}`}
                 >
                   {humanizedText}
                 </motion.p>
               ) : (
-                <p className="text-sm italic text-muted-foreground/60">
-                  Humanized text will appear here after processing...
+                <p className={`text-[12.5px] ${T.muted}`}>
+                  {isProcessing ? "Refining your text…" : "Your humanized text will appear here."}
                 </p>
               )}
             </div>
           </div>
-        </motion.div>
+        </div>
 
-        {/* Humanize Button */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="mb-8 flex justify-center"
-        >
+        {/* ── Action ───────────────────────────────────────────────────── */}
+        <div className={`rounded-2xl border ${T.hairline} bg-white p-4 dark:bg-[#1A1A19]`}>
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 items-center gap-3">
+              <span
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+                style={{ backgroundColor: `${accent}1A`, color: accent }}
+              >
+                <Sparkles size={16} strokeWidth={2} />
+              </span>
+              <div className="min-w-0">
+                <p className={`text-[13.5px] font-bold leading-tight ${T.ink}`}>
+                  Humanize this draft
+                </p>
+                <p className={`mt-0.5 text-[11.5px] ${T.muted}`}>
+                  Rewritten in a {toneOptions.find((t) => t.value === tone)?.label.toLowerCase()} tone.
+                </p>
+              </div>
+            </div>
 
-<HoverBorderGradient
-  onClick={() => {
-    if (isDisabled) return;
-    void humanize();
-  }}
-  containerClassName="rounded-full"
-  className={cn(
-    "flex items-center gap-2 px-8 py-3 text-base font-semibold ",
-    isDisabled && "opacity-50 pointer-events-none cursor-not-allowed"
-  )}
->
-  {isProcessing ? (
-    <>
-      <ScanLine className="h-5 w-5 animate-pulse" />
-      Scanning & Humanizing...
-    </>
-  ) : (
-    <>
-      <Sparkles className="h-5 w-5 transition-transform group-hover:rotate-12" />
-      Humanize & Bypass Detectors
-    </>
-  )}
-</HoverBorderGradient>
+            <button
+              type="button"
+              onClick={() => {
+                if (isDisabled) return;
+                void humanize();
+              }}
+              disabled={isDisabled}
+              className={cn(
+                `inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#111110] px-5 py-2.5
+                 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90
+                 dark:bg-white dark:text-[#111110]`,
+                isDisabled && "cursor-not-allowed opacity-40",
+              )}
+            >
+              {isProcessing ? (
+                <>
+                  <ScanLine size={15} className="animate-pulse" />
+                  Refining…
+                </>
+              ) : (
+                <>
+                  <Sparkles size={15} />
+                  Humanize text
+                </>
+              )}
+            </button>
+          </div>
+        </div>
 
-        </motion.div>
-
-        {/* Human-Score Meter */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="glass-card mx-auto max-w-2xl rounded-xl p-6"
-        >
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Human-Score Meter</h3>
-              <p className="text-xs text-muted-foreground">
-                Detection bypass confidence
+        {/* ── Score meter ──────────────────────────────────────────────── */}
+        <div className={`rounded-2xl border ${T.hairline} bg-white p-4 dark:bg-[#1A1A19]`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className={`text-[13px] font-bold ${T.ink}`}>
+                Human score
+                <span className={`ml-2 text-[11px] font-medium ${T.muted}`}>
+                  {verdict ? verdict.provider : outputScore ? "refined text" : "your draft"}
+                </span>
+              </p>
+              <p className={`mt-0.5 text-[11.5px] ${T.muted}`}>
+                {verdictState === "checking"
+                  ? "Checking with the detector…"
+                  : verdict
+                  ? verdict.feedback || `Scored by ${verdict.provider}`
+                  : "Our own estimate from sentence rhythm, phrasing and word variety"}
               </p>
             </div>
-            <span className={`text-4xl font-bold tabular-nums ${getScoreColor()}`}>
-              {humanScore}%
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              {delta !== null && delta !== 0 && (
+                <span className={`text-[11.5px] font-semibold ${T.muted}`}>
+                  {delta > 0 ? "+" : ""}
+                  {delta} vs draft
+                </span>
+              )}
+              <span
+                className="text-[26px] font-bold leading-none tabular-nums"
+                style={{ color: scoreTone }}
+              >
+                {displayScore}%
+              </span>
+              {/* The word sits beside the colour, so the band never relies on hue alone. */}
+              <span
+                className="rounded-md px-1.5 py-0.5 text-[10px] font-bold"
+                style={{ backgroundColor: `${scoreTone}1F`, color: scoreTone }}
+              >
+                {scoreLabel}
+              </span>
+            </div>
           </div>
 
-          {/* Score bar */}
-          <div className="relative h-3 overflow-hidden rounded-full bg-muted/50">
+          <div
+            className="mt-3 h-1.5 w-full overflow-hidden rounded-full"
+            style={{ backgroundColor: dark ? "#2C2C2A" : "#EFEFEC" }}
+          >
             <motion.div
-              className={`h-full rounded-full ${getScoreBarColor()}`}
+              className="h-full rounded-full"
+              style={{ backgroundColor: scoreTone }}
               initial={{ width: 0 }}
-              animate={{ width: `${humanScore}%` }}
+              animate={{ width: `${displayScore}%` }}
               transition={{ duration: 0.1 }}
             />
-            {/* Glow effect on bar */}
-            {humanScore > 0 && (
-              <motion.div
-                className="absolute top-0 h-full w-8 rounded-full bg-gradient-to-r from-transparent to-primary/30"
-                animate={{ left: `${humanScore - 3}%` }}
-                transition={{ duration: 0.1 }}
-              />
-            )}
           </div>
 
-          {/* Scale labels */}
-          <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-            <span>AI Detected</span>
-            <span>Mixed</span>
-            <span>Fully Human</span>
-          </div>
-        </motion.div>
+          {/* The detector's own figures when we have them. */}
+          {verdict && (
+            <div className={`mt-3.5 divide-y ${T.divide}`}>
+              {[
+                { label: "AI probability", value: verdict.aiProbability, suffix: "%" },
+                {
+                  label: "Words read as AI",
+                  value: verdict.aiWords,
+                  suffix: verdict.textWords ? ` of ${verdict.textWords}` : "",
+                },
+                { label: "Sentences flagged", value: verdict.flaggedSentences || null, suffix: "" },
+              ]
+                .filter((r) => r.value !== null)
+                .map((r) => (
+                  <div key={r.label} className="flex items-center justify-between gap-3 py-2">
+                    <span className={`text-[11.5px] font-semibold ${T.ink}`}>{r.label}</span>
+                    <span className={`text-[11.5px] font-semibold tabular-nums ${T.muted}`}>
+                      {r.value}
+                      {r.suffix}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          )}
+
+          {/* Our own breakdown — shown when the detector hasn't answered, so the
+              panel is never empty and the estimate is explainable. */}
+          {!verdict && shown.signals.length > 0 ? (
+            <div className={`mt-3.5 divide-y ${T.divide}`}>
+              {shown.signals.map((s) => (
+                <div key={s.key} className="flex items-center gap-3 py-2">
+                  <span className={`w-[104px] shrink-0 text-[11.5px] font-semibold ${T.ink}`}>
+                    {s.label}
+                  </span>
+                  <span
+                    className="h-1 w-16 shrink-0 overflow-hidden rounded-full"
+                    style={{ backgroundColor: dark ? "#2C2C2A" : "#EFEFEC" }}
+                  >
+                    <span
+                      className="block h-full rounded-full"
+                      style={{ width: `${s.value}%`, backgroundColor: toneFor(s.value) }}
+                    />
+                  </span>
+                  <span className={`w-8 shrink-0 text-[11px] font-semibold tabular-nums ${T.ink}`}>
+                    {s.value}
+                  </span>
+                  <span className={`min-w-0 truncate text-[11px] ${T.muted}`}>{s.detail}</span>
+                </div>
+              ))}
+            </div>
+          ) : !verdict ? (
+            <p className={`mt-3 flex items-start gap-1.5 text-[11px] ${T.muted}`}>
+              <Info size={12} className="mt-px shrink-0" />
+              Needs at least 40 words across two sentences to measure.
+            </p>
+          ) : null}
+
+          <p className={`mt-3 flex items-start gap-1.5 text-[10.5px] leading-relaxed ${T.muted}`}>
+            <Info size={11} className="mt-px shrink-0" />
+            {verdict
+              ? `Scored by ${verdict.provider}. A detector verdict is a probability, not proof — treat it as a signal, not a guarantee.`
+              : verdictNote ||
+                "A stylometric estimate computed from the text, not a detector verdict. It does not predict what a specific detection tool will report."}
+          </p>
+        </div>
       </div>
-    </div>
+    </DashboardLayout>
   );
 };
 

@@ -1,4 +1,6 @@
 import { X } from "lucide-react";
+import { CHART, T } from "@/admin/ui/system";
+import { useRamp } from "@/admin/ui/charts";
 
 interface MultiSelectChipsProps {
   options: string[];
@@ -7,6 +9,9 @@ interface MultiSelectChipsProps {
 }
 
 const MultiSelectChips = ({ options, selected, onChange }: MultiSelectChipsProps) => {
+  const { dark } = useRamp();
+  const accent = dark ? CHART.accentDark : CHART.accent;
+
   const toggle = (option: string) => {
     if (selected.includes(option)) {
       onChange(selected.filter((s) => s !== option));
@@ -24,14 +29,20 @@ const MultiSelectChips = ({ options, selected, onChange }: MultiSelectChipsProps
             key={option}
             type="button"
             onClick={() => toggle(option)}
-            className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11.5px]
+                        transition-colors ${
+                          isActive
+                            ? "font-semibold"
+                            : `${T.hairline} font-medium ${T.ink2} hover:bg-[#F4F4F2] dark:hover:bg-white/5`
+                        }`}
+            style={
               isActive
-                ? "border-primary/40 bg-primary/15 text-primary shadow-sm"
-                : "border-border/40 bg-muted/20 text-muted-foreground hover:border-primary/30 hover:bg-muted/40"
-            }`}
+                ? { backgroundColor: `${accent}1A`, borderColor: accent, color: accent }
+                : undefined
+            }
           >
             {option}
-            {isActive && <X className="h-3 w-3" />}
+            {isActive && <X size={11} />}
           </button>
         );
       })}

@@ -1,6 +1,7 @@
 import { useState, KeyboardEvent } from "react";
 import { X } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { CHART, T } from "@/admin/ui/system";
+import { useRamp } from "@/admin/ui/charts";
 
 interface ChipInputProps {
   values: string[];
@@ -29,29 +30,39 @@ const ChipInput = ({ values, onChange, placeholder, className }: ChipInputProps)
     onChange(values.filter((_, i) => i !== index));
   };
 
+  const { dark } = useRamp();
+  const accent = dark ? CHART.accentDark : CHART.accent;
+
   return (
-    <div className={`flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-muted/40 px-3 py-2 ${className}`}>
+    <div
+      className={`flex flex-wrap items-center gap-1.5 rounded-lg border ${T.hairline}
+                  bg-transparent px-2.5 py-2 focus-within:ring-2 focus-within:ring-[#2a78d6]/30
+                  ${className || ""}`}
+    >
       {values.map((val, i) => (
         <span
           key={i}
-          className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-medium text-primary"
+          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold"
+          style={{ backgroundColor: `${accent}1A`, color: accent }}
         >
           {val}
           <button
             type="button"
             onClick={() => removeChip(i)}
-            className="rounded-full p-0.5 hover:bg-primary/20 transition-colors"
+            aria-label={`Remove ${val}`}
+            className="transition-opacity hover:opacity-60"
           >
-            <X className="h-3 w-3" />
+            <X size={11} />
           </button>
         </span>
       ))}
-      <Input
+      <input
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={values.length === 0 ? placeholder : ""}
-        className="flex-1 min-w-[120px] border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+        className={`min-w-[140px] flex-1 bg-transparent px-1 py-0.5 text-[12.5px] ${T.ink}
+                    placeholder:text-[#9A9995] focus:outline-none`}
       />
     </div>
   );

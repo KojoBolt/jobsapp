@@ -1,70 +1,15 @@
 import { ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
-import {
-  LayoutDashboard,
-  Users,
-  Gift,
-  Settings,
-  Zap,
-  LogOut,
-  Sparkles,
-  LifeBuoy,
-  FileText,
-  ShoppingBag,
-  Trophy,
-  Crown,
-  ShieldCheck,
-  Terminal,
-  CheckCircle2,
-  IdCard,
-} from "lucide-react";
-import { Separator } from "@/components/ui/separator";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { NavLink } from "@/components/NavLink";
+import { useLocation } from "react-router-dom";
+import { Sidebar, SidebarProvider } from "@/components/ui/sidebar";
 // import SupportPanel from "@/components/dashboard/SupportPanel";
 // import CrispChat from "@/components/dashboard/CrispChat";
-import LegalModal from "@/components/legal/LegalModal";
-import TermsOfService from "@/components/legal/TermsOfService";
-import PrivacyPolicy from "@/components/legal/PrivacyPolicy";
-import CurrentStrategy from "@/components/dashboard/CurrentStrategy";
-import MonthlyUsageBar from "@/components/tracker/MonthlyUsageBar";
+import DashboardSidebar, { SIDEBAR_W } from "@/components/dashboard/DashboardSidebar";
+import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
 import OnboardingTour from "@/components/onboarding/OnboardingTour";
-import { toast } from "@/components/ui/use-toast";
-import Logo from "@/assets/images/job-logo.png";
 import ChatWidget from "@/components/chatbot/ChatWidget";
-import Notification from "@/components/notification/Notificationbell";
-
-
-
-const mainNavItems = [
-  { title: "Campaign Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Identity Vault", url: "/identity-vault", icon: ShieldCheck },
-  { title: "Rewards Center", url: "/rewards", icon: Trophy },
-  { title: "Refinement Engine", url: "/refinement", icon: Sparkles },
-  { title: "Career Accelerators", url: "/accelerators", icon: ShoppingBag },
-  // { title: "Referrals", url: "/referrals", icon: Users },
-  { title: "Invite a Friend", url: "/invite", icon: Gift },
-  {title: "Report", url: "/report", icon: IdCard},
-  { title: "Resume Manager", url: "/profile", icon: FileText },
-  { title: "Support", url: "/support", icon: LifeBuoy },
-  { title: "Settings", url: "/settings", icon: Settings },
-];
-
-// const trackerNavItem = { title: "Job Trackr", url: "/job-tracker", icon: Crown };
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -125,6 +70,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const getPageTitle = () => {
     if (location.pathname === "/dashboard") return "Campaign Dashboard";
     if (location.pathname === "/identity-vault") return "Identity Vault";
+    if (location.pathname === "/refinement") return "Refinement Engine";
     if (location.pathname === "/job-tracker") return "Job Trackr — Command Center";
     if (location.pathname === "/accelerators") return "Career Accelerators";
     // if (location.pathname === "/referrals") return "Referral Network";
@@ -149,202 +95,42 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   };
 
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full">
-        <Sidebar className="border-r border-border/50">
-          <div className="flex h-16 items-center gap-2 border-b border-border/50 px-6">
-            <Link to="/dashboard" className="flex items-center gap-2">
-              {/* <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <Zap className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <span className="text-lg font-bold text-foreground">JobApp</span> */}
-              <img src={Logo} alt="job app logo" className="h-8 m-auto" />
-            </Link>
-          </div>
-
-          <SidebarContent className="px-3 py-4">
-            <SidebarGroup>
-              <SidebarGroupLabel className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
-                Navigation
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {mainNavItems.map((item) => (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <NavLink
-                          to={item.url}
-                          end
-                          id={
-                            item.url === "/identity-vault"
-                              ? "sidebar-identity-vault"
-                              : undefined
-                          }
-                          className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all hover:bg-muted hover:text-foreground ${
-                            item.url === "/identity-vault" ? "hover:shadow-[0_0_12px_hsl(270_60%_55%/0.3)]" : ""
-                          }`}
-                          activeClassName={
-                            item.url === "/identity-vault"
-                              ? "bg-[hsl(270_60%_55%/0.12)] text-[hsl(270_60%_70%)] shadow-[0_0_12px_hsl(270_60%_55%/0.25)]"
-                              : "bg-primary/10 text-primary"
-                          }
-                        >
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.title}</span>
-                          {item.url === "/identity-vault" && isVaultComplete && (
-                            <CheckCircle2 className="ml-auto h-3.5 w-3.5 text-emerald-400" />
-                          )}
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            {/* Job Trackr — Command Center (special bottom section) */}
-            <SidebarGroup className="mt-2">
-              <SidebarGroupContent>
-                <Separator className="mb-3 bg-border/30" />
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild>
-                      {/* <NavLink
-                        to={trackerNavItem.url}
-                        end
-                        id="sidebar-tracker"
-                        className="flex items-center gap-3 rounded-lg border border-gray-300 bg-black px-4 py-5 text-sm font-medium text-muted-foreground transition-all hover:border-primary/30 hover:bg-[hsl(213_94%_55%/0.08)] hover:text-foreground hover:shadow-[0_0_14px_hsl(213_94%_55%/0.2)]"
-                        activeClassName="border-primary/40 bg-primary/10 text-primary shadow-[0_0_14px_hsl(213_94%_55%/0.25)]"
-                      >
-                        <Terminal className={`h-4 w-4 ${hasInterview ? "animate-pulse text-primary" : ""}`} />
-                        <span className="text-[12px]">{trackerNavItem.title}</span>
-                        <span className="ml-auto text-[9px] uppercase tracking-widest text-muted-foreground/60">Command Center</span>
-                      </NavLink> */}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            {/* Monthly Usage (Subscribed users) */}
-            {isSubscribed && (
-              <SidebarGroup className="mt-4">
-                <SidebarGroupContent>
-                  <MonthlyUsageBar
-                    used={profile?.monthly_usage_count || 0}
-                    limit={monthlyLimit}
-                    planName={planName}
-                  />
-                </SidebarGroupContent>
-              </SidebarGroup>
-            )}
-
-            {/* Current Strategy */}
-            <SidebarGroup className="mt-4" id="sidebar-strategy">
-              <SidebarGroupLabel className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
-                Strategy
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <CurrentStrategy vaultData={vaultData} />
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            {/* Legal Links */}
-            <SidebarGroup className="mt-4">
-              <SidebarGroupLabel className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
-                Legal
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <LegalModal
-                      title="Terms of Service"
-                      trigger={
-                        <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                          <FileText className="h-4 w-4" />
-                          <span>Terms of Service</span>
-                        </button>
-                      }
-                    >
-                      <TermsOfService />
-                    </LegalModal>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <LegalModal
-                      title="Privacy Policy"
-                      trigger={
-                        <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                          <FileText className="h-4 w-4" />
-                          <span>Privacy Policy</span>
-                        </button>
-                      }
-                    >
-                      <PrivacyPolicy />
-                    </LegalModal>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            <div className="mt-auto pt-4 border-t border-border/50">
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    onClick={handleLogout}
-                    disabled={isLoggingOut}
-                    className="cursor-pointer"
-                  >
-                    <button
-                        onClick={async () => {
-                          await signOut();
-                          toast({
-                            title: "Signed out successfully",
-                            description: "You have been logged out of your account.",
-                          });
-                        }}
-                        className="..."
-                      >
-            <LogOut className="h-4 w-4" />
-     <span>Sign Out</span>
-</button>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <Link
-                      to="/"
-                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    >
-                      <span>Back to Site</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </div>
-          </SidebarContent>
-        </Sidebar>
-
-        <main className="flex-1 overflow-auto">
-          <header className="flex h-16 items-center justify-between border-b border-border/50 px-6">
-            <div className="flex items-center gap-4">
-              <SidebarTrigger className="mr-4" />
-              <h2 className="text-sm font-medium text-foreground">{getPageTitle()}</h2>
-            </div>
-            <Notification />
-          </header>
-          <div className="p-6">{children}</div>
-        </main>
-
-        {/* Onboarding Tour */}
-        {showTour && <OnboardingTour onComplete={() => setShowTour(false)} />}
-
-        {/* Floating Support Button */}
-        {/* <SupportPanel /> */}
-        {/* Crisp Live Chat Widget */}
-          <ChatWidget />
-      </div>
-    </SidebarProvider>
+    // ThemeProvider lives at the app root in App.tsx, not here — a page that
+    // renders this layout sits above it in the tree, so a provider nested here
+    // is out of scope for that page's own useTheme/useRamp calls.
+    <>
+      {/* 248px matches AdminSidebar's SIDEBAR_W so both consoles share one rail width. */}
+      <SidebarProvider style={{ "--sidebar-width": `${SIDEBAR_W}px` } as React.CSSProperties}>
+        <div className="flex min-h-screen w-full">
+          <Sidebar className="border-r border-[#EAEAE7] dark:border-white/10 [&>div]:bg-white dark:[&>div]:bg-[#1A1A19]">
+            <DashboardSidebar
+              profile={profile}
+              vaultData={vaultData}
+              isVaultComplete={isVaultComplete}
+              isSubscribed={isSubscribed}
+              monthlyLimit={monthlyLimit}
+              planName={planName}
+            />
+          </Sidebar>
+  
+          <main className="flex-1 overflow-auto bg-[#F4F4F2] dark:bg-[#0D0D0D]">
+            <DashboardHeader title={getPageTitle()} />
+            {/* pb-24 keeps the last row of any page clear of the floating chat
+                launcher, which previously sat on top of things like the
+                application feed's pagination with no way to scroll past it. */}
+            <div className="p-4 pb-24 sm:p-5 sm:pb-24">{children}</div>
+          </main>
+  
+          {/* Onboarding Tour */}
+          {showTour && <OnboardingTour onComplete={() => setShowTour(false)} />}
+  
+          {/* Floating Support Button */}
+          {/* <SupportPanel /> */}
+          {/* Crisp Live Chat Widget */}
+            <ChatWidget />
+        </div>
+      </SidebarProvider>
+    </>
   );
 };
 

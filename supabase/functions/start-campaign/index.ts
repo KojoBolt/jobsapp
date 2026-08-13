@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.0";
-import { sourceJobs, jobKey } from "../_shared/sourcing.ts";
+import { sourceJobs, jobKey, resolveTargetRoles } from "../_shared/sourcing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,7 +69,9 @@ serve(async (req) => {
       .single();
     if (!resume) throw new Error("Resume missing.");
 
-    const targetRoles = [...(profile.identity_vault_data?.targeting?.targetRoles || [])];
+    // Reads targeting.targetRoles AND the free-text customRoles the vault
+    // stores alongside it — the latter was previously invisible to sourcing.
+    const targetRoles = resolveTargetRoles(profile.identity_vault_data);
     const industries  = profile.identity_vault_data?.targeting?.industries || [];
     const skills      = profile.identity_vault_data?.skills || "";
 
@@ -95,8 +97,11 @@ serve(async (req) => {
       job_url:      j.url      || `https://jobstack.ai/job-not-found/${crypto.randomUUID()}`,
       job_description: j.description || "",
       match_score: j.match_score || 0,
-      source:   j.source   || null, 
+      source:   j.source   || null,
       location: j.location || null,
+      // Null unless the source actually told us — the dashboard shows initials
+      // rather than a logo it had to infer.
+      company_logo: j.company_logo || null,
       status: "queued", cover_letter: null,
     }));
 

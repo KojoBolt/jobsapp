@@ -2,11 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -38,6 +33,8 @@ import ChipInput from "@/components/identity-vault/ChipInput";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { CHART, T } from "@/admin/ui/system";
+import { useRamp } from "@/admin/ui/charts";
 
 const industries = [
   "Engineering", "Finance", "Marketing", "Product", "Design",
@@ -60,6 +57,61 @@ const toneOptions = [
   { value: "creative", label: "Creative & Personality-driven", description: "Bold and distinctive" },
   { value: "concise", label: "Concise & Technical", description: "Data-driven and precise" },
 ];
+
+/* One field shell for every input, select and textarea on the page, so the form
+   reads as one system instead of three shadcn defaults. */
+const FIELD =
+  "w-full rounded-lg border border-[#EAEAE7] bg-transparent px-3 py-2 text-[12.5px] " +
+  "text-[#111110] placeholder:text-[#9A9995] focus:outline-none focus:ring-2 " +
+  "focus:ring-[#2a78d6]/30 dark:border-white/10 dark:text-white";
+
+const Section = ({
+  icon: Icon,
+  title,
+  hint,
+  accent,
+  children,
+}: {
+  icon: React.ElementType;
+  title: string;
+  hint?: string;
+  accent: string;
+  children: React.ReactNode;
+}) => (
+  <div className={`rounded-2xl border ${T.hairline} bg-white p-5 dark:bg-[#1A1A19]`}>
+    <div className="mb-4 flex items-center gap-2.5">
+      <span
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+        style={{ backgroundColor: `${accent}1A`, color: accent }}
+      >
+        <Icon size={15} strokeWidth={2} />
+      </span>
+      <div className="min-w-0">
+        <p className={`text-[13.5px] font-bold leading-tight ${T.ink}`}>{title}</p>
+        {hint && <p className={`mt-0.5 text-[11.5px] ${T.muted}`}>{hint}</p>}
+      </div>
+    </div>
+    {children}
+  </div>
+);
+
+const FieldLabel = ({
+  icon: Icon,
+  children,
+  htmlFor,
+}: {
+  icon?: React.ElementType;
+  children: React.ReactNode;
+  htmlFor?: string;
+}) => (
+  <label
+    htmlFor={htmlFor}
+    className={`mb-1.5 flex items-center gap-1.5 text-[11.5px] font-semibold ${T.ink2}`}
+  >
+    {Icon && <Icon size={12} />}
+    {children}
+  </label>
+);
 
 const fadeUp = {
   initial: { opacity: 0, y: 16 },
@@ -102,6 +154,7 @@ const extractTextFromPDF = async (file: File): Promise<string> => {
 };
 
 const IdentityVault = () => {
+  const { dark } = useRamp();
   const { user } = useAuth();
   const location = useLocation();
   const [saving, setSaving] = useState(false);
@@ -392,291 +445,264 @@ const IdentityVault = () => {
     if (e.target.files?.[0]) setResumeFile(e.target.files[0]);
   };
 
+  const accent = dark ? CHART.accentDark : CHART.accent;
+  const good = dark ? CHART.goodDark : CHART.good;
+
   return (
     <DashboardLayout>
-      <div className="space-y-8 max-w-4xl">
-        <motion.div {...fadeUp} transition={{ duration: 0.4 }}>
-          <h1 className="text-3xl font-bold text-foreground font-poppins" style={{ fontFamily: "'Playfair Display', font-poppins" }}>
-            Identity Vault: <span className="gradient-text font-poppins">Your Professional DNA</span>
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground font-poppins">
-            Centralize your professional profile. The stronger your vault, the better your applications.
+      <div className="max-w-3xl space-y-4">
+        <div>
+          <h1 className={`text-[20px] font-bold tracking-[-0.01em] ${T.ink}`}>Identity Vault</h1>
+          <p className={`text-[12px] ${T.muted}`}>
+            The stronger your vault, the better your applications.
           </p>
-        </motion.div>
+        </div>
 
-        <motion.div {...fadeUp} transition={{ duration: 0.4, delay: 0.05 }}>
-          <VaultStrengthMeter strength={getVaultStrength()} />
-        </motion.div>
+        <VaultStrengthMeter strength={getVaultStrength()} />
 
         {/* Personal Info */}
-        <motion.div {...fadeUp} transition={{ duration: 0.4, delay: 0.1 }}>
-          <Card className="border-border/30 bg-card/60 backdrop-blur-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg" style={{ fontFamily: "'Playfair Display', serif" }}>
-                <User className="h-5 w-5 text-primary font-poppins" /> Personal Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="vault-name" className="flex items-center gap-1.5 text-xs">
-                    <User className="h-3 w-3 font-poppins" /> Full Name
-                  </Label>
-                  <Input id="vault-name" placeholder="Jane Doe" value={personalInfo.name}
-                    onChange={(e) => setPersonalInfo({ ...personalInfo, name: e.target.value })} className="bg-muted/40" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="vault-email" className="flex items-center gap-1.5 text-xs">
-                    <Mail className="h-3 w-3" /> Email Address
-                  </Label>
-                  <Input id="vault-email" type="email" placeholder="jane@example.com" value={personalInfo.email}
-                    onChange={(e) => setPersonalInfo({ ...personalInfo, email: e.target.value })} className="bg-muted/40" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="vault-phone" className="flex items-center gap-1.5 text-xs">
-                    <Phone className="h-3 w-3" /> Phone Number
-                  </Label>
-                  <Input id="vault-phone" type="tel" placeholder="+1 (555) 000-0000" value={personalInfo.phone}
-                    onChange={(e) => setPersonalInfo({ ...personalInfo, phone: e.target.value })} className="bg-muted/40" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="vault-linkedin" className="flex items-center gap-1.5 text-xs">
-                    <Linkedin className="h-3 w-3" /> LinkedIn URL
-                  </Label>
-                  <Input id="vault-linkedin" placeholder="https://linkedin.com/in/jane-doe" value={personalInfo.linkedinUrl}
-                    onChange={(e) => setPersonalInfo({ ...personalInfo, linkedinUrl: e.target.value })} className="bg-muted/40" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+        <Section icon={User} title="Personal information" accent={accent}
+                 hint="Used on every application we send">
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            <div>
+              <FieldLabel icon={User} htmlFor="vault-name">Full name</FieldLabel>
+              <input id="vault-name" placeholder="Jane Doe" value={personalInfo.name}
+                onChange={(e) => setPersonalInfo({ ...personalInfo, name: e.target.value })} className={FIELD} />
+            </div>
+            <div>
+              <FieldLabel icon={Mail} htmlFor="vault-email">Email address</FieldLabel>
+              <input id="vault-email" type="email" placeholder="jane@example.com" value={personalInfo.email}
+                onChange={(e) => setPersonalInfo({ ...personalInfo, email: e.target.value })} className={FIELD} />
+            </div>
+            <div>
+              <FieldLabel icon={Phone} htmlFor="vault-phone">Phone number</FieldLabel>
+              <input id="vault-phone" type="tel" placeholder="+1 (555) 000-0000" value={personalInfo.phone}
+                onChange={(e) => setPersonalInfo({ ...personalInfo, phone: e.target.value })} className={FIELD} />
+            </div>
+            <div>
+              <FieldLabel icon={Linkedin} htmlFor="vault-linkedin">LinkedIn URL</FieldLabel>
+              <input id="vault-linkedin" placeholder="https://linkedin.com/in/jane-doe" value={personalInfo.linkedinUrl}
+                onChange={(e) => setPersonalInfo({ ...personalInfo, linkedinUrl: e.target.value })} className={FIELD} />
+            </div>
+          </div>
+        </Section>
 
         {/* Resume Hub */}
-        <motion.div {...fadeUp} transition={{ duration: 0.4, delay: 0.15 }}>
-          <Card className="border-border/30 bg-card/60 backdrop-blur-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg" style={{ fontFamily: "'Playfair Display', serif" }}>
-                <FileText className="h-5 w-5 text-primary" /> The Resume Hub
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {currentResume && (
-                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/20">
-                        <FileText className="h-5 w-5 text-emerald-400" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-emerald-400">{currentResume.fileName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Uploaded on {new Date(currentResume.uploadedAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleDeleteResume}
-                      disabled={saving}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+        <Section icon={FileText} title="Resume hub" accent={accent}
+                 hint="PDF only, up to 10MB">
+          {currentResume && (
+            <div
+              className="mb-3.5 flex items-start justify-between gap-3 rounded-xl p-3.5"
+              style={{ backgroundColor: `${good}14` }}
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+                  style={{ backgroundColor: `${good}2E`, color: good }}
+                >
+                  <FileText size={17} />
+                </span>
+                <div className="min-w-0">
+                  <p className={`truncate text-[12.5px] font-semibold ${T.ink}`}>
+                    {currentResume.fileName}
+                  </p>
+                  <p className={`mt-0.5 text-[11px] ${T.muted}`}>
+                    Uploaded {new Date(currentResume.uploadedAt).toLocaleDateString()}
+                  </p>
                 </div>
-              )}
+              </div>
+              <button
+                type="button"
+                onClick={handleDeleteResume}
+                disabled={saving}
+                aria-label="Delete resume"
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${T.muted}
+                            transition-colors hover:bg-[#D03B3B]/10 hover:text-[#B32F2F]
+                            disabled:opacity-40 dark:hover:text-[#EF7A7A]`}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          )}
 
-              <label htmlFor="vault-resume"
-                className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border/40 bg-muted/20 p-10 text-center transition-all hover:border-primary/40 hover:bg-muted/30">
-                {resumeFile ? (
-                  <>
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15">
-                      <FileText className="h-6 w-6 text-blue-400" />
-                    </div>
-                    <span className="text-sm font-medium text-blue-400">{resumeFile.name}</span>
-                    <span className="text-xs text-muted-foreground">Click to replace</span>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                      <Upload className="h-6 w-6 text-primary" />
-                    </div>
-                    <span className="text-sm font-medium text-foreground">Upload your resume</span>
-                    <span className="text-xs text-muted-foreground">PDF format, up to 10MB</span>
-                  </>
-                )}
-              </label>
-              <input id="vault-resume" type="file" accept=".pdf" className="hidden" onChange={handleFileChange} />
-            </CardContent>
-          </Card>
-        </motion.div>
+          <label
+            htmlFor="vault-resume"
+            className={`flex cursor-pointer flex-col items-center gap-2.5 rounded-xl border border-dashed
+                        ${T.hairline} px-6 py-8 text-center transition-colors hover:bg-[#FAFAF8]
+                        dark:hover:bg-white/[0.03]`}
+          >
+            <span
+              className="grid h-11 w-11 place-items-center rounded-xl"
+              style={{ backgroundColor: `${accent}1A`, color: accent }}
+            >
+              {resumeFile ? <FileText size={19} /> : <Upload size={19} />}
+            </span>
+            <span className={`text-[13px] font-bold ${T.ink}`}>
+              {resumeFile ? resumeFile.name : "Upload your resume"}
+            </span>
+            <span className={`text-[11.5px] ${T.muted}`}>
+              {resumeFile ? "Click to replace" : "PDF format, up to 10MB"}
+            </span>
+          </label>
+          <input id="vault-resume" type="file" accept=".pdf" className="hidden" onChange={handleFileChange} />
+        </Section>
 
         {/* Targeting Preferences */}
-        <motion.div {...fadeUp} transition={{ duration: 0.4, delay: 0.2 }}>
-          <Card className="border-border/30 bg-card/60 backdrop-blur-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg" style={{ fontFamily: "'Playfair Display', serif" }}>
-                <Briefcase className="h-5 w-5 text-primary" /> Targeting Preferences
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-2">
-                <Label className="text-xs">Industry (select multiple)</Label>
-                <MultiSelectChips options={industries} selected={targeting.industries}
-                  onChange={(v) => setTargeting({ ...targeting, industries: v })} />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1.5 text-xs">
-                  <MapPin className="h-3 w-3" /> Role Type (select multiple)
-                </Label>
-                <MultiSelectChips options={roleTypes} selected={targeting.roleTypes}
-                  onChange={(v) => setTargeting({ ...targeting, roleTypes: v })} />
-              </div>
+        <Section icon={Briefcase} title="Targeting preferences" accent={accent}
+                 hint="What we look for when sourcing roles">
+          <div className="space-y-4">
+            <div>
+              <FieldLabel>Industry</FieldLabel>
+              <MultiSelectChips options={industries} selected={targeting.industries}
+                onChange={(v) => setTargeting({ ...targeting, industries: v })} />
+            </div>
 
-              {/* ✅ Target Roles with "Other" custom input */}
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1.5 text-xs">
-                  <Target className="h-3 w-3" /> Target Roles (select multiple)
-                </Label>
-                <MultiSelectChips
-                  options={targetRoleOptions}
-                  selected={targeting.targetRoles}
-                  onChange={(v) => setTargeting({ ...targeting, targetRoles: v })}
-                />
+            <div>
+              <FieldLabel icon={MapPin}>Role type</FieldLabel>
+              <MultiSelectChips options={roleTypes} selected={targeting.roleTypes}
+                onChange={(v) => setTargeting({ ...targeting, roleTypes: v })} />
+            </div>
 
-                {/* ✅ Show custom role input only when "Other" is selected */}
-                {otherSelected && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="mt-3 space-y-3"
-                  >
-                    <Label className="text-xs text-muted-foreground">
-                      Add your own role(s)
-                    </Label>
+            {/* ✅ Target Roles with "Other" custom input */}
+            <div>
+              <FieldLabel icon={Target}>Target roles</FieldLabel>
+              <MultiSelectChips
+                options={targetRoleOptions}
+                selected={targeting.targetRoles}
+                onChange={(v) => setTargeting({ ...targeting, targetRoles: v })}
+              />
 
-                    {/* Input row */}
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="e.g. Blockchain Developer, Growth Hacker..."
-                        value={customRoleInput}
-                        onChange={(e) => setCustomRoleInput(e.target.value)}
-                        onKeyDown={handleCustomRoleKeyDown}
-                        className="bg-muted/40 flex-1"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleAddCustomRole}
-                        disabled={!customRoleInput.trim()}
-                        className="shrink-0 gap-1"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        Add
-                      </Button>
-                    </div>
+              {/* ✅ Show custom role input only when "Other" is selected */}
+              {otherSelected && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="mt-3"
+                >
+                  <FieldLabel>Add your own role</FieldLabel>
+                  <div className="flex gap-2">
+                    <input
+                      placeholder="e.g. Blockchain Developer, Growth Hacker…"
+                      value={customRoleInput}
+                      onChange={(e) => setCustomRoleInput(e.target.value)}
+                      onKeyDown={handleCustomRoleKeyDown}
+                      className={`${FIELD} flex-1`}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCustomRole}
+                      disabled={!customRoleInput.trim()}
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-lg border ${T.hairline}
+                                  px-3 py-2 text-[12px] font-semibold ${T.ink} transition-colors
+                                  hover:bg-[#F4F4F2] disabled:opacity-40 dark:hover:bg-white/5`}
+                    >
+                      <Plus size={13} />
+                      Add
+                    </button>
+                  </div>
 
-                    {/* Custom role chips */}
-                    {customRoles.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {customRoles.map((role) => (
-                          <span
-                            key={role}
-                            className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
+                  {customRoles.length > 0 && (
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                      {customRoles.map((role) => (
+                        <span
+                          key={role}
+                          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-semibold"
+                          style={{ backgroundColor: `${accent}1A`, color: accent }}
+                        >
+                          {role}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCustomRole(role)}
+                            aria-label={`Remove ${role}`}
+                            className="transition-opacity hover:opacity-60"
                           >
-                            {role}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveCustomRole(role)}
-                              className="ml-0.5 rounded-full hover:text-destructive transition-colors"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-              </div>
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </div>
 
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1.5 text-xs">
-                  <DollarSign className="h-3 w-3" /> Salary Expectations
-                </Label>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input placeholder="Min (e.g. 80,000)" value={targeting.salaryMin}
-                    onChange={(e) => setTargeting({ ...targeting, salaryMin: e.target.value })} className="bg-muted/40" />
-                  <Input placeholder="Max (e.g. 150,000)" value={targeting.salaryMax}
-                    onChange={(e) => setTargeting({ ...targeting, salaryMax: e.target.value })} className="bg-muted/40" />
-                </div>
+            <div>
+              <FieldLabel icon={DollarSign}>Salary expectations</FieldLabel>
+              <div className="grid grid-cols-2 gap-2.5">
+                <input placeholder="Min (e.g. 80,000)" value={targeting.salaryMin}
+                  onChange={(e) => setTargeting({ ...targeting, salaryMin: e.target.value })} className={FIELD} />
+                <input placeholder="Max (e.g. 150,000)" value={targeting.salaryMax}
+                  onChange={(e) => setTargeting({ ...targeting, salaryMax: e.target.value })} className={FIELD} />
               </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1.5 text-xs">
-                  <MessageSquare className="h-3 w-3" /> Tone of Voice
-                </Label>
-                <Select value={targeting.toneOfVoice}
-                  onValueChange={(v) => setTargeting({ ...targeting, toneOfVoice: v })}>
-                  <SelectTrigger className="bg-muted/40">
-                    <SelectValue placeholder="Select preferred tone" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {toneOptions.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
-                        <span>{t.label}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">— {t.description}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+            </div>
+
+            <div>
+              <FieldLabel icon={MessageSquare}>Tone of voice</FieldLabel>
+              <Select value={targeting.toneOfVoice}
+                onValueChange={(v) => setTargeting({ ...targeting, toneOfVoice: v })}>
+                <SelectTrigger className={FIELD}>
+                  <SelectValue placeholder="Select preferred tone" />
+                </SelectTrigger>
+                <SelectContent>
+                  {toneOptions.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      <span>{t.label}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">— {t.description}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </Section>
 
         {/* Role Specifics */}
-        <motion.div {...fadeUp} transition={{ duration: 0.4, delay: 0.25 }}>
-          <Card className="border-border/30 bg-card/60 backdrop-blur-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg" style={{ fontFamily: "'Playfair Display', serif" }}>
-                <Building2 className="h-5 w-5 text-primary" /> Role Specifics
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-2">
-                <Label className="text-xs">Target Job Titles</Label>
-                <ChipInput values={targeting.targetJobTitles}
-                  onChange={(v) => setTargeting({ ...targeting, targetJobTitles: v })}
-                  placeholder="Type a title and press Enter (e.g. Senior Product Designer)" />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1.5 text-xs">
-                  <Building2 className="h-3 w-3" /> Preferred Company Size
-                </Label>
-                <MultiSelectChips options={companySizeOptions} selected={targeting.companySizes}
-                  onChange={(v) => setTargeting({ ...targeting, companySizes: v })} />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs">Role Preferences / Must-haves</Label>
-                <Textarea placeholder="e.g. Must have health insurance, 4-day work week..."
-                  value={targeting.mustHaves}
-                  onChange={(e) => setTargeting({ ...targeting, mustHaves: e.target.value })}
-                  className="bg-muted/40 min-h-[100px]" />
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+        <Section icon={Building2} title="Role specifics" accent={accent}
+                 hint="Fine-tune what counts as a good match">
+          <div className="space-y-4">
+            <div>
+              <FieldLabel>Target job titles</FieldLabel>
+              <ChipInput values={targeting.targetJobTitles}
+                onChange={(v) => setTargeting({ ...targeting, targetJobTitles: v })}
+                placeholder="Type a title and press Enter (e.g. Senior Product Designer)" />
+            </div>
+            <div>
+              <FieldLabel icon={Building2}>Preferred company size</FieldLabel>
+              <MultiSelectChips options={companySizeOptions} selected={targeting.companySizes}
+                onChange={(v) => setTargeting({ ...targeting, companySizes: v })} />
+            </div>
+            <div>
+              <FieldLabel>Role preferences / must-haves</FieldLabel>
+              <textarea placeholder="e.g. Must have health insurance, 4-day work week…"
+                value={targeting.mustHaves}
+                onChange={(e) => setTargeting({ ...targeting, mustHaves: e.target.value })}
+                className={`${FIELD} min-h-[96px] resize-y`} />
+            </div>
+          </div>
+        </Section>
 
-        {/* Save Button */}
-        <motion.div {...fadeUp} transition={{ duration: 0.4, delay: 0.3 }} className="flex justify-end">
-          <Button size="lg" className="gap-2" onClick={handleSave} disabled={saving}>
-            <ShieldCheck className="h-4 w-4" />
-            {saving ? "Saving..." : "Save Vault"}
-          </Button>
-        </motion.div>
+        {/* Save — sticks to the bottom so it stays reachable on a long form. */}
+        <div
+          className={`sticky bottom-0 -mx-4 flex items-center justify-between gap-3 border-t
+                      ${T.hairline} bg-[#F4F4F2]/90 px-4 py-3 backdrop-blur
+                      dark:bg-[#0D0D0D]/90 sm:-mx-5 sm:px-5`}
+        >
+          <p className={`text-[11.5px] ${T.muted}`}>
+            Changes apply to applications sent from now on.
+          </p>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#111110] px-5 py-2.5
+                       text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90
+                       disabled:opacity-50 dark:bg-white dark:text-[#111110]"
+          >
+            <ShieldCheck size={15} />
+            {saving ? "Saving…" : "Save vault"}
+          </button>
+        </div>
       </div>
     </DashboardLayout>
   );

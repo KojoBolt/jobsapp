@@ -44,6 +44,10 @@ export const CHART = {
   warning:    "#FAB219",
   serious:    "#EC835A",
   critical:   "#D03B3B",
+  /* Dark-mode steps, chosen against #1A1A19 rather than lightened from the
+     values above — both pass the lightness band, chroma floor and 3:1 contrast. */
+  goodDark:     "#34AF5F",
+  criticalDark: "#E8635F",
 } as const;
 
 /* ── Surfaces ─────────────────────────────────────────────────────────────── */
@@ -524,17 +528,24 @@ export const ScoreMeter = ({ value }: { value: number | null }) => {
 
 export const StatTile = ({
   icon: Icon, label, value, note, delta, caption, invertDelta = false, loading = false,
+  chart,
 }: {
   icon: React.ElementType;
   label: string;
   value: string | number;
   note?: string;
-  delta: number;
+  /** Omit when there's no previous period to compare against — a 0 here would
+   *  render as a green "0%" and read as a real measurement. */
+  delta?: number;
   caption: string;
   invertDelta?: boolean;
   loading?: boolean;
+  /** Optional trend rendered under the caption — pass a <Sparkline />. */
+  chart?: React.ReactNode;
 }) => (
-  <Panel className="p-4">
+  // overflow-hidden so a chart that bleeds to the edges is clipped by the
+  // tile's rounded corners instead of squaring them off.
+  <Panel className="overflow-hidden p-4">
     <div className="flex items-start justify-between gap-2">
       <div className="flex min-w-0 items-center gap-2">
         <Icon size={13} className="shrink-0 text-[#6B6A66] dark:text-[#C3C2B7]" />
@@ -557,9 +568,10 @@ export const StatTile = ({
           {note ? <span className={`text-[12px] ${T.muted}`}>{note}</span> : null}
         </div>
         <div className="mt-2.5 flex items-center gap-2">
-          <DeltaChip value={delta} invert={invertDelta} />
+          {typeof delta === "number" ? <DeltaChip value={delta} invert={invertDelta} /> : null}
           <span className={`truncate text-[11px] ${T.muted}`}>{caption}</span>
         </div>
+        {chart}
       </>
     )}
   </Panel>

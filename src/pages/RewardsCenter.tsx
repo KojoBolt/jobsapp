@@ -5,10 +5,10 @@ import ReferralTool from "@/components/rewards/ReferralTool";
 import ReferralPipeline from "@/components/rewards/ReferralPipeline";
 import MissionCompleteModal from "@/components/rewards/MissionCompleteModal";
 import CashOutToggle from "@/components/rewards/CashOutToggle";
-import { Button } from "@/components/ui/button";
 import { PartyPopper } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { T } from "@/admin/ui/system";
 
 interface Referral {
   id: string;
@@ -116,18 +116,24 @@ const RewardsCenter = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Rewards Center</h1>
-            <p className="text-sm text-muted-foreground">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className={`text-[20px] font-bold tracking-[-0.01em] ${T.ink}`}>Rewards Center</h1>
+            <p className={`text-[12px] ${T.muted}`}>
               Earn ${REFERRAL_REWARD} in credits for every friend who joins and makes their first purchase.
             </p>
           </div>
-          <Button variant="gold" size="sm" className="gap-2" onClick={() => setShowMissionModal(true)}>
-            <PartyPopper className="h-4 w-4" />
-            Preview Celebration
-          </Button>
+          <button
+            type="button"
+            onClick={() => setShowMissionModal(true)}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border ${T.hairline}
+                        px-2.5 py-1.5 text-[12px] font-medium ${T.ink} transition-colors
+                        hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+          >
+            <PartyPopper size={13} />
+            Preview celebration
+          </button>
         </div>
 
         <EarningsHero
@@ -141,7 +147,11 @@ const RewardsCenter = () => {
 
         <ReferralTool referralLink={referralLink} referralCode={referralCode} />
 
-        <ReferralPipeline referrals={referrals} loading={loading} />
+        <ReferralPipeline
+          referrals={referrals}
+          loading={loading}
+          rewardPerReferral={REFERRAL_REWARD}
+        />
 
         <CashOutToggle
           userId={user?.id}

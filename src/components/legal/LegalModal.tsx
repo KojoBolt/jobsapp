@@ -2,13 +2,12 @@ import { useState, useRef } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Printer } from "lucide-react";
+import { T } from "@/admin/ui/system";
 
 interface LegalModalProps {
   title: string;
@@ -47,21 +46,41 @@ const LegalModal = ({ title, trigger, children }: LegalModalProps) => {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-2xl border-border/50 bg-card">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-lg font-bold text-foreground">{title}</DialogTitle>
-            <Button variant="ghost" size="sm" onClick={handlePrint} className="gap-1.5 text-xs text-muted-foreground">
-              <Printer className="h-3.5 w-3.5" />
-              Print to PDF
-            </Button>
+
+      {/* p-0/gap-0 so the header, body and footer can own their own bands
+          instead of floating inside the dialog's default padding. */}
+      <DialogContent
+        className={`max-w-2xl gap-0 overflow-hidden rounded-2xl border ${T.hairline}
+                    bg-white p-0 dark:bg-[#1A1A19]`}
+      >
+        <div className={`flex items-center justify-between gap-3 border-b ${T.hairline} px-5 py-3.5`}>
+          <div className="min-w-0">
+            <DialogTitle className={`truncate text-[13.5px] font-bold ${T.ink}`}>
+              {title}
+            </DialogTitle>
+            <DialogDescription className={`text-[11px] ${T.muted}`}>
+              Last updated February 2026
+            </DialogDescription>
           </div>
-        </DialogHeader>
-        <ScrollArea className="max-h-[65vh] pr-4">
-          <div ref={contentRef} className="space-y-6 text-sm leading-relaxed text-muted-foreground">
+
+          {/* Sits left of the dialog's own close button, which occupies the corner. */}
+          <button
+            type="button"
+            onClick={handlePrint}
+            className={`mr-6 inline-flex shrink-0 items-center gap-1.5 rounded-lg border ${T.hairline}
+                        px-2.5 py-1.5 text-[12px] font-medium ${T.ink} transition-colors
+                        hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+          >
+            <Printer size={13} />
+            Print to PDF
+          </button>
+        </div>
+
+        <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
+          <div ref={contentRef} className={`space-y-5 text-[12.5px] leading-relaxed ${T.ink2}`}>
             {children}
           </div>
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );

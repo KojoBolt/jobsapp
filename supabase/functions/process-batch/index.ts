@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.0";
-import { sourceJobs, jobKey } from "../_shared/sourcing.ts";
+import { sourceJobs, jobKey, resolveTargetRoles } from "../_shared/sourcing.ts";
 import { GROQ_FAST_MODELS, GROQ_CHAT_URL, reasoningParams } from "../_shared/models.ts";
 
 const corsHeaders = {
@@ -217,7 +217,9 @@ async function processCampaignBatch(supabase: any, campaign: any) {
 
     const startPage = (campaign.source_cursor && campaign.source_cursor <= MAX_SOURCE_PAGE) ? campaign.source_cursor : 1;
     const { jobs: newJobs, pagesScanned } = await sourceJobs({
-      targetRoles: [...(profile?.identity_vault_data?.targeting?.targetRoles || [])],
+      // Must match start-campaign exactly, or top-ups would source against a
+      // different set of roles than the first pass did.
+      targetRoles: resolveTargetRoles(profile?.identity_vault_data),
       industries:  profile?.identity_vault_data?.targeting?.industries || [],
       skills:      profile?.identity_vault_data?.skills || "",
       existingKeys, startPage, pagesToScan: PAGES_PER_TOPUP, maxJobs: target - sourcedActive,
@@ -232,6 +234,7 @@ async function processCampaignBatch(supabase: any, campaign: any) {
         job_description: j.description || "",
         source:   j.source   || null,
         location: j.location || null,
+        company_logo: j.company_logo || null,
         match_score: j.match_score || 0, status: "queued", cover_letter: null,
       }));
       const { error: insErr } = await supabase.from("applications").insert(rows);

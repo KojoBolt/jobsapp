@@ -26,6 +26,17 @@ export interface Application {
   campaign_id: string | null;
   location?: string;
   match_score?: number;
+  /** Scraped posting text, truncated to ~800 chars by _shared/sourcing.ts. */
+  job_description?: string;
+  /** Which job board it came from — adzuna, remotive, jsearch, themuse, … */
+  source?: string;
+  /**
+   * Employer logo, only ever set when a source actually supplied one (or, for
+   * Greenhouse, when we hold a hand-checked domain). Null means "unknown" and
+   * the UI shows initials — it must never be back-filled from a guessed
+   * domain, which rendered parked-page favicons beside real employers.
+   */
+  company_logo?: string | null;
 }
 
 export function useDashboardData(userId: string | undefined) {
@@ -33,14 +44,16 @@ export function useDashboardData(userId: string | undefined) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const loadDashboard = async () => {
+  // `silent` skips the loading flag so a realtime refresh doesn't tear the page
+  // down to a spinner — Dashboard renders a full-page loader whenever it's set.
+  const loadDashboard = async (opts?: { silent?: boolean }) => {
     if (!userId) {
       setLoading(false);
       return;
     }
 
     try {
-      setLoading(true);
+      if (!opts?.silent) setLoading(true);
       const [profileResult, applicationsResult, campaignResult] = await Promise.all([
         supabase
           .from('profiles')
@@ -54,12 +67,17 @@ export function useDashboardData(userId: string | undefined) {
           .eq('user_id', userId)
           .order('created_at', { ascending: false }),
 
-        // The most recent running campaign — used to scope the stat cards.
+        // The most recent campaign, whatever state it's in — used to scope the
+        // stat cards.
+        //
+        // This used to require status = 'running', which silently zeroed every
+        // campaign-scoped stat the moment process-batch flipped the campaign to
+        // 'completed' or 'exhausted'. Admin confirmations land *after* that
+        // point, so the numbers they feed could never appear.
         supabase
           .from('campaigns')
-          .select('id')
+          .select('id, status')
           .eq('user_id', userId)
-          .eq('status', 'running')
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
@@ -84,6 +102,10 @@ export function useDashboardData(userId: string | undefined) {
         campaign_id: app.campaign_id || null,
         location: app.location || '',
         match_score: app.match_score || 0,
+        job_description: app.job_description || '',
+        source: app.source || '',
+        // Kept null rather than '' — absence has to stay distinguishable.
+        company_logo: app.company_logo || null,
       }));
 
       // ── Stat cards: scope to the active campaign only ──────────────────
@@ -134,6 +156,40 @@ export function useDashboardData(userId: string | undefined) {
 
   useEffect(() => {
     loadDashboard();
+  }, [userId]);
+
+  // Keep the dashboard live. Without this the page only ever showed whatever
+  // was true at mount, so an admin approving or confirming a submission never
+  // appeared until the user happened to reload.
+  useEffect(() => {
+    if (!userId) return;
+
+    // Coalesce bursts — a batch run touches many rows in quick succession, and
+    // each one would otherwise trigger its own full reload.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refreshSoon = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => loadDashboard({ silent: true }), 400);
+    };
+
+    const channel = supabase
+      .channel(`dashboard_${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'applications', filter: `user_id=eq.${userId}` },
+        refreshSoon,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'campaigns', filter: `user_id=eq.${userId}` },
+        refreshSoon,
+      )
+      .subscribe();
+
+    return () => {
+      clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
   }, [userId]);
 
   return { data, loading, error, refetch: loadDashboard };

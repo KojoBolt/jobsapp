@@ -6,7 +6,8 @@ import DeployButton from "@/components/dashboard/DeployButton";
 import CrossSellBanner from "@/components/dashboard/CrossSellBanner";
 import { useAuth } from "@/hooks/useAuth";  
 import { useDashboardData } from "@/hooks/useDashboardData";  
-import { Loader2, Radar } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
+import { Panel, EmptyState, T } from "@/admin/ui/system";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client"; 
@@ -66,11 +67,21 @@ const Dashboard = () => {
     return `${mins}m`;
   }
 
+  const pageHeader = (
+    <div>
+      <h1 className={`text-[20px] font-bold tracking-[-0.01em] ${T.ink}`}>Campaign Overview</h1>
+      <p className={`text-[12px] ${T.muted}`}>Track your application campaign in real-time.</p>
+    </div>
+  );
+
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex h-[50vh] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="space-y-4">
+          {pageHeader}
+          <Panel className="grid h-[40vh] place-items-center">
+            <Loader2 className={`h-7 w-7 animate-spin ${T.muted}`} />
+          </Panel>
         </div>
       </DashboardLayout>
     );
@@ -79,9 +90,15 @@ const Dashboard = () => {
   if (error) {
     return (
       <DashboardLayout>
-        <div className="flex h-[50vh] flex-col items-center justify-center gap-4">
-          <p className="text-lg text-destructive">Failed to load dashboard</p>
-          <p className="text-sm text-muted-foreground">{error.message}</p>
+        <div className="space-y-4">
+          {pageHeader}
+          <Panel>
+            <EmptyState
+              icon={AlertTriangle}
+              title="Failed to load dashboard"
+              hint={error.message}
+            />
+          </Panel>
         </div>
       </DashboardLayout>
     );
@@ -89,22 +106,18 @@ const Dashboard = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Campaign Overview</h1>
-          <p className="text-sm text-muted-foreground">
-            Track your application campaign in real-time.
-          </p>
-        </div>
+      <div className="space-y-4">
+        {pageHeader}
 
-<CrossSellBanner variant="tracker" />
+        <CrossSellBanner variant="tracker" />
         <DeployButton />
-        
-        <PowerUpWidget 
+
+        <PowerUpWidget
           remaining={data?.applications_remaining || 0}
           status={data?.balance_status || 'Active'}
           plan={data?.plan || 'free'}
         />
+
         <StatsCards data={data} />
         <ApplicationFeed applications={data?.applications || []} onApplicationDeleted={refetch} />
       </div>

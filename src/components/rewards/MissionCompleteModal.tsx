@@ -1,16 +1,12 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Copy, Check, MessageCircle, Linkedin, Twitter, Mail, Rocket, PartyPopper } from "lucide-react";
+  X, Copy, Check, MessageCircle, Linkedin, Twitter, Mail, Rocket, PartyPopper,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import Confetti from "@/components/accelerators/Confetti";
+import { CHART, T } from "@/admin/ui/system";
+import { useRamp } from "@/admin/ui/charts";
 
 const REFERRAL_REWARD = 15; // keep in sync with the backend payout
 
@@ -27,15 +23,18 @@ const MissionCompleteModal = ({
   referralLink,
   jobsSubmitted,
 }: MissionCompleteModalProps) => {
+  const { dark } = useRamp();
   const hasDeployed = jobsSubmitted > 0;
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
+
+  const accent = dark ? CHART.accentDark : CHART.accent;
 
   const handleCopy = async () => {
     if (!referralLink) return;
     await navigator.clipboard.writeText(referralLink);
     setCopied(true);
-    toast({ title: "Copied!", description: `Share it — you both get $${REFERRAL_REWARD}!` });
+    toast({ title: "Copied", description: `Share it — you both get $${REFERRAL_REWARD}.` });
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -50,82 +49,124 @@ const MissionCompleteModal = ({
     { label: "Email", icon: Mail, url: `mailto:?subject=${encodeURIComponent("I just deployed my applications!")}&body=${shareText}%20${encodeURIComponent(referralLink)}` },
   ];
 
+  if (!open) return null;
+
+  const Icon = hasDeployed ? PartyPopper : Rocket;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md border-gold/30 bg-gradient-to-b from-card via-card to-gold/5 sm:max-w-lg">
-        {open && <Confetti />}
-        <DialogHeader className="space-y-4 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gold/15 ring-2 ring-gold/30">
-              {hasDeployed ? (
-                <PartyPopper className="h-8 w-8 text-gold" />
-              ) : (
-                <Rocket className="h-8 w-8 text-gold" />
-              )}
-          </div>
-         <DialogTitle className="text-2xl font-extrabold text-foreground">
-              {hasDeployed
-                ? `Mission Underway: ${jobsSubmitted} Application${jobsSubmitted === 1 ? "" : "s"} Deployed`
-                : "Your Job Hunt Starts Here"}
-            </DialogTitle>
+    <div className="fixed inset-0 z-[1900] flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={() => onOpenChange(false)}
+      />
 
-            <DialogDescription className="text-sm leading-relaxed text-muted-foreground">
-              {hasDeployed ? (
-                <>
-                  While you prepare for interviews, why not help a friend escape the grind?
-                  Share your link and{" "}
-                  <span className="font-semibold text-gold">you both get ${REFERRAL_REWARD}</span>.
-                </>
-              ) : (
-                <>
-                  You haven't deployed any applications yet — but you can still earn. Invite a
-                  friend and{" "}
-                  <span className="font-semibold text-gold">you both get ${REFERRAL_REWARD}</span>{" "}
-                  when they make their first purchase.
-                </>
-              )}
-            </DialogDescription>
-        </DialogHeader>
+      {/* Outside the card: the card animates its transform, which would make
+          Confetti's `fixed` positioning resolve against it and clip to it. */}
+      <Confetti />
 
-        <div className="space-y-4 pt-2">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.18 }}
+        role="dialog"
+        aria-modal="true"
+        className={`relative w-full max-w-[460px] overflow-hidden rounded-2xl border ${T.hairline}
+                    bg-white shadow-xl dark:bg-[#1A1A19]`}
+      >
+        <button
+          type="button"
+          onClick={() => onOpenChange(false)}
+          aria-label="Close"
+          className={`absolute right-3 top-3 z-10 grid h-7 w-7 place-items-center rounded-lg
+                      ${T.ink2} transition-colors hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+        >
+          <X size={15} />
+        </button>
+
+        <div className="px-6 pb-6 pt-8 text-center">
+          <span
+            className="mx-auto grid h-12 w-12 place-items-center rounded-xl"
+            style={{ backgroundColor: `${accent}1A`, color: accent }}
+          >
+            <Icon size={22} />
+          </span>
+
+          <h2 className={`mt-4 text-[18px] font-bold leading-snug tracking-[-0.01em] ${T.ink}`}>
+            {hasDeployed
+              ? `${jobsSubmitted} application${jobsSubmitted === 1 ? "" : "s"} deployed`
+              : "Your job hunt starts here"}
+          </h2>
+
+          <p className={`mx-auto mt-1.5 max-w-[340px] text-[12.5px] leading-relaxed ${T.muted}`}>
+            {hasDeployed ? (
+              <>
+                While you prepare for interviews, help a friend escape the grind. Share your link
+                and <span className={`font-semibold ${T.ink2}`}>you both get ${REFERRAL_REWARD}</span>.
+              </>
+            ) : (
+              <>
+                You haven't deployed any applications yet — but you can still earn. Invite a friend
+                and <span className={`font-semibold ${T.ink2}`}>you both get ${REFERRAL_REWARD}</span>{" "}
+                when they make their first purchase.
+              </>
+            )}
+          </p>
+        </div>
+
+        <div className={`space-y-3 border-t ${T.hairline} px-6 py-5`}>
           <div className="flex gap-2">
-            <Input
+            <input
               readOnly
               value={referralLink || "Loading your link…"}
-              className="border-border/50 bg-muted/50 font-mono text-sm"
+              onFocus={(e) => e.currentTarget.select()}
+              className={`min-w-0 flex-1 rounded-lg border ${T.hairline} bg-[#FAFAF8] px-3 py-2
+                          font-mono text-[12px] ${T.ink2} outline-none dark:bg-white/[0.03]`}
             />
-            <Button variant="gold" size="default" className="shrink-0 gap-2" onClick={handleCopy} disabled={!referralLink}>
-              {copied ? (<><Check className="h-4 w-4" />Copied!</>) : (<><Copy className="h-4 w-4" />Copy</>)}
-            </Button>
+            <button
+              type="button"
+              onClick={handleCopy}
+              disabled={!referralLink}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#111110] px-3.5
+                         py-2 text-[12px] font-semibold text-white transition-opacity
+                         hover:opacity-90 disabled:opacity-40 dark:bg-white dark:text-[#111110]"
+            >
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+              {copied ? "Copied" : "Copy"}
+            </button>
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {shareChannels.map((channel) => (
-              <Button
-                key={channel.label}
-                variant="outline"
-                size="sm"
-                className="gap-1.5 border-border/50 text-xs hover:border-gold/40 hover:text-gold"
-                disabled={!referralLink}
-                onClick={() => window.open(channel.url, "_blank")}
-              >
-                <channel.icon className="h-3.5 w-3.5" />
-                {channel.label}
-              </Button>
-            ))}
+            {shareChannels.map((channel) => {
+              const ChannelIcon = channel.icon;
+              return (
+                <button
+                  key={channel.label}
+                  type="button"
+                  disabled={!referralLink}
+                  onClick={() => window.open(channel.url, "_blank", "noopener,noreferrer")}
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg border
+                              ${T.hairline} px-2 py-1.5 text-[12px] font-medium ${T.ink}
+                              transition-colors hover:bg-[#F4F4F2] disabled:opacity-40
+                              dark:hover:bg-white/5`}
+                >
+                  <ChannelIcon size={13} style={{ color: accent }} />
+                  {channel.label}
+                </button>
+              );
+            })}
           </div>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full gap-2 text-muted-foreground"
+          <button
+            type="button"
             onClick={() => onOpenChange(false)}
+            className={`w-full rounded-lg py-2 text-[12px] font-medium ${T.muted}
+                        transition-colors hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
           >
-            <Rocket className="h-4 w-4" />
-            Maybe later, I'm preparing for interviews
-          </Button>
+            Maybe later — I'm preparing for interviews
+          </button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </motion.div>
+    </div>
   );
 };
 

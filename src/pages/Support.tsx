@@ -1,18 +1,13 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { useState } from "react";
-import { Send, Mail, Clock, Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Send, Mail, Clock, Loader2, HelpCircle, MessageSquare, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { CHART, T, Panel, PanelHeader } from "@/admin/ui/system";
+import { useRamp } from "@/admin/ui/charts";
+
+const SUPPORT_EMAIL = "support@jobapp.com";
 
 const faqs = [
   {
@@ -45,12 +40,21 @@ const faqs = [
   },
 ];
 
+/** Shared field chrome so the three inputs can't drift apart. */
+const FIELD = `w-full rounded-lg border bg-[#FAFAF8] px-3 py-2 text-[12.5px] outline-none
+               placeholder:text-[#9A9995] focus:border-[#C9C8C2] disabled:opacity-60
+               dark:bg-white/[0.03] dark:focus:border-white/25`;
+
 const Support = () => {
+  const { dark } = useRamp();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
   const { toast } = useToast();
+
+  const accent = dark ? CHART.accentDark : CHART.accent;
 
   const handleSend = async () => {
     if (!name.trim()) {
@@ -124,97 +128,165 @@ const Support = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Support Hub</h1>
-          <p className="text-sm text-muted-foreground">
-            Get help from our team or browse FAQs.
-          </p>
+          <h1 className={`text-[20px] font-bold tracking-[-0.01em] ${T.ink}`}>Support Hub</h1>
+          <p className={`text-[12px] ${T.muted}`}>Get help from our team or browse FAQs.</p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* FAQ */}
-          <div className="glass-card rounded-xl p-6">
-            <h3 className="mb-4 text-sm font-semibold text-foreground">
-              Frequently Asked Questions
-            </h3>
-            <Accordion type="single" collapsible className="space-y-1">
-              {faqs.map((faq, i) => (
-                <AccordionItem
-                  key={i}
-                  value={`faq-${i}`}
-                  className="rounded-lg border border-border/30 bg-muted/20 px-4"
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          {/* ── FAQ ────────────────────────────────────────────────────────── */}
+          <Panel className="overflow-hidden">
+            <PanelHeader
+              icon={HelpCircle}
+              title="Frequently asked questions"
+              right={<span className={`text-[11px] ${T.muted}`}>{faqs.length} answers</span>}
+            />
+
+            <div className={`divide-y ${T.divide} border-t ${T.hairline}`}>
+              {faqs.map((faq, i) => {
+                const open = openFaq === i;
+                return (
+                  <div key={faq.q}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenFaq(open ? null : i)}
+                      aria-expanded={open}
+                      className={`flex w-full items-center justify-between gap-3 px-5 py-3.5
+                                  text-left transition-colors ${T.hover}`}
+                    >
+                      <span className={`text-[12.5px] font-semibold leading-snug ${T.ink}`}>
+                        {faq.q}
+                      </span>
+                      <ChevronDown
+                        size={14}
+                        className={`shrink-0 transition-transform duration-200 ${T.muted}
+                                    ${open ? "rotate-180" : ""}`}
+                      />
+                    </button>
+
+                    <AnimatePresence initial={false}>
+                      {open && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.18 }}
+                          className="overflow-hidden"
+                        >
+                          <p className={`px-5 pb-4 text-[12px] leading-relaxed ${T.ink2}`}>
+                            {faq.a}
+                          </p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
+
+          {/* ── Contact ────────────────────────────────────────────────────── */}
+          <Panel>
+            <PanelHeader
+              icon={MessageSquare}
+              title="Talk to a career coach"
+              right={
+                <span
+                  className={`inline-flex items-center gap-1 rounded-md border ${T.hairline}
+                              px-1.5 py-0.5 text-[10.5px] font-semibold ${T.ink2}`}
                 >
-                  <AccordionTrigger className="py-3 text-left text-sm font-medium text-foreground hover:no-underline">
-                    {faq.q}
-                  </AccordionTrigger>
-                  <AccordionContent className="pb-3 text-sm leading-relaxed text-muted-foreground">
-                    {faq.a}
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
-          </div>
+                  <Clock size={10} />
+                  ~24hr reply
+                </span>
+              }
+            />
 
-          {/* Contact Form */}
-          <div className="glass-card rounded-xl p-6">
-            <div className="mb-4 flex items-center gap-3">
-              <h3 className="text-sm font-semibold text-foreground">
-                Talk to a Human Career Coach
-              </h3>
-              <Badge variant="human" className="text-[10px]">
-                <Clock className="mr-0.5 h-2.5 w-2.5" /> ~24hr response
-              </Badge>
-            </div>
+            <div className="space-y-3 px-5 pb-5">
+              {/* Mailto, so the address is usable rather than just displayed. */}
+              <a
+                href={`mailto:${SUPPORT_EMAIL}`}
+                className={`flex items-center gap-2 rounded-lg border ${T.hairline} px-3 py-2.5
+                            transition-colors hover:bg-[#FAFAF8] dark:hover:bg-white/5`}
+              >
+                <Mail size={14} style={{ color: accent }} className="shrink-0" />
+                <span className={`truncate text-[12.5px] font-medium ${T.ink}`}>
+                  {SUPPORT_EMAIL}
+                </span>
+              </a>
 
-            <div className="mb-4 flex items-center gap-2 rounded-lg border border-border/30 bg-muted/20 p-3">
-              <Mail className="h-4 w-4 text-primary" />
-              <span className="text-sm text-muted-foreground">support@jobapp.com</span>
-            </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="support-name"
+                    className={`block text-[10.5px] font-semibold uppercase tracking-[0.08em] ${T.muted}`}
+                  >
+                    Your name
+                  </label>
+                  <input
+                    id="support-name"
+                    placeholder="Jane Doe"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={sending}
+                    className={`${FIELD} ${T.hairline} ${T.ink}`}
+                  />
+                </div>
 
-            <div className="space-y-3">
-              <Input
-                placeholder="Your name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="bg-muted/50"
-                disabled={sending}
-              />
-              <Input
-                placeholder="Email address"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-muted/50"
-                disabled={sending}
-              />
-              <Textarea
-                placeholder="How can we help you?"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                className="min-h-[120px] resize-none bg-muted/50"
-                disabled={sending}
-              />
-              <Button
-                variant="hero"
-                className="w-full gap-2"
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="support-email"
+                    className={`block text-[10.5px] font-semibold uppercase tracking-[0.08em] ${T.muted}`}
+                  >
+                    Email address
+                  </label>
+                  <input
+                    id="support-email"
+                    type="email"
+                    placeholder="jane@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={sending}
+                    className={`${FIELD} ${T.hairline} ${T.ink}`}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="support-message"
+                  className={`block text-[10.5px] font-semibold uppercase tracking-[0.08em] ${T.muted}`}
+                >
+                  Message
+                </label>
+                <textarea
+                  id="support-message"
+                  placeholder="How can we help you?"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  disabled={sending}
+                  className={`${FIELD} ${T.hairline} ${T.ink} min-h-[132px] resize-none leading-relaxed`}
+                />
+              </div>
+
+              <button
+                type="button"
                 onClick={handleSend}
                 disabled={sending}
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg
+                           bg-[#111110] px-3 py-2.5 text-[12.5px] font-semibold text-white
+                           transition-opacity hover:opacity-90 disabled:opacity-50
+                           dark:bg-white dark:text-[#111110]"
               >
-                {sending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-4 w-4" />
-                    Send Message
-                  </>
-                )}
-              </Button>
+                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                {sending ? "Sending…" : "Send message"}
+              </button>
+
+              <p className={`text-[11px] leading-relaxed ${T.muted}`}>
+                Your message goes straight to the coaching team — no ticket queue, no bots.
+              </p>
             </div>
-          </div>
+          </Panel>
         </div>
       </div>
     </DashboardLayout>

@@ -1,8 +1,7 @@
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Eye, BookOpen, Video, FileText, Gift, ShoppingCart, Check } from "lucide-react";
 import { type Product, formatPrice } from "@/hooks/useAccelerators";
+import { CHART, T } from "@/admin/ui/system";
+import { useRamp } from "@/admin/ui/charts";
 
 function iconFor(product: Product): React.ElementType {
   if (product.type === "video") return Video;
@@ -18,63 +17,90 @@ interface ProductCardProps {
   isBuying?: boolean;
 }
 
-const ProductCard = ({ product, isPurchased, onQuickView, onBuyNow, isBuying = false }: ProductCardProps) => {
+const ProductCard = ({
+  product,
+  isPurchased,
+  onQuickView,
+  onBuyNow,
+  isBuying = false,
+}: ProductCardProps) => {
+  const { dark } = useRamp();
   const Icon = iconFor(product);
   const isFree = product.price_subunit === 0;
 
+  const accent = dark ? CHART.accentDark : CHART.accent;
+  const good = dark ? CHART.goodDark : CHART.good;
+
   return (
-    <Card className="group relative overflow-hidden border-border/50 bg-card transition-all duration-300 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5">
-      {/* Cover */}
-      <div className="relative h-48 w-full overflow-hidden">
+    <div
+      className={`group flex flex-col overflow-hidden rounded-2xl border ${T.hairline} bg-white
+                  transition-shadow hover:shadow-[0_4px_16px_rgba(28,25,23,0.07)] dark:bg-[#1A1A19]`}
+    >
+      {/* ── Cover ──────────────────────────────────────────────────────── */}
+      <div className="relative h-40 w-full overflow-hidden">
         {product.cover_url ? (
           <img
             src={product.cover_url}
             alt={product.title}
-            className="h-48 w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className="h-40 w-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
-          <div className="flex h-48 items-center justify-center bg-gradient-to-br from-muted to-muted/40">
-            <Icon className="h-16 w-16 text-foreground/20 transition-transform duration-300 group-hover:scale-110" />
+          <div
+            className="flex h-40 items-center justify-center"
+            style={{ backgroundColor: dark ? "rgba(255,255,255,0.03)" : "#F4F4F2" }}
+          >
+            <Icon size={40} style={{ color: accent, opacity: 0.5 }} />
           </div>
         )}
 
         {isFree && (
-          <div className="absolute left-3 top-3">
-            <Badge className="border-status-interview/30 bg-status-interview/15 text-status-interview">
-              <Gift className="mr-1 h-3 w-3" />
-              Free
-            </Badge>
-          </div>
+          <span
+            className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-md px-2 py-1
+                       text-[10px] font-bold"
+            style={{ backgroundColor: good, color: dark ? "#0D0D0D" : "#FFFFFF" }}
+          >
+            <Gift size={10} />
+            Free
+          </span>
         )}
+
         {product.category && (
-          <div className="absolute right-3 top-3">
-            <Badge variant="outline" className="border-border/50 bg-background/80 backdrop-blur-sm">
-              {product.category}
-            </Badge>
-          </div>
+          <span
+            className={`absolute right-3 top-3 rounded-md border ${T.hairline} bg-white/90 px-2 py-1
+                        text-[10px] font-semibold ${T.ink2} backdrop-blur-sm dark:bg-[#1A1A19]/90`}
+          >
+            {product.category}
+          </span>
         )}
       </div>
 
-      <CardContent className="space-y-3 p-5">
-        <h3 className="line-clamp-2 text-sm font-semibold leading-tight text-foreground">
+      {/* ── Body ───────────────────────────────────────────────────────── */}
+      <div className="flex flex-1 flex-col p-4">
+        <h3 className={`line-clamp-2 text-[13.5px] font-bold leading-snug ${T.ink}`}>
           {product.title}
         </h3>
 
-        {product.headline && (
-          <p className="line-clamp-2 text-xs text-muted-foreground">{product.headline}</p>
+        {/* `description` is the field the hook's Product actually carries — the
+            previous `headline` belongs to the unrelated Product type in
+            @/data/products and was always undefined here. */}
+        {product.description && (
+          <p className={`mt-1 line-clamp-2 text-[11.5px] leading-relaxed ${T.muted}`}>
+            {product.description}
+          </p>
         )}
 
-        {/* Price */}
-        <div className="flex items-baseline gap-2">
+        <div className="mt-3 flex items-baseline gap-2">
           {isFree ? (
-            <span className="text-lg font-bold text-status-interview">Free</span>
+            <span className="text-[18px] font-bold" style={{ color: good }}>
+              Free
+            </span>
           ) : (
             <>
-              <span className="text-lg font-bold text-foreground">
+              <span className={`text-[18px] font-bold tracking-[-0.01em] ${T.ink}`}>
                 {formatPrice(product.price_subunit, product.currency)}
               </span>
               {product.compare_at_subunit ? (
-                <span className="text-sm text-muted-foreground line-through">
+                <span className={`text-[12px] line-through ${T.muted}`}>
                   {formatPrice(product.compare_at_subunit, product.currency)}
                 </span>
               ) : null}
@@ -82,43 +108,44 @@ const ProductCard = ({ product, isPurchased, onQuickView, onBuyNow, isBuying = f
           )}
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="flex-1" onClick={() => onQuickView(product)}>
-            <Eye className="mr-1.5 h-3.5 w-3.5" />
-            Quick View
-          </Button>
+        <div className="mt-3.5 flex gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={() => onQuickView(product)}
+            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border
+                        ${T.hairline} px-3 py-2 text-[12px] font-semibold ${T.ink}
+                        transition-colors hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
+          >
+            <Eye size={13} />
+            Quick view
+          </button>
 
           {isPurchased ? (
-            <Button variant="default" size="sm" className="flex-1" disabled>
-              <Check className="mr-1.5 h-3.5 w-3.5" />
+            <span
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2
+                         text-[12px] font-semibold"
+              style={{ backgroundColor: `${good}1F`, color: good }}
+            >
+              <Check size={13} strokeWidth={3} />
               Owned
-            </Button>
-          ) : isFree ? (
-            <Button
-              variant="default"
-              size="sm"
-              className="flex-1"
-              onClick={() => onBuyNow(product)}
-              disabled={isBuying}
-            >
-              <Gift className="mr-1.5 h-3.5 w-3.5" />
-              {isBuying ? "…" : "Get Free"}
-            </Button>
+            </span>
           ) : (
-            <Button
-              variant="gold"
-              size="sm"
-              className="flex-1 font-bold"
+            <button
+              type="button"
               onClick={() => onBuyNow(product)}
               disabled={isBuying}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg
+                         bg-[#111110] px-3 py-2 text-[12px] font-semibold text-white
+                         transition-opacity hover:opacity-90 disabled:opacity-50
+                         dark:bg-white dark:text-[#111110]"
             >
-              <ShoppingCart className="mr-1.5 h-3.5 w-3.5" />
-              {isBuying ? "…" : "Get This Now"}
-            </Button>
+              {isFree ? <Gift size={13} /> : <ShoppingCart size={13} />}
+              {isBuying ? "…" : isFree ? "Get free" : "Get this"}
+            </button>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 

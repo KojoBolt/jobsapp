@@ -3,6 +3,8 @@ import { MessageCircle, X, Send, Loader2, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { CHART, T } from "@/admin/ui/system";
+import { useRamp } from "@/admin/ui/charts";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -39,6 +41,9 @@ const ChatWidget = (): JSX.Element => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { user, profile } = useAuth();
+  const { dark } = useRamp();
+
+  const accent = dark ? CHART.accentDark : CHART.accent;
 
   const displayName =
     profile?.display_name ||
@@ -139,62 +144,88 @@ const ChatWidget = (): JSX.Element => {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    /* z-40, not z-50: the mobile sidebar drawer is a z-50 Sheet and this
+       widget renders after it in DashboardLayout, so at z-50 the launcher
+       floated on top of the open navigation. Modals sit at z-[1900] and
+       correctly cover this. */
+    <div className="fixed bottom-5 right-5 z-40 sm:bottom-6 sm:right-6">
       {!isOpen && (
         <div
           className="relative flex items-end"
           onMouseEnter={() => setShowHoverCard(true)}
           onMouseLeave={() => setShowHoverCard(false)}
         >
+          {/* Hover-only, so it's hidden on touch where it can never appear. */}
           <div
-            className={`pointer-events-none absolute right-[96px] bottom-2 w-[240px] transition-all duration-300 ${
-              showHoverCard
-                ? "translate-x-0 opacity-100"
-                : "translate-x-3 opacity-0"
-            }`}
+            className={`pointer-events-none absolute bottom-1 right-[68px] hidden w-[220px]
+                        transition-all duration-200 sm:block ${
+                          showHoverCard
+                            ? "translate-x-0 opacity-100"
+                            : "translate-x-2 opacity-0"
+                        }`}
           >
-            <div className="rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-lg">
-              <h3 className="text-[16px] font-semibold text-gray-900">
-                Need help?
-              </h3>
-              <p className="mt-1 text-sm text-gray-600">
+            <div
+              className={`rounded-2xl border ${T.hairline} bg-white px-4 py-3 shadow-lg
+                          dark:bg-[#1A1A19]`}
+            >
+              <h3 className={`text-[13px] font-bold ${T.ink}`}>Need help?</h3>
+              <p className={`mt-0.5 text-[11.5px] ${T.muted}`}>
                 Chat with our AI assistant.
               </p>
             </div>
           </div>
 
+          {/* 56px, down from 80px — the old launcher covered a large corner of
+              the page, including the application feed's pagination. */}
           <button
             type="button"
             onClick={toggleChat}
-            className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-b from-[#0077b6] to-[#023e8a] shadow-xl transition-transform duration-200 hover:scale-105"
+            aria-label="Open support chat"
+            className="grid h-14 w-14 place-items-center rounded-full text-white shadow-lg
+                       transition-transform duration-200 hover:scale-105
+                       focus-visible:outline-none focus-visible:ring-2
+                       focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+            style={{ backgroundColor: accent }}
           >
-            <MessageCircle className="h-9 w-9 text-white" strokeWidth={2.5} />
+            <MessageCircle className="h-6 w-6" strokeWidth={2.25} />
           </button>
         </div>
       )}
 
       {isOpen && (
-        <div className="w-[360px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl sm:w-[430px] flex flex-col max-h-[600px]">
+        /* Width is viewport-relative first: at a fixed 360px the panel ran off
+           the left edge of a 360px phone. Height is capped against the viewport
+           so a short window can't push the header off the top of the screen. */
+        <div
+          className={`flex w-[calc(100vw-2.5rem)] max-w-[380px] flex-col overflow-hidden
+                      rounded-2xl border ${T.hairline} bg-white shadow-2xl
+                      max-h-[min(600px,calc(100vh-7rem))] sm:max-w-[420px]
+                      dark:bg-[#1A1A19]`}
+        >
           {/* Header */}
-          <div className="relative bg-[#023e8a] px-6 py-5 text-white shrink-0">
+          <div className={`relative shrink-0 border-b ${T.hairline} px-5 py-4`}>
             <button
               type="button"
               onClick={toggleChat}
-              className="absolute right-4 top-4 text-white hover:opacity-80"
+              aria-label="Close support chat"
+              className={`absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-lg
+                          ${T.ink2} transition-colors hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
             >
-              <X className="h-6 w-6" />
+              <X className="h-4 w-4" />
             </button>
 
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#caf0f8]">
-                <MessageCircle className="h-6 w-6 text-[#00b4d8]" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold">Hello {displayName},</h2>
-                <p className="mt-1 text-sm font-semibold">
-                  Welcome to JobApp support!
-                </p>
-                <p className="text-xs opacity-80 mt-1">
+            <div className="flex items-start gap-3 pr-8">
+              <span
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+                style={{ backgroundColor: `${accent}1A`, color: accent }}
+              >
+                <MessageCircle className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <h2 className={`truncate text-[14px] font-bold ${T.ink}`}>
+                  Hello {displayName}
+                </h2>
+                <p className={`text-[11.5px] ${T.muted}`}>
                   {profile?.plan && `Plan: ${profile.plan}`}
                   {profile?.credits_remaining !== undefined &&
                     ` · ${profile.credits_remaining} credits`}
@@ -205,17 +236,21 @@ const ChatWidget = (): JSX.Element => {
 
           {/* Quick topics */}
           {messages.length <= 1 && (
-            <div className="bg-[#f3f3f3] px-5 py-4 shrink-0 border-b border-gray-200">
-              <p className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">
+            <div className={`shrink-0 border-b ${T.hairline} px-5 py-3.5`}>
+              <p
+                className={`mb-2.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] ${T.muted}`}
+              >
                 Quick topics
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {quickTopics.slice(0, showAllTopics ? quickTopics.length : 3).map((item) => (
                   <button
                     key={item}
                     type="button"
                     onClick={() => sendMessage(item)}
-                    className="rounded-full bg-[#e7e7e7] px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-orange-100 hover:text-orange-700"
+                    className={`rounded-full border ${T.hairline} px-2.5 py-1 text-[11.5px]
+                                font-medium ${T.ink2} transition-colors hover:bg-[#F4F4F2]
+                                dark:hover:bg-white/5`}
                   >
                     {item}
                   </button>
@@ -225,26 +260,27 @@ const ChatWidget = (): JSX.Element => {
                 <button
                   type="button"
                   onClick={() => setShowAllTopics(!showAllTopics)}
-                  className="mt-3 text-xs font-semibold text-[#023e8a] hover:text-[#0077b6] transition-colors"
+                  className="mt-2.5 text-[11.5px] font-semibold transition-opacity hover:opacity-70"
+                  style={{ color: accent }}
                 >
-                  {showAllTopics ? "View Less" : "View More"}
+                  {showAllTopics ? "View less" : "View more"}
                 </button>
               )}
             </div>
           )}
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 min-h-[200px]">
+          <div className="min-h-[180px] flex-1 space-y-2.5 overflow-y-auto px-5 py-4">
             {messages.map((msg, idx) => (
               <div
                 key={idx}
                 className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                  className={`max-w-[82%] rounded-2xl px-3.5 py-2 text-[12.5px] leading-relaxed ${
                     msg.role === "user"
-                      ? "bg-[#023e8a] text-white rounded-br-sm"
-                      : "bg-[#f3f3f3] text-gray-800 rounded-bl-sm"
+                      ? "rounded-br-sm bg-[#111110] text-white dark:bg-white dark:text-[#111110]"
+                      : `rounded-bl-sm bg-[#F4F4F2] ${T.ink2} dark:bg-white/[0.06]`
                   }`}
                 >
                   {msg.content}
@@ -254,10 +290,12 @@ const ChatWidget = (): JSX.Element => {
                 {msg.action && (
                   <button
                     onClick={() => handleAction(msg.action!)}
-                    className="mt-2 flex items-center gap-1.5 px-4 py-2 bg-[#023e8a] text-white text-xs font-semibold rounded-full hover:bg-orange-600 transition-colors"
+                    className="mt-1.5 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px]
+                               font-semibold text-white transition-opacity hover:opacity-90"
+                    style={{ backgroundColor: accent }}
                   >
                     {msg.action.message}
-                    <ArrowRight className="h-3.5 w-3.5" />
+                    <ArrowRight className="h-3 w-3" />
                   </button>
                 )}
               </div>
@@ -265,8 +303,8 @@ const ChatWidget = (): JSX.Element => {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-[#f3f3f3] rounded-2xl rounded-bl-sm px-4 py-3">
-                  <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                <div className="rounded-2xl rounded-bl-sm bg-[#F4F4F2] px-3.5 py-2.5 dark:bg-white/[0.06]">
+                  <Loader2 className={`h-3.5 w-3.5 animate-spin ${T.muted}`} />
                 </div>
               </div>
             )}
@@ -274,24 +312,32 @@ const ChatWidget = (): JSX.Element => {
           </div>
 
           {/* Input */}
-          <div className="bg-[#f3f3f3] px-5 py-4 border-t border-gray-200 shrink-0">
-            <div className="flex items-center gap-3">
+          <div className={`shrink-0 border-t ${T.hairline} px-4 py-3`}>
+            <div className="flex items-center gap-2">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask me anything..."
+                placeholder="Ask me anything…"
                 disabled={loading}
-                className="flex-1 bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-500 disabled:opacity-50"
+                aria-label="Message"
+                className={`min-w-0 flex-1 rounded-lg border ${T.hairline} bg-[#FAFAF8] px-3 py-2
+                            text-[12.5px] ${T.ink} outline-none placeholder:text-[#9A9995]
+                            focus:border-[#C9C8C2] disabled:opacity-50
+                            dark:bg-white/[0.03] dark:focus:border-white/25`}
               />
               <button
                 type="button"
                 onClick={() => sendMessage(input)}
                 disabled={loading || !input.trim()}
-                className="text-[#00b4d8] hover:text-[#90e0ef] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                aria-label="Send message"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-white
+                           transition-opacity hover:opacity-90 disabled:cursor-not-allowed
+                           disabled:opacity-40"
+                style={{ backgroundColor: accent }}
               >
-                <Send className="h-5 w-5" />
+                <Send className="h-4 w-4" />
               </button>
             </div>
           </div>
