@@ -23,6 +23,10 @@ import RewardsCenter from "./pages/RewardsCenter";
 import JobTracker from "./pages/JobTracker";
 import DeployMission from "./pages/DeployMission";
 import RefundPolicy from "./pages/RefundPolicy";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
+import Contact from "./pages/Contact";
+import ReferralProgram from "./pages/ReferralProgram";
 import NotFound from "./pages/NotFound";
 import PaymentCallback from './pages/PaymentCallback';
 import ResetPassword from "./pages/ResetPassword";
@@ -55,9 +59,6 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      {/* One ThemeProvider for the whole app. It has to sit above <Routes> so a
-          page can call useTheme/useRamp in its own body — a provider nested
-          inside a layout is out of scope for the page that renders the layout. */}
       <ThemeProvider>
       <TooltipProvider>
         <Toaster />
@@ -76,6 +77,10 @@ const App = () => (
             <Route path="/sign-up" element={<Signup />} />
             <Route path="/email-confirmation" element={<EmailConfirmation />} />
             <Route path="/refund-policy" element={<RefundPolicy />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/referral-program" element={<ReferralProgram />} />
             <Route path="/start/*" element={<FunnelRoutes />} />
 
             {/* AUTHENTICATED USER ROUTES */}
@@ -229,9 +234,6 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <ToastProvider>
-                    {/* ThemeProvider is at the app root — a second instance here
-                        would hold its own state and drift from the class the
-                        root one wrote to <html>. */}
                     <SidebarProvider>
                       <AdminLayout />
                       <ToastViewport />

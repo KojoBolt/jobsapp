@@ -5,24 +5,9 @@ import {
 } from "lucide-react";
 import { PrimaryButton } from "./Buttons";
 
-/**
- * The tools that ship alongside the campaign.
- *
- * The reference this is modelled on was headed "Free AI tools" — a public,
- * no-signup lead magnet. These four all sit behind the dashboard and come with
- * an account, so calling them free would be a pricing claim that isn't true.
- * The framing is "what you get with the campaign" instead.
- *
- * Every tool below is real and routable. Deliberately left out: the Job
- * Tracker, which is a $29 add-on rather than included, and the Career
- * Accelerators, which are sold separately.
- */
 
 const spring = { type: "spring" as const, stiffness: 250, damping: 70, mass: 1 };
 
-/* ── Preview mockups ───────────────────────────────────────────────────
-   Abstractions of each real screen, not screenshots — they stay legible at
-   this size and don't go stale every time a page is restyled. */
 
 const Panel = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
   <div className={`rounded-xl border border-white/8 bg-[#0f1225]/80 p-4 backdrop-blur ${className}`}>

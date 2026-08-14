@@ -1,22 +1,56 @@
-import { UploadIcon, VideoIcon, ZapIcon } from 'lucide-react';
 import ProfileTwo from './images/p1.webp';
 import ProfileOne from './images/p2.webp';
 
-export const featuresData = [
+/**
+ * The four stages of a campaign, as the homepage tells them.
+ *
+ * Replaces the template agency copy that shipped here ("Discovery & Planning",
+ * "Design & Development") — none of which described this product.
+ *
+ * The figures are countable facts, not marketing volume claims: eight sources
+ * is the actual list in supabase/functions/_shared/sourcing.ts, and 200 is the
+ * Growth plan. `mock` selects a preview in Features.tsx.
+ */
+export const journeySteps = [
     {
-        icon: <UploadIcon className="w-6 h-6" />,
-        title: 'Discovery & Planning',
-        desc: 'We understand your goals, audience and challenges to craft a clear, actionable strategy.'
+        id: 'vault',
+        pill: 'Share your background',
+        heading: 'Fill in one form. Then never again.',
+        body: 'Upload your CV, pick the roles and industries you want, and choose how you want to sound. Everything after this runs off that one profile.',
+        stats: [
+            { value: '1', label: 'form to fill' },
+            { value: '5', label: 'CV versions stored' }
+        ]
     },
     {
-        icon: <ZapIcon className="w-6 h-6" />,
-        title: 'Design & Development',
-        desc: 'High-quality design and scalable development focused on performance and usability.'
+        id: 'scan',
+        pill: 'Scan the market',
+        heading: 'Eight job boards, checked for you',
+        body: "We pull from eight sources at once and score every role against your profile. The ones that don't fit never reach you.",
+        stats: [
+            { value: '8', label: 'sources searched' },
+            { value: '0', label: 'boards you check' }
+        ]
     },
     {
-        icon: <VideoIcon className="w-6 h-6" />,
-        title: 'Launch & Growth',
-        desc: 'We launch, optimize and continuously improve to drive measurable business growth.'
+        id: 'write',
+        pill: 'Write and review',
+        heading: 'Written for the job. Checked by a person.',
+        body: 'Each application gets its own cover letter, drafted against that specific posting and your CV — then read by a career specialist before it goes anywhere.',
+        stats: [
+            { value: '100%', label: 'human reviewed' },
+            { value: '0', label: 'templates reused' }
+        ]
+    },
+    {
+        id: 'deploy',
+        pill: 'Deploy and track',
+        heading: 'They go out while you get on with your life',
+        body: 'Applications send in batches over days, not all at once. You watch it happen from the dashboard, or you close the tab and check back later.',
+        stats: [
+            { value: '200', label: 'applications' },
+            { value: '1', label: 'click to start' }
+        ]
     }
 ];
 
@@ -237,17 +271,17 @@ export const footerLinks = [
     {
         title: "Company",
         links: [
-            { name: "Home", url: "#" },
-            { name: "About Us", url: "#" },
+            { name: "Home", url: "/" },
+            { name: "Referral Program", url: "/referral-program" },
             // { name: "Work", url: "#" },
-            { name: "Contact", url: "#" }
+            { name: "Contact", url: "/contact" }
         ]
     },
     {
         title: "Legal",
         links: [
-            { name: "Privacy Policy", url: "#" },
-            { name: "Terms of Service", url: "#" }
+            { name: "Privacy Policy", url: "/privacy" },
+            { name: "Terms of Service", url: "/terms" }
         ]
     },
     {

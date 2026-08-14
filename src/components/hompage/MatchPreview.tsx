@@ -110,7 +110,7 @@ export default function MatchPreview() {
     <section id="how-it-works" className="py-20 2xl:py-32">
       <div className="max-w-6xl mx-auto px-4">
         <Title
-          title="How it works"
+          title="Features"
           heading="You approve nothing. It just goes out."
           description="Every role is scored against your profile, written up in your voice, checked by a human, and submitted — 200 times, while you get on with your life."
         />
