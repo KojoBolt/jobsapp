@@ -1,0 +1,46 @@
+# Docker build context is the REPO ROOT (see worker/Dockerfile), so without
+# this file Railway would upload the frontend's node_modules and build output
+# on every deploy. Only worker/ and supabase/functions/_shared/ are ever
+# COPYed, so everything else is dead weight.
+
+.git
+.github
+node_modules
+**/node_modules
+dist
+dist-ssr
+
+# Secrets. worker/.env is gitignored, but the build context is the working
+# tree, not the git index — an untracked .env would still be sent without this.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+
+# Frontend: not used by the worker.
+src
+public
+index.html
+vite.config.ts
+vitest.config.ts
+tailwind.config.ts
+postcss.config.js
+eslint.config.js
+components.json
+bun.lockb
+package-lock.json
+package.json
+tsconfig*.json
+
+# Supabase: the worker imports _shared/ats.ts only. Explicitly re-included
+# because the blanket supabase/ rule above it would otherwise win.
+supabase/*
+!supabase/functions
+supabase/functions/*
+!supabase/functions/_shared
+
+.vscode
+.idea
+*.log
+README.md

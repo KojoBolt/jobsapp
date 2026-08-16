@@ -1,0 +1,44 @@
+# =====================================================================
+#  Railway config for the job application worker.
+#
+#  TOML rather than railway.json purely so this file can carry comments.
+#  Railway reads either; it looks for this at the service's Root Directory,
+#  which must stay at the repo root (see dockerfilePath below).
+#
+#  Settings changed in the Railway dashboard are overridden by this file on
+#  the next deploy. Environment variables are the exception — those live only
+#  in the dashboard, which is where the secrets belong.
+# =====================================================================
+
+[build]
+builder = "DOCKERFILE"
+
+# Relative to the repo root, and the Root Directory must stay there. The
+# Dockerfile COPYs from supabase/functions/_shared/ so the ATS routing table
+# has one copy rather than two that drift; pointing Railway's root at worker/
+# would put that folder outside the build context and the build would fail on
+# a missing COPY source.
+dockerfilePath = "worker/Dockerfile"
+
+# Without this, every frontend commit rebuilds and redeploys the worker,
+# interrupting whatever it happens to be applying to for no reason at all.
+watchPatterns = [
+  "worker/**",
+  "supabase/functions/_shared/ats.ts",
+  "railway.toml",
+  ".dockerignore",
+]
+
+[deploy]
+
+# One is enough. Claiming uses FOR UPDATE SKIP LOCKED so extra replicas would
+# be safe rather than duplicating applications, but there is no throughput
+# reason to run them yet — and on usage-based billing, idle replicas are the
+# easiest way to pay for nothing.
+numReplicas = 1
+
+# ON_FAILURE, not ALWAYS: this process only exits 0 after a shutdown signal,
+# which Railway sends when it is deliberately stopping or redeploying it.
+# Restarting on a clean exit would fight that.
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

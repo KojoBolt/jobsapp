@@ -14,6 +14,7 @@ import {
 import VerifiedHumanBadge from "@/components/dashboard/VerifiedHumanBadge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { resolveResumeUrl } from "@/lib/resumeUrl";
 import { CHART, T, Panel, PanelHeader, EmptyState } from "@/admin/ui/system";
 import { useRamp } from "@/admin/ui/charts";
 
@@ -388,12 +389,27 @@ const ResumeManager = () => {
                         </button>
                       )}
 
-                      {resume.fileUrl && (
+                      {(resume.filePath || resume.fileUrl) && (
                         <button
                           type="button"
-                          onClick={() => {
-                            setViewUrl(resume.fileUrl);
+                          onClick={async () => {
+                            // Signed on click, not at load: a signed URL
+                            // expires, so one minted when the list rendered
+                            // could already be dead by the time it is used.
+                            const url = await resolveResumeUrl({
+                              file_path: resume.filePath,
+                              file_url: resume.fileUrl,
+                            });
+                            if (!url) {
+                              toast({
+                                title: "Could not open resume",
+                                description: "The file could not be found in storage.",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
                             setViewName(resume.name);
+                            setViewUrl(url);
                           }}
                           className={`${rowAction} ${T.ink2} hover:bg-[#F4F4F2] dark:hover:bg-white/5`}
                         >

@@ -26,6 +26,11 @@ import {
   Trash2,
   Plus,
   X,
+  ClipboardCheck,
+  Globe,
+  CalendarClock,
+  Link2,
+  EyeOff,
 } from "lucide-react";
 import VaultStrengthMeter from "@/components/identity-vault/VaultStrengthMeter";
 import MultiSelectChips from "@/components/identity-vault/MultiSelectChips";
@@ -57,6 +62,93 @@ const toneOptions = [
   { value: "creative", label: "Creative & Personality-driven", description: "Bold and distinctive" },
   { value: "concise", label: "Concise & Technical", description: "Data-driven and precise" },
 ];
+
+/* ── Application answers ──────────────────────────────────────────────────
+   Everything below feeds the questions employers ask on the form itself,
+   not the questions we ask when sourcing.
+
+   These exist because they cannot be inferred. "Are you authorised to work
+   in the United States?" is a legal declaration made in the candidate's
+   name, so a guess is not a worse answer — it is a false statement. Where
+   an answer is missing, the application is routed to a human instead. */
+
+const workCountries = [
+  "United States", "United Kingdom", "Canada", "European Union", "Australia",
+  "New Zealand", "Ireland", "Switzerland",
+];
+
+const noticePeriodOptions = [
+  "Immediately", "1 week", "2 weeks", "1 month", "2 months", "3 months or more",
+];
+
+/* Employers ask these voluntarily and "decline to self-identify" is a normal,
+   accepted answer — so we offer that rather than reproducing a demographic
+   taxonomy that differs by country and would be wrong half the time. Anyone
+   who wants to answer properly can have those applications held back. */
+const eeoOptions = [
+  {
+    value: "decline",
+    label: "Decline to self-identify",
+    description: "Standard, accepted answer",
+  },
+  {
+    value: "manual",
+    label: "Let me answer these myself",
+    description: "We'll hold those applications for you",
+  },
+];
+
+/* Shapes live at module scope so loadVaultData can merge a saved vault onto
+   them. A straight cast of stored JSON leaves any field added later
+   `undefined`, which flips a controlled input to uncontrolled mid-render. */
+const EMPTY_PERSONAL = {
+  /* The name the candidate actually types. Application forms want the two
+     parts separately, and splitting at submit time mangles multi-part
+     surnames and reversed name orders — on real applications. */
+  firstName: "",
+  lastName: "",
+  /* Derived from the two above on save, never shown as a field. Six other
+     places read it — cover letter signing in process-job and process-batch,
+     the deploy gate in DashboardLayout, the tracker's manual job modal — so
+     it stays in the saved shape even though nobody types it any more. */
+  name: "",
+  email: "",
+  phone: "",
+  linkedinUrl: "",
+};
+
+const EMPTY_TARGETING = {
+  industries: [] as string[],
+  roleTypes: [] as string[],
+  salaryMin: "",
+  salaryMax: "",
+  targetRoles: [] as string[],
+  toneOfVoice: "",
+  targetJobTitles: [] as string[],
+  companySizes: [] as string[],
+  mustHaves: "",
+};
+
+const EMPTY_ANSWERS = {
+  city: "",
+  country: "",
+  /** Where the candidate can work WITHOUT sponsorship. */
+  authorizedCountries: [] as string[],
+  /** Their answer for anywhere not in that list. "" means we don't know. */
+  needsSponsorship: "",
+  noticePeriod: "",
+  portfolioUrl: "",
+  githubUrl: "",
+  eeoHandling: "decline",
+};
+
+/** First token is the given name, the remainder the family name. A suggestion
+ *  only — it is shown in editable fields, never submitted unreviewed. */
+function splitName(full: string): { firstName: string; lastName: string } {
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return { firstName: parts[0] ?? "", lastName: "" };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
 
 /* One field shell for every input, select and textarea on the page, so the form
    reads as one system instead of three shadcn defaults. */
@@ -158,21 +250,10 @@ const IdentityVault = () => {
   const { user } = useAuth();
   const location = useLocation();
   const [saving, setSaving] = useState(false);
-  const [personalInfo, setPersonalInfo] = useState({
-    name: "", email: "", phone: "", linkedinUrl: "",
-  });
+  const [personalInfo, setPersonalInfo] = useState(EMPTY_PERSONAL);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [targeting, setTargeting] = useState({
-    industries: [] as string[],
-    roleTypes: [] as string[],
-    salaryMin: "",
-    salaryMax: "",
-    targetRoles: [] as string[],
-    toneOfVoice: "",
-    targetJobTitles: [] as string[],
-    companySizes: [] as string[],
-    mustHaves: "",
-  });
+  const [targeting, setTargeting] = useState(EMPTY_TARGETING);
+  const [answers, setAnswers] = useState(EMPTY_ANSWERS);
 
   // ✅ State for the "Other" custom role input
   const [customRoleInput, setCustomRoleInput] = useState("");
@@ -249,30 +330,37 @@ const IdentityVault = () => {
 
       if (profileData?.identity_vault_data) {
         const vault = profileData.identity_vault_data as Record<string, unknown>;
-        if (vault.personalInfo) setPersonalInfo(vault.personalInfo as typeof personalInfo);
-        if (vault.targeting) setTargeting(vault.targeting as typeof targeting);
+
+        // Merged onto the defaults, not cast over them: a vault saved before a
+        // field existed has no key for it, and spreading keeps that field a
+        // controlled empty string instead of undefined.
+        const saved = { ...EMPTY_PERSONAL, ...(vault.personalInfo as object ?? {}) };
+        // Older vaults predate the split fields; offer a suggestion rather
+        // than leaving them blank, which the candidate then sees and can fix.
+        if (!saved.firstName && !saved.lastName && saved.name) {
+          Object.assign(saved, splitName(saved.name));
+        }
+        setPersonalInfo(saved);
+        setTargeting({ ...EMPTY_TARGETING, ...(vault.targeting as object ?? {}) });
+        setAnswers({ ...EMPTY_ANSWERS, ...(vault.applicationAnswers as object ?? {}) });
 
         // ✅ Restore saved custom roles from vault
         if (vault.customRoles) setCustomRoles(vault.customRoles as string[]);
       } else {
+        const fullName = profileData?.full_name || "";
         setPersonalInfo({
-          name: profileData?.full_name || "",
+          ...EMPTY_PERSONAL,
+          name: fullName,
+          ...splitName(fullName),
           email: profileData?.email || user.email || "",
-          phone: "",
-          linkedinUrl: "",
         });
 
         setTargeting({
-          industries: [],
-          roleTypes: [],
-          salaryMin: "",
-          salaryMax: "",
+          ...EMPTY_TARGETING,
           targetRoles: resumeData?.job_title ? [resumeData.job_title] : [],
           toneOfVoice: resumeData?.tone_preference || "",
-          targetJobTitles: [],
-          companySizes: [],
-          mustHaves: "",
         });
+        setAnswers(EMPTY_ANSWERS);
       }
     } catch (error) {
       console.error("Unexpected error loading vault:", error);
@@ -289,8 +377,10 @@ const IdentityVault = () => {
 
   const getVaultStrength = useCallback(() => {
     let score = 0;
-    const total = 8;
-    if (personalInfo.name.trim()) score++;
+    const total = 10;
+    // Scores the fields that exist on the page. `name` is derived on save, so
+    // reading it here would lag a save behind what the user just typed.
+    if (personalInfo.firstName.trim()) score++;
     if (personalInfo.email.trim()) score++;
     if (personalInfo.linkedinUrl.trim()) score++;
     if (resumeFile || currentResume) score++;
@@ -298,8 +388,13 @@ const IdentityVault = () => {
     if (targeting.targetRoles.length > 0) score++;
     if (targeting.toneOfVoice) score++;
     if (targeting.targetJobTitles.length > 0) score++;
+    // Counted because a vault without these cannot be applied with — every
+    // application goes to a human instead. Showing 100% while they are blank
+    // would say the opposite.
+    if (answers.authorizedCountries.length > 0 && answers.needsSponsorship) score++;
+    if (answers.country.trim()) score++;
     return Math.round((score / total) * 100);
-  }, [personalInfo, resumeFile, currentResume, targeting]);
+  }, [personalInfo, resumeFile, currentResume, targeting, answers]);
 
   const handleSave = async () => {
     if (!user) {
@@ -309,8 +404,30 @@ const IdentityVault = () => {
     setSaving(true);
 
     try {
+      // `name` is no longer a field on this page, but six other places still
+      // read it — cover letters sign off with it and DashboardLayout gates
+      // deployment on it. Rebuild it from the two parts, and fall back to
+      // whatever was already stored if both are blank, so saving an untouched
+      // legacy vault can't wipe a name that other screens depend on.
+      const joined = `${personalInfo.firstName} ${personalInfo.lastName}`.trim();
+      const personal = {
+        ...personalInfo,
+        name: joined || personalInfo.name,
+        // process-job and process-batch already build the cover letter's
+        // location from personalInfo.city/country — they just never found
+        // anything there, because nothing wrote them. Mirror the answers here
+        // so that existing code does what it was written to do.
+        city: answers.city,
+        country: answers.country,
+      };
+
       // Include customRoles in the vault data so they persist across sessions
-      const vaultData = { personalInfo, targeting, customRoles };
+      const vaultData = {
+        personalInfo: personal,
+        targeting,
+        customRoles,
+        applicationAnswers: answers,
+      };
       const { error: vaultError } = await supabase
         .from("profiles")
         .upsert({ id: user.id, identity_vault_data: vaultData }, { onConflict: "id" })
@@ -465,9 +582,14 @@ const IdentityVault = () => {
                  hint="Used on every application we send">
           <div className="grid gap-3.5 sm:grid-cols-2">
             <div>
-              <FieldLabel icon={User} htmlFor="vault-name">Full name</FieldLabel>
-              <input id="vault-name" placeholder="Jane Doe" value={personalInfo.name}
-                onChange={(e) => setPersonalInfo({ ...personalInfo, name: e.target.value })} className={FIELD} />
+              <FieldLabel icon={User} htmlFor="vault-first">First name</FieldLabel>
+              <input id="vault-first" placeholder="Jane" value={personalInfo.firstName}
+                onChange={(e) => setPersonalInfo({ ...personalInfo, firstName: e.target.value })} className={FIELD} />
+            </div>
+            <div>
+              <FieldLabel icon={User} htmlFor="vault-last">Last name</FieldLabel>
+              <input id="vault-last" placeholder="Doe" value={personalInfo.lastName}
+                onChange={(e) => setPersonalInfo({ ...personalInfo, lastName: e.target.value })} className={FIELD} />
             </div>
             <div>
               <FieldLabel icon={Mail} htmlFor="vault-email">Email address</FieldLabel>
@@ -545,6 +667,103 @@ const IdentityVault = () => {
             </span>
           </label>
           <input id="vault-resume" type="file" accept=".pdf" className="hidden" onChange={handleFileChange} />
+        </Section>
+
+        {/* Application answers — what employers ask on the form itself. */}
+        <Section icon={ClipboardCheck} title="Application answers" accent={accent}
+                 hint="Questions employers ask that we can't answer for you">
+          <div className="space-y-4">
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <div>
+                <FieldLabel icon={MapPin} htmlFor="vault-city">Where you live — city</FieldLabel>
+                <input id="vault-city" placeholder="Chicago" value={answers.city}
+                  onChange={(e) => setAnswers({ ...answers, city: e.target.value })} className={FIELD} />
+              </div>
+              <div>
+                <FieldLabel icon={Globe} htmlFor="vault-country">Country</FieldLabel>
+                <input id="vault-country" placeholder="United States" value={answers.country}
+                  onChange={(e) => setAnswers({ ...answers, country: e.target.value })} className={FIELD} />
+              </div>
+            </div>
+
+            <div>
+              <FieldLabel icon={ShieldCheck}>Where can you work without sponsorship?</FieldLabel>
+              <p className={`-mt-1 mb-2 text-[11px] ${T.muted}`}>
+                Employers ask this on almost every application. We never guess — leave it
+                blank and those applications wait for you to complete them by hand.
+              </p>
+              <MultiSelectChips options={workCountries} selected={answers.authorizedCountries}
+                onChange={(v) => setAnswers({ ...answers, authorizedCountries: v })} />
+            </div>
+
+            <div>
+              <FieldLabel>Would you need visa sponsorship anywhere else?</FieldLabel>
+              <Select value={answers.needsSponsorship}
+                onValueChange={(v) => setAnswers({ ...answers, needsSponsorship: v })}>
+                <SelectTrigger className={FIELD}>
+                  <SelectValue placeholder="Select an answer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yes">
+                    <span>Yes — I would need sponsorship</span>
+                  </SelectItem>
+                  <SelectItem value="no">
+                    <span>No — I would not need sponsorship</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <div>
+                <FieldLabel icon={CalendarClock}>Notice period</FieldLabel>
+                <Select value={answers.noticePeriod}
+                  onValueChange={(v) => setAnswers({ ...answers, noticePeriod: v })}>
+                  <SelectTrigger className={FIELD}>
+                    <SelectValue placeholder="How soon could you start?" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {noticePeriodOptions.map((n) => (
+                      <SelectItem key={n} value={n}>{n}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <FieldLabel icon={Link2} htmlFor="vault-portfolio">Portfolio or website</FieldLabel>
+                <input id="vault-portfolio" placeholder="https://janedoe.com" value={answers.portfolioUrl}
+                  onChange={(e) => setAnswers({ ...answers, portfolioUrl: e.target.value })} className={FIELD} />
+              </div>
+            </div>
+
+            <div>
+              <FieldLabel icon={Link2} htmlFor="vault-github">GitHub</FieldLabel>
+              <input id="vault-github" placeholder="https://github.com/janedoe" value={answers.githubUrl}
+                onChange={(e) => setAnswers({ ...answers, githubUrl: e.target.value })} className={FIELD} />
+            </div>
+
+            <div>
+              <FieldLabel icon={EyeOff}>Equal-opportunity questions</FieldLabel>
+              <p className={`-mt-1 mb-2 text-[11px] ${T.muted}`}>
+                Optional questions about gender, ethnicity, veteran and disability status.
+                Answering is always voluntary.
+              </p>
+              <Select value={answers.eeoHandling}
+                onValueChange={(v) => setAnswers({ ...answers, eeoHandling: v })}>
+                <SelectTrigger className={FIELD}>
+                  <SelectValue placeholder="Choose how to answer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {eeoOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      <span>{o.label}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">— {o.description}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </Section>
 
         {/* Targeting Preferences */}

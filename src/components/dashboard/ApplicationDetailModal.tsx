@@ -8,6 +8,7 @@ import {
 import { Application } from "@/hooks/useDashboardData";
 import CompanyLogo from "@/components/dashboard/CompanyLogo";
 import { supabase } from "@/integrations/supabase/client";
+import { resolveResumeUrl } from "@/lib/resumeUrl";
 import { CHART, T } from "@/admin/ui/system";
 import { useRamp } from "@/admin/ui/charts";
 
@@ -101,7 +102,13 @@ const splitDescription = (text?: string): { heading: string; body: string }[] =>
   return out;
 };
 
-type ResumeRow = { file_name: string | null; file_url: string | null };
+type ResumeRow = {
+  file_name: string | null;
+  file_url: string | null;
+  file_path: string | null;
+  /** Resolved at fetch time — see resolveResumeUrl for why it is not file_url. */
+  viewUrl: string | null;
+};
 
 const ApplicationDetailModal = ({
   app,
@@ -157,13 +164,19 @@ const ApplicationDetailModal = ({
       setResumeLoading(true);
       const { data, error } = await supabase
         .from("resumes")
-        .select("file_name, file_url")
+        .select("file_name, file_url, file_path")
         .eq("id", app.resume_id)
         .maybeSingle();
 
       if (error) console.error("[ApplicationDetail] resume lookup failed:", error);
+
+      // Signing is a second round trip, so it happens here rather than in the
+      // render — and inside the same cancelled guard, since the modal can
+      // close while it is in flight.
+      const viewUrl = data ? await resolveResumeUrl(data) : null;
+
       if (!cancelled) {
-        setResume((data as ResumeRow) || null);
+        setResume(data ? ({ ...data, viewUrl } as ResumeRow) : null);
         setResumeLoading(false);
       }
     })();
@@ -348,9 +361,9 @@ const ApplicationDetailModal = ({
                       {resume.file_name}
                     </p>
                   </div>
-                  {resume.file_url && (
+                  {resume.viewUrl && (
                     <a
-                      href={resume.file_url}
+                      href={resume.viewUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border ${T.hairline}

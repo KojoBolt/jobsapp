@@ -8,6 +8,9 @@
 
 import { GROQ_QUALITY_MODELS, GROQ_CHAT_URL, reasoningParams } from "./models.ts";
 import { primeGreenhouse, fromGreenhouse, greenhouseStats } from "./greenhouse.ts";
+import { primeLever, fromLever, leverStats } from "./lever.ts";
+import { primeWorkday, fromWorkday, workdayStats } from "./workday.ts";
+import { primeSmartRecruiters, fromSmartRecruiters, smartRecruitersStats } from "./smartrecruiters.ts";
 
 const RAPIDAPI_KEY  = Deno.env.get("RAPIDAPI_KEY")!;
 const LINKEDIN_HOST = Deno.env.get("LINKEDIN_HOST")!;
@@ -125,11 +128,59 @@ async function fromRemotive(query: string): Promise<any[]> {
   } catch (err) { s.failed++; console.error("[remotive] threw:", err); return []; }
 }
 
+/** Warned once per instance, not once per call — this fires inside a loop. */
+let jsearchConfigWarned = false;
+
+/**
+ * Pick the most automatable link JSearch offers for a job.
+ *
+ * JSearch is the one aggregator that exposes where the job really lives: it
+ * returns `apply_options`, several publishers per job, each flagged
+ * `is_direct`. Taking `job_apply_link` blindly can land on LinkedIn or Indeed
+ * — sources we can never automate and whose terms forbid it — when the same
+ * job was also offered on Greenhouse or Workday.
+ *
+ * Preference: a known ATS host, then any direct link, then whatever we had.
+ */
+const ATS_HOSTS = [
+  "greenhouse.io", "lever.co", "ashbyhq.com", "workable.com",
+  "smartrecruiters.com", "myworkdayjobs.com", "icims.com", "bamboohr.com",
+];
+
+function bestApplyLink(j: any): string {
+  const options: any[] = Array.isArray(j?.apply_options) ? j.apply_options : [];
+  const links = options
+    .map((o) => ({ link: o?.apply_link, direct: o?.is_direct === true }))
+    .filter((o) => typeof o.link === "string" && o.link);
+
+  const onAts = links.find((o) => ATS_HOSTS.some((h) => o.link.includes(h)));
+  if (onAts) return onAts.link;
+
+  const direct = links.find((o) => o.direct);
+  if (direct) return direct.link;
+
+  return j?.job_apply_link || j?.job_google_link || links[0]?.link || "";
+}
+
 async function fromJSearch(query: string, page: number, retries = 2): Promise<any[]> {
   const s = stat("jsearch");
   // Guard matches how reed/findwork already behave — an unset host builds a
   // bogus "https://undefined/search" URL and burns a request slot.
-  if (!RAPIDAPI_KEY || !JSEARCH_HOST) return [];
+  //
+  // Say so out loud. Returning [] silently made this source indistinguishable
+  // from one that ran and found nothing, and it sat dead and unnoticed —
+  // costing the only aggregator that hands back a DIRECT employer apply link.
+  if (!RAPIDAPI_KEY || !JSEARCH_HOST) {
+    if (!jsearchConfigWarned) {
+      jsearchConfigWarned = true;
+      console.warn(
+        "[jsearch] DISABLED — missing " +
+        [!RAPIDAPI_KEY && "RAPIDAPI_KEY", !JSEARCH_HOST && "JSEARCH_HOST"].filter(Boolean).join(" and ") +
+        ". Set them as Supabase function secrets (JSEARCH_HOST is jsearch.p.rapidapi.com).",
+      );
+    }
+    return [];
+  }
   s.calls++;
   try {
     const res = await timedFetch("jsearch",
@@ -145,7 +196,7 @@ async function fromJSearch(query: string, page: number, retries = 2): Promise<an
     const d = await res.json();
     const jobs = (d?.data || []).slice(0, 40).map((j: any) => ({
       title: j.job_title, company: j.employer_name,
-      url: j.job_apply_link || j.job_google_link,
+      url: bestApplyLink(j),
       description: j.job_description?.slice(0, 800) || "",
       location: j.job_city || j.job_country || "United States", source: "jsearch",
       company_logo: logoFrom(j.employer_logo, j.employer_website),
@@ -455,7 +506,15 @@ export async function sourceJobs(p: SourceParams): Promise<{ jobs: any[]; pagesS
   // Every configured board is pulled ONCE here into memory; fromGreenhouse()
   // below then filters that cache per query at zero network cost. Failure is
   // contained inside primeGreenhouse — the seven search sources are untouched.
-  await primeGreenhouse(p.industries);
+  // Both board sources prime in parallel — they hit different hosts, so
+  // serialising them would double the wall clock for no benefit. Each
+  // swallows its own failures, so one being down can't affect the other.
+  await Promise.all([
+    primeGreenhouse(p.industries),
+    primeLever(p.industries),
+    primeWorkday(p.industries),
+    primeSmartRecruiters(p.industries),
+  ]);
 
   const collected: any[] = [];
   let pagesScanned = 0;
@@ -475,13 +534,24 @@ export async function sourceJobs(p: SourceParams): Promise<{ jobs: any[]; pagesS
         fromFindwork(q),
       ]);
 
-      // Greenhouse has no pagination — the cache is identical on every page
-      // pass, so anything it yields after the first pass is a guaranteed
-      // duplicate that dedupe would drop. Only offer it on the first pass.
+      // The board sources have no pagination — their caches are identical on
+      // every page pass, so anything they yield after the first pass is a
+      // guaranteed duplicate that dedupe would drop. First pass only.
       const greenhouse = i === 0 ? fromGreenhouse(q) : [];
+      const lever      = i === 0 ? fromLever(q) : [];
+      // Workday is awaited: it fetches descriptions for matches at this point
+      // rather than at prime, so the cost tracks jobs we want, not jobs that exist.
+      // Both search-style board sources fetch descriptions for matches only,
+      // so they run together rather than one after the other.
+      const [workday, smartrecruiters] = i === 0
+        ? await Promise.all([fromWorkday(q), fromSmartRecruiters(q)])
+        : [[], []];
 
       const fresh = dedupe(
-        interleave([adzuna, remotive, jsearch, muse, arb, reed, findwork, greenhouse]),
+        interleave([
+          adzuna, remotive, jsearch, muse, arb, reed, findwork,
+          greenhouse, lever, workday, smartrecruiters,
+        ]),
         p.existingKeys,
       );
       for (const job of fresh) {
@@ -495,14 +565,30 @@ export async function sourceJobs(p: SourceParams): Promise<{ jobs: any[]; pagesS
   // One line per source, per run. Without it a source that has been broken
   // for months is indistinguishable from one that found nothing today.
   const gh = greenhouseStats();
+  const lv = leverStats();
+  const wd = workdayStats();
+  const sr = smartRecruitersStats();
+  /** Searches + detail fetches, for the two sources that defer their network cost. */
+  const searchBoard = (s: typeof wd) =>
+    s.searches
+      ? ` (${s.searches} searches, ${s.detailsFetched} details` +
+        `${s.detailsDropped ? `, ${s.detailsDropped} closed/blank` : ""}` +
+        `${s.overBudget ? `, ${s.overBudget} over budget` : ""})`
+      : "";
+  const board = (name: string, s: { postings: number; boardsOk: number; boardsRequested: number; cached: boolean; boardsMissing: number; boardsFailed: number }) =>
+    ` | ${name}: ${s.postings}p from ${s.boardsOk}/${s.boardsRequested} boards` +
+    `${s.cached ? " (cached)" : ""}${s.boardsMissing ? ` ${s.boardsMissing} missing` : ""}` +
+    `${s.boardsFailed ? ` ${s.boardsFailed} failed` : ""}`;
+
   console.log(
     "[sourcing] " +
     Object.entries(STATS)
       .map(([name, s]) => `${name}: ${s.jobs}j/${s.ok}ok/${s.failed}fail of ${s.calls}`)
       .join(" | ") +
-    ` | greenhouse: ${gh.postings}p from ${gh.boardsOk}/${gh.boardsRequested} boards` +
-    `${gh.cached ? " (cached)" : ""}${gh.boardsMissing ? ` ${gh.boardsMissing} missing` : ""}` +
-    `${gh.boardsFailed ? ` ${gh.boardsFailed} failed` : ""}` +
+    board("greenhouse", gh) +
+    board("lever", lv) +
+    board("workday", wd) + searchBoard(wd) +
+    board("smartrecruiters", sr) + searchBoard(sr) +
     ` — collected ${collected.length}/${p.maxJobs}`
   );
 

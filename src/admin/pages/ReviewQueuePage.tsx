@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
-  CheckCircle2, ChevronDown, ChevronUp, ChevronRight, ExternalLink, Inbox, Briefcase,
+  CheckCircle2, ChevronDown, ChevronUp, ChevronRight, ExternalLink, Inbox, Briefcase, Trash2,
 } from "lucide-react";
 import ReviewModal from "../../admin/ReviewModal";
 import { format } from "date-fns";
@@ -8,7 +8,7 @@ import { useToast } from "@/admin/toast/ToastContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
   T, Panel, Th, Avatar, StatusPill, ScoreMeter, SearchInput, TabBar,
-  PrimaryButton, GhostButton, Pagination, EmptyState,
+  PrimaryButton, GhostButton, Pagination, EmptyState, ConfirmDialog,
 } from "@/admin/ui/system";
 
 interface Application {
@@ -67,6 +67,10 @@ const ReviewQueuePage = (): JSX.Element => {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [jobPages, setJobPages] = useState<Record<string, number>>({});
+  const [deleteTarget, setDeleteTarget] = useState<Application | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const { pushToast } = useToast();
 
   useEffect(() => {
@@ -233,6 +237,115 @@ const ReviewQueuePage = (): JSX.Element => {
     }
   };
 
+  /**
+   * Permanently removes the application row. Approve/reject only change
+   * `status`, so this is the one action here that can't be undone — hence the
+   * confirm step and the destructive styling.
+   */
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase
+        .from("applications")
+        .delete()
+        .eq("id", deleteTarget.id)
+        .select();
+
+      if (error) {
+        pushToast({ variant: "error", title: "Error", message: `Failed to delete: ${error.message}` });
+        return;
+      }
+      if (!data || data.length === 0) {
+        pushToast({ variant: "error", title: "Error", message: "Delete failed — check RLS policies" });
+        return;
+      }
+
+      // Same local update the approve/reject handlers use: drop the row, and
+      // drop the user once they have nothing left in this tab.
+      setUsers((prev) =>
+        prev
+          .map((user) => ({
+            ...user,
+            applications: user.applications.filter((a) => a.id !== deleteTarget.id),
+            total_apps: user.total_apps - 1,
+          }))
+          .filter((user) => user.total_apps > 0),
+      );
+
+      pushToast({ variant: "success", title: "Deleted", message: "Application removed." });
+      setDeleteTarget(null);
+      // Close the review modal if it was open on the row we just removed.
+      setSelectedApp((cur) => (cur?.id === deleteTarget.id ? null : cur));
+    } catch (error: any) {
+      pushToast({ variant: "error", title: "Error", message: error.message || "Unexpected error" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  /**
+   * Bulk delete of everything currently listed — the active tab, narrowed by
+   * the search box if one is set. Scoped to what's on screen rather than the
+   * whole table, so the confirm dialog's count is exactly what disappears.
+   *
+   * Deletes in chunks: `.in()` puts every id in the query string, and a few
+   * hundred UUIDs overflow the URL length limit in one request.
+   */
+  const handleDeleteAll = async () => {
+    const ids = filtered.flatMap((u) => u.applications.map((a) => a.id));
+    if (!ids.length) return;
+
+    setDeletingAll(true);
+    let removed = 0;
+    try {
+      for (let i = 0; i < ids.length; i += 100) {
+        const chunk = ids.slice(i, i + 100);
+        const { data, error } = await supabase
+          .from("applications")
+          .delete()
+          .in("id", chunk)
+          .select("id");
+
+        if (error) {
+          pushToast({
+            variant: "error",
+            title: "Partly deleted",
+            message: `Removed ${removed} before failing: ${error.message}`,
+          });
+          break;
+        }
+        removed += data?.length ?? 0;
+      }
+
+      // Rebuild from what actually went, not from what we asked for — a
+      // failed chunk must not vanish from the UI as though it succeeded.
+      const goneSet = new Set(ids.slice(0, removed));
+      setUsers((prev) =>
+        prev
+          .map((user) => {
+            const remaining = user.applications.filter((a) => !goneSet.has(a.id));
+            return { ...user, applications: remaining, total_apps: remaining.length };
+          })
+          .filter((user) => user.total_apps > 0),
+      );
+
+      if (removed) {
+        pushToast({
+          variant: "success",
+          title: "Deleted",
+          message: `${removed} application${removed !== 1 ? "s" : ""} removed.`,
+        });
+      }
+      setConfirmDeleteAll(false);
+      setCurrentPage(1);
+    } catch (error: any) {
+      pushToast({ variant: "error", title: "Error", message: error.message || "Unexpected error" });
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return users.filter(
@@ -347,9 +460,26 @@ const ReviewQueuePage = (): JSX.Element => {
               {format(new Date(app.created_at), "d MMM yyyy")}
             </span>
 
-            <div className="flex items-center justify-between gap-3 sm:col-span-2 sm:justify-end md:col-span-1">
+            <div className="flex items-center justify-between gap-2 sm:col-span-2 sm:justify-end md:col-span-1">
               <StatusPill status={app.status} />
-              <PrimaryButton onClick={() => setSelectedApp(app)}>Review</PrimaryButton>
+              <div className="flex items-center gap-1.5">
+                <PrimaryButton onClick={() => setSelectedApp(app)}>Review</PrimaryButton>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteTarget(app);
+                  }}
+                  aria-label={`Delete application to ${app.company_name}`}
+                  title="Delete application"
+                  className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border ${T.hairline}
+                              text-[#9A9995] transition-colors hover:border-[#D03B3B]/40
+                              hover:bg-[#D03B3B]/10 hover:text-[#B32F2F]
+                              dark:hover:text-[#EF7A7A]`}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
             </div>
           </div>
         ))}
@@ -379,13 +509,30 @@ const ReviewQueuePage = (): JSX.Element => {
               : `${filtered.length} user${filtered.length !== 1 ? "s" : ""} · ${totalApps} application${totalApps !== 1 ? "s" : ""}`}
           </p>
         </div>
-        <SearchInput
-          value={search}
-          onChange={(v) => { setSearch(v); setCurrentPage(1); }}
-          placeholder="Search by name or email…"
-          suggestions={suggestions}
-          onSelectSuggestion={selectSuggestion}
-        />
+        <div className="flex items-center gap-2">
+          <SearchInput
+            value={search}
+            onChange={(v) => { setSearch(v); setCurrentPage(1); }}
+            placeholder="Search by name or email…"
+            suggestions={suggestions}
+            onSelectSuggestion={selectSuggestion}
+          />
+          {/* Only offered when there is actually something listed to delete. */}
+          {!loading && totalApps > 0 && (
+            <button
+              type="button"
+              onClick={() => setConfirmDeleteAll(true)}
+              title={`Delete all ${totalApps} listed applications`}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border ${T.hairline}
+                          px-3 py-1.5 text-[12px] font-semibold text-[#B32F2F]
+                          transition-colors hover:border-[#D03B3B]/40 hover:bg-[#D03B3B]/10
+                          dark:text-[#EF7A7A]`}
+            >
+              <Trash2 size={13} />
+              <span className="hidden sm:inline">Delete all</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <TabBar
@@ -568,6 +715,49 @@ const ReviewQueuePage = (): JSX.Element => {
           onReject={handleReject}
         />
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        destructive
+        busy={deleting}
+        title="Delete this application?"
+        confirmLabel={deleting ? "Deleting…" : "Delete"}
+        body={
+          <>
+            <strong>{deleteTarget?.job_title}</strong> at{" "}
+            <strong>{deleteTarget?.company_name}</strong> will be permanently removed.
+            This can't be undone.
+          </>
+        }
+        onConfirm={handleDelete}
+        onCancel={() => !deleting && setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteAll}
+        destructive
+        busy={deletingAll}
+        title={`Delete ${totalApps} application${totalApps !== 1 ? "s" : ""}?`}
+        confirmLabel={deletingAll ? "Deleting…" : `Delete ${totalApps}`}
+        body={
+          <>
+            This removes every application currently listed under{" "}
+            <strong>{TABS.find((t) => t.key === activeTab)?.label}</strong>
+            {search ? <> matching “{search}”</> : null}, across{" "}
+            <strong>{filtered.length}</strong> user{filtered.length !== 1 ? "s" : ""}.
+            {(activeTab === "submitted" || activeTab === "completed") && (
+              <>
+                {" "}
+                These were already sent to employers — deleting them erases the record of
+                work delivered and lowers those customers’ totals.
+              </>
+            )}{" "}
+            This can’t be undone.
+          </>
+        }
+        onConfirm={handleDeleteAll}
+        onCancel={() => !deletingAll && setConfirmDeleteAll(false)}
+      />
     </div>
   );
 };
