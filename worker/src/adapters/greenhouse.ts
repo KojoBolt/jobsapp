@@ -489,10 +489,12 @@ async function readFields(form: Locator): Promise<FieldMeta[]> {
           id: e.id ?? "",
           role: e.getAttribute("role") ?? "",
           question,
-          required:
-            e.required === true ||
-            e.getAttribute("aria-required") === "true" ||
-            /\*\s*$/.test(question),
+          // The visible asterisk and the real `required` attribute, but NOT
+          // aria-required: measured against a live board, aria-required is
+          // "true" on fields the form marks optional — Phone and "Why do you
+          // want to work here?" among them. Trusting it reported optional
+          // questions as blockers and parked applications that were complete.
+          required: e.required === true || /\*/.test(question),
           filled: e.type === "checkbox" || e.type === "radio" ? !!e.checked : !!e.value,
         };
       }),
@@ -525,8 +527,23 @@ function locateField(form: Locator, f: FieldMeta, index: number): Locator {
   return form.locator(ANSWERABLE_CONTROLS).nth(index);
 }
 
-/** Core fields, handled by their own pass — skipped here by label. */
-const CORE_FIELD = /^(first|last|preferred first|full)?\s*name|^email|^phone|^resume|^cv\b|^cover letter|^location \(city\)|^country$/i;
+/**
+ * Core fields, handled by their own pass — skipped here by label.
+ *
+ * Matched against the label with its required-marker stripped. "Country*" was
+ * not matching `^country$`, so it fell through to the question rules, came
+ * back unrecognised, and blocked every single application on these boards.
+ *
+ * Country is skipped rather than answered on purpose: on Greenhouse it is the
+ * phone widget's country selector, already set by the phone number itself.
+ * Writing the vault's country into it would rewrite the dialling code and
+ * corrupt a phone number that was correct.
+ */
+const CORE_FIELD =
+  /^(first|last|preferred first|legal|full)?\s*name\b|^email|^phone|^resume|^cv\b|^cover letter|^location\b|^country\b/i;
+
+/** Strip the required marker and tidy whitespace before matching. */
+const bareLabel = (q: string) => q.replace(/[\s*·:]+$/, "").replace(/\s+/g, " ").trim();
 
 async function answerQuestions(
   form: Locator,
@@ -537,10 +554,20 @@ async function answerQuestions(
   const blocked: string[] = [];
   const fields = await readFields(form);
   const handledRadioGroups = new Set<string>();
+  const handledQuestions = new Set<string>();
 
   for (let i = 0; i < fields.length; i++) {
     const f = fields[i]!;
-    if (!f.question || CORE_FIELD.test(f.question)) continue;
+    const label = bareLabel(f.question);
+    if (!label || CORE_FIELD.test(label)) continue;
+
+    // Every react-select contributes TWO matching inputs — the visible search
+    // box and a hidden one carrying the value — so each question was being
+    // answered twice and reported twice. That is why the same complaint
+    // appeared twice in a row in automation_error. The first is the one that
+    // takes a value; the duplicate is skipped.
+    if (handledQuestions.has(label)) continue;
+    handledQuestions.add(label);
 
     // A radio group is one question spread over several inputs.
     if (f.type === "radio") {
@@ -550,23 +577,23 @@ async function answerQuestions(
 
     const control = locateField(form, f, i);
 
-    if (isEeo(f.question)) {
+    if (isEeo(label)) {
       // Voluntary, and declining is a normal answer. Whoever asked to handle
       // these personally gets the application held back instead.
       if (c.eeoHandling === "manual") {
         if (f.required) {
-          blocked.push(`EEO question held for manual answer: "${f.question.slice(0, 80)}"`);
+          blocked.push(`EEO question held for manual answer: "${label.slice(0, 80)}"`);
         }
         continue;
       }
       const declined = await setValue(control, f, [], DECLINE_OPTION);
       if (!declined && f.required) {
-        blocked.push(`could not decline EEO question: "${f.question.slice(0, 80)}"`);
+        blocked.push(`could not decline EEO question: "${label.slice(0, 80)}"`);
       }
       continue;
     }
 
-    const answer = answerFor(f.question, c, jobCountry, jobLocation);
+    const answer = answerFor(label, c, jobCountry, jobLocation);
     if ("skip" in answer) continue;
     if ("unanswerable" in answer) {
       if (f.required) blocked.push(answer.unanswerable);
@@ -582,7 +609,7 @@ async function answerQuestions(
 
     if (!ok && f.required) {
       const wanted = "matcher" in answer ? answer.label : answer.value;
-      blocked.push(`could not set "${wanted}" for: "${f.question.slice(0, 70)}"`);
+      blocked.push(`could not set "${wanted}" for: "${label.slice(0, 70)}"`);
     }
   }
 
