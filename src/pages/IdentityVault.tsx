@@ -31,6 +31,8 @@ import {
   CalendarClock,
   Link2,
   EyeOff,
+  Plane,
+  Megaphone,
 } from "lucide-react";
 import VaultStrengthMeter from "@/components/identity-vault/VaultStrengthMeter";
 import MultiSelectChips from "@/components/identity-vault/MultiSelectChips";
@@ -79,6 +81,24 @@ const workCountries = [
 
 const noticePeriodOptions = [
   "Immediately", "1 week", "2 weeks", "1 month", "2 months", "3 months or more",
+];
+
+/* Employers phrase this as "Do you currently live or are you willing to
+   relocate to the job's location?" — one question doing two jobs. Whether the
+   candidate already lives there is a fact we work out per job from their city;
+   only the preference below belongs in a vault, because only it is stable. */
+const relocateOptions = [
+  { value: "yes", label: "Yes, I would relocate", description: "Opens up roles anywhere" },
+  { value: "no", label: "No, I would not relocate", description: "Only roles I can reach today" },
+];
+
+/* Asked on a large share of forms and often required, so leaving it blank
+   stops applications that are otherwise complete. It is a marketing question,
+   not a declaration about the candidate, which is why a stored default is
+   fine here where it would not be for work authorisation. */
+const hearAboutOptions = [
+  "Job board", "LinkedIn", "Company website", "Referral from a friend",
+  "Recruiter outreach", "Search engine", "Social media", "Other",
 ];
 
 /* Employers ask these voluntarily and "decline to self-identify" is a normal,
@@ -137,6 +157,9 @@ const EMPTY_ANSWERS = {
   /** Their answer for anywhere not in that list. "" means we don't know. */
   needsSponsorship: "",
   noticePeriod: "",
+  /** "yes" | "no" | "" — "" means we were never told, so those questions park. */
+  willingToRelocate: "",
+  hearAboutUs: "",
   portfolioUrl: "",
   githubUrl: "",
   eeoHandling: "decline",
@@ -712,6 +735,40 @@ const IdentityVault = () => {
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <div>
+                <FieldLabel icon={Plane}>Would you relocate for a role?</FieldLabel>
+                <Select value={answers.willingToRelocate}
+                  onValueChange={(v) => setAnswers({ ...answers, willingToRelocate: v })}>
+                  <SelectTrigger className={FIELD}>
+                    <SelectValue placeholder="Select an answer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {relocateOptions.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        <span>{o.label}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">— {o.description}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <FieldLabel icon={Megaphone}>How did you hear about us?</FieldLabel>
+                <Select value={answers.hearAboutUs}
+                  onValueChange={(v) => setAnswers({ ...answers, hearAboutUs: v })}>
+                  <SelectTrigger className={FIELD}>
+                    <SelectValue placeholder="Select a source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {hearAboutOptions.map((o) => (
+                      <SelectItem key={o} value={o}>{o}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="grid gap-3.5 sm:grid-cols-2">

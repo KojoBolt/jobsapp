@@ -154,7 +154,7 @@ export function countryInText(text: string): string | null {
  * a country — they mean the one in the header, a few hundred pixels above the
  * question. Without this, every such question parks.
  */
-async function readJobCountry(page: Page): Promise<string | null> {
+async function readJobLocation(page: Page): Promise<string> {
   const candidates = [
     ".job__location",
     "[class*='location']",
@@ -162,17 +162,40 @@ async function readJobCountry(page: Page): Promise<string | null> {
     "div:below(h1)",
   ];
   for (const sel of candidates) {
-    const text = await page.locator(sel).first().textContent().catch(() => null);
-    const country = countryInText((text ?? "").trim());
-    if (country) return country;
+    const text = ((await page.locator(sel).first().textContent().catch(() => null)) ?? "").trim();
+    // Kept only when it names somewhere we recognise — "[class*='location']"
+    // also matches navigation and footers on some boards.
+    if (text && countryInText(text)) return text.replace(/\s+/g, " ").slice(0, 200);
   }
-  // Last resort: the top of the page, where the header sits. Deliberately not
-  // the whole body — a US company's boilerplate would match on any posting.
-  const heading = await page.locator("h1, h2").first().textContent().catch(() => null);
-  return countryInText(heading ?? "");
+  const heading = ((await page.locator("h1, h2").first().textContent().catch(() => null)) ?? "").trim();
+  return countryInText(heading) ? heading.replace(/\s+/g, " ").slice(0, 200) : "";
 }
 
-type Answer = { value: string } | { skip: true } | { unanswerable: string };
+/**
+ * Relocation options, matched by intent.
+ *
+ * Order and negation both matter here. Cloudflare's third option reads "I do
+ * not live and not willing to relocate to this job's location" — it contains
+ * the exact phrase "willing to relocate", so a positive-only match would
+ * select the refusal when the candidate said yes. Every test therefore checks
+ * for negation first.
+ */
+const NEGATED = (o: string) =>
+  /\b(do not|don't|doesn'?t|not|unable|unwilling|cannot|can'?t|no longer)\b/i.test(o);
+
+const RELOCATION_OPTION = {
+  livesThere: (o: string) =>
+    !NEGATED(o) && /(currently|already)\s+(live|reside|located|based)|^i live\b/i.test(o),
+  willRelocate: (o: string) =>
+    !NEGATED(o) && /willing to relocate|open to relocat|would relocate|able to relocate|happy to relocate/i.test(o),
+  wontRelocate: (o: string) => NEGATED(o) && /relocat|live/i.test(o),
+};
+
+type Answer =
+  | { value: string }
+  | { matcher: (optionText: string) => boolean; label: string }
+  | { skip: true }
+  | { unanswerable: string };
 
 /**
  * Decide what a question should be answered with, using only stored data.
@@ -180,7 +203,12 @@ type Answer = { value: string } | { skip: true } | { unanswerable: string };
  * Returning `unanswerable` is a normal outcome, not an error — it is how the
  * application ends up with a person instead of a guess.
  */
-function answerFor(question: string, c: Candidate, jobCountry: string | null): Answer {
+function answerFor(
+  question: string,
+  c: Candidate,
+  jobCountry: string | null,
+  jobLocation = "",
+): Answer {
   const q = question.toLowerCase();
 
   /**
@@ -224,6 +252,32 @@ function answerFor(question: string, c: Candidate, jobCountry: string | null): A
     return { unanswerable: "sponsorship requirement not on file" };
   }
 
+  // ── Relocation ──────────────────────────────────────────────────────
+  if (/relocat|currently live|willing to move|open to moving/.test(q)) {
+    // "I currently live in this job's location" is a claim about where they
+    // are, not a preference — so it is only made when the posting actually
+    // names their city. A country match is not enough: this role lists
+    // Austin, New York and San Francisco, and a candidate in Chicago lives in
+    // none of them while sharing a country with all three.
+    const livesThere =
+      !!c.city && !!jobLocation && jobLocation.toLowerCase().includes(c.city.toLowerCase());
+
+    if (livesThere) {
+      return { matcher: RELOCATION_OPTION.livesThere, label: "already lives there" };
+    }
+    if (c.willingToRelocate === "yes") {
+      return { matcher: RELOCATION_OPTION.willRelocate, label: "willing to relocate" };
+    }
+    if (c.willingToRelocate === "no") {
+      return { matcher: RELOCATION_OPTION.wontRelocate, label: "not willing to relocate" };
+    }
+    return { unanswerable: "relocation preference not on file" };
+  }
+
+  if (/how did you hear|referr?al source|where did you (hear|find)/.test(q)) {
+    return c.hearAboutUs ? { value: c.hearAboutUs } : { skip: true };
+  }
+
   if (/notice period|when (can|could) you start|available to start|start date/.test(q)) {
     return c.noticePeriod ? { value: c.noticePeriod } : { unanswerable: "notice period not on file" };
   }
@@ -252,8 +306,6 @@ function answerFor(question: string, c: Candidate, jobCountry: string | null): A
     const willing = c.roleTypes.some((r) => /on-?site|hybrid/i.test(r));
     return { value: willing ? "Yes" : "No" };
   }
-  if (/how did you hear|referr?al source/.test(q)) return { skip: true };
-
   return { unanswerable: `unrecognised question: "${question.slice(0, 120)}"` };
 }
 
@@ -480,6 +532,7 @@ async function answerQuestions(
   form: Locator,
   c: Candidate,
   jobCountry: string | null,
+  jobLocation: string,
 ): Promise<string[]> {
   const blocked: string[] = [];
   const fields = await readFields(form);
@@ -513,16 +566,23 @@ async function answerQuestions(
       continue;
     }
 
-    const answer = answerFor(f.question, c, jobCountry);
+    const answer = answerFor(f.question, c, jobCountry, jobLocation);
     if ("skip" in answer) continue;
     if ("unanswerable" in answer) {
       if (f.required) blocked.push(answer.unanswerable);
       continue;
     }
 
-    const ok = await setValue(control, f, [answer.value]);
+    // A matcher describes the answer rather than naming it — needed wherever
+    // the options are whole sentences that differ per employer.
+    const ok =
+      "matcher" in answer
+        ? await setValue(control, f, [], answer.matcher)
+        : await setValue(control, f, [answer.value]);
+
     if (!ok && f.required) {
-      blocked.push(`could not set an answer for: "${f.question.slice(0, 80)}"`);
+      const wanted = "matcher" in answer ? answer.label : answer.value;
+      blocked.push(`could not set "${wanted}" for: "${f.question.slice(0, 70)}"`);
     }
   }
 
@@ -1067,8 +1127,9 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
       // Read once, before anything is filled: several questions ask about
       // work authorisation "in the country where this role is located" without
       // ever naming it.
-      const jobCountry = await readJobCountry(page);
-      log.info("job country", { ...base, jobCountry });
+      const jobLocation = await readJobLocation(page);
+      const jobCountry = countryInText(jobLocation);
+      log.info("job location", { ...base, jobLocation, jobCountry });
 
       await fillIfPresent(form, SELECTORS.firstName, candidate.firstName);
       await fillIfPresent(form, SELECTORS.lastName, candidate.lastName);
@@ -1089,7 +1150,7 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
       coverLetterTemp = cover.tempPath;
       log.info("cover letter", { ...base, how: cover.how });
 
-      const blocked = await answerQuestions(form, candidate, jobCountry);
+      const blocked = await answerQuestions(form, candidate, jobCountry, jobLocation);
 
       // A required location we could not set correctly is a park, not a
       // shrug: the field is cleared above, so submitting would either fail

@@ -29,6 +29,12 @@ export interface Candidate {
   /** "yes" | "no" | "" — "" means we were never told. */
   needsSponsorship: string;
   noticePeriod: string;
+  /**
+   * "yes" | "no" | "" — a preference, deliberately separate from whether they
+   * already live somewhere, which is a fact worked out per job from `city`.
+   */
+  willingToRelocate: string;
+  hearAboutUs: string;
   /** "Remote" | "Hybrid" | "On-site" — what the candidate said they want. */
   roleTypes: string[];
   salaryMin: string;
@@ -155,6 +161,8 @@ export async function loadCandidate(app: ClaimedApplication): Promise<Candidate 
       : [],
     needsSponsorship: str(answers.needsSponsorship),
     noticePeriod: str(answers.noticePeriod),
+    willingToRelocate: str(answers.willingToRelocate),
+    hearAboutUs: str(answers.hearAboutUs),
     roleTypes: Array.isArray(targeting.roleTypes)
       ? (targeting.roleTypes as unknown[]).map(str).filter(Boolean)
       : [],
