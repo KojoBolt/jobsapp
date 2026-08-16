@@ -31,28 +31,53 @@ import {
  * selector below is therefore a list of candidates tried in order.
  */
 
-/** Aliases that show up in question text but not in the vault's list. */
-const COUNTRY_ALIASES: Record<string, string> = {
+/**
+ * Country names, matched case-insensitively. Safe: no ordinary English
+ * sentence contains "united kingdom" by accident.
+ */
+const COUNTRY_NAMES: Record<string, string> = {
   "united states": "United States",
-  "the united states": "United States",
-  "the u.s.": "United States",
-  "u.s.": "United States",
-  "us": "United States",
-  "usa": "United States",
   "america": "United States",
   "united kingdom": "United Kingdom",
-  "the uk": "United Kingdom",
-  "uk": "United Kingdom",
   "great britain": "United Kingdom",
+  "england": "United Kingdom",
+  "scotland": "United Kingdom",
+  "wales": "United Kingdom",
   "canada": "Canada",
   "australia": "Australia",
   "new zealand": "New Zealand",
   "ireland": "Ireland",
   "switzerland": "Switzerland",
   "european union": "European Union",
-  "the eu": "European Union",
-  "eu": "European Union",
 };
+
+/**
+ * Abbreviations, matched CASE-SENSITIVELY and only as whole words.
+ *
+ * This is not fussiness. Lowercased, "us" is one of the commonest words in
+ * English — "the right to work for us", "tell us about yourself" — and a
+ * case-insensitive match would silently read those as the United States and
+ * answer a work-authorisation question from them. Requiring "US" in capitals
+ * makes the match mean what it looks like.
+ */
+const COUNTRY_ABBREVIATIONS: Record<string, string> = {
+  "US": "United States",
+  "USA": "United States",
+  "U.S.": "United States",
+  "U.S.A.": "United States",
+  "UK": "United Kingdom",
+  "U.K.": "United Kingdom",
+  "EU": "European Union",
+  "NZ": "New Zealand",
+};
+
+/**
+ * Wordings that mean "the country this job is in" without naming it.
+ * Robinhood's form is the example: "Do you have the unrestricted right to
+ * work in the country where this role is located?"
+ */
+const REFERS_TO_JOB_COUNTRY =
+  /\b(this|the) country\b|country (where|in which) (this|the) (role|position|job)|country of (the )?(role|position|employment)|where this role is located/i;
 
 const SELECTORS = {
   firstName: ["#first_name", "input[name='job_application[first_name]']", "input[autocomplete='given-name']"],
@@ -85,20 +110,57 @@ async function fillIfPresent(
   return true;
 }
 
-/** Pull a country we recognise out of a question's wording. */
-function countryInText(text: string): string | null {
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Pull a country we recognise out of some text, or null if none is named. */
+export function countryInText(text: string): string | null {
+  if (!text) return null;
+
+  // Full names first, longest first so "United States" is not shadowed by a
+  // shorter entry that happens to be a substring of it.
+  const names = Object.keys(COUNTRY_NAMES).sort((a, b) => b.length - a.length);
   const lower = text.toLowerCase();
-  for (const c of KNOWN_COUNTRIES) {
-    if (lower.includes(c.toLowerCase())) return c;
+  for (const name of names) {
+    if (new RegExp(`\\b${escape(name)}\\b`).test(lower)) return COUNTRY_NAMES[name]!;
   }
-  // Longest alias first, so "united states" is not shadowed by "us".
-  const aliases = Object.keys(COUNTRY_ALIASES).sort((a, b) => b.length - a.length);
-  for (const alias of aliases) {
-    if (new RegExp(`\\b${alias.replace(/[.]/g, "\\.")}\\b`).test(lower)) {
-      return COUNTRY_ALIASES[alias]!;
+  // The vault's own spellings, which are already full names.
+  for (const c of KNOWN_COUNTRIES) {
+    if (new RegExp(`\\b${escape(c.toLowerCase())}\\b`).test(lower)) return c;
+  }
+
+  // Abbreviations against the ORIGINAL text, so case still carries meaning.
+  const abbrs = Object.keys(COUNTRY_ABBREVIATIONS).sort((a, b) => b.length - a.length);
+  for (const abbr of abbrs) {
+    if (new RegExp(`(^|[^A-Za-z])${escape(abbr)}([^A-Za-z]|$)`).test(text)) {
+      return COUNTRY_ABBREVIATIONS[abbr]!;
     }
   }
   return null;
+}
+
+/**
+ * Where the job itself is, read off the posting.
+ *
+ * Needed because plenty of forms ask about work authorisation without naming
+ * a country — they mean the one in the header, a few hundred pixels above the
+ * question. Without this, every such question parks.
+ */
+async function readJobCountry(page: Page): Promise<string | null> {
+  const candidates = [
+    ".job__location",
+    "[class*='location']",
+    "[data-testid*='location']",
+    "div:below(h1)",
+  ];
+  for (const sel of candidates) {
+    const text = await page.locator(sel).first().textContent().catch(() => null);
+    const country = countryInText((text ?? "").trim());
+    if (country) return country;
+  }
+  // Last resort: the top of the page, where the header sits. Deliberately not
+  // the whole body — a US company's boilerplate would match on any posting.
+  const heading = await page.locator("h1, h2").first().textContent().catch(() => null);
+  return countryInText(heading ?? "");
 }
 
 type Answer = { value: string } | { skip: true } | { unanswerable: string };
@@ -109,20 +171,42 @@ type Answer = { value: string } | { skip: true } | { unanswerable: string };
  * Returning `unanswerable` is a normal outcome, not an error — it is how the
  * application ends up with a person instead of a guess.
  */
-function answerFor(question: string, c: Candidate): Answer {
+function answerFor(question: string, c: Candidate, jobCountry: string | null): Answer {
   const q = question.toLowerCase();
 
+  /**
+   * The country a question is about: named outright, or referred to as "this
+   * country" / "the country where this role is located", in which case it is
+   * the job's own. Returns null when neither applies — and null must always
+   * mean "park", never "assume".
+   */
+  const subjectCountry = (): string | null =>
+    countryInText(question) ?? (REFERS_TO_JOB_COUNTRY.test(question) ? jobCountry : null);
+
+  // ── Acknowledgements ────────────────────────────────────────────────
+  // Handled before the question rules because these are not questions: they
+  // are a condition of submitting, like a terms box. Confirming that a notice
+  // was presented is materially different from declaring a fact about the
+  // candidate — nothing here asserts anything about them, so it is inside the
+  // remit of "apply to this job on my behalf". Factual claims below still
+  // never get an inferred answer.
+  if (/acknowledg|privacy (policy|notice)|i (have )?(read|agree)|consent to/.test(q)) {
+    return { value: "Yes" };
+  }
+
   // ── Work authorisation ──────────────────────────────────────────────
-  if (/(legally )?(authoriz|authoris)ed to work|right to work|work authoriz/.test(q)) {
-    const country = countryInText(question);
-    if (!country) return { unanswerable: `work authorisation, country unclear: "${question}"` };
+  if (/(legally )?(authoriz|authoris)ed to work|right to work|work authoriz|eligible to work/.test(q)) {
     if (!c.authorizedCountries.length) return { unanswerable: "no work authorisation on file" };
+    const country = subjectCountry();
+    if (!country) {
+      return { unanswerable: `work authorisation, country unclear: "${question.slice(0, 90)}"` };
+    }
     return { value: c.authorizedCountries.includes(country) ? "Yes" : "No" };
   }
 
   // ── Sponsorship ─────────────────────────────────────────────────────
   if (/sponsor/.test(q)) {
-    const country = countryInText(question);
+    const country = subjectCountry();
     // Authorised there means no sponsorship needed, whatever the general
     // answer says — this is more specific and therefore more accurate.
     if (country && c.authorizedCountries.includes(country)) return { value: "No" };
@@ -151,6 +235,53 @@ function answerFor(question: string, c: Candidate): Answer {
   if (/how did you hear|referr?al source/.test(q)) return { skip: true };
 
   return { unanswerable: `unrecognised question: "${question.slice(0, 120)}"` };
+}
+
+/**
+ * Is this page a bot wall?
+ *
+ * The first version of this asked whether the page text contained the word
+ * "cloudflare". A job at Cloudflare therefore looked like a Cloudflare
+ * challenge, and the adapter refused to fill a perfectly ordinary form. The
+ * lesson generalises: a company's name is not evidence of anything, and a
+ * page that merely MENTIONS a security vendor is not one that is blocking you.
+ *
+ * So detection is now by what is on the page, not what it says:
+ *
+ *   * an interstitial — a challenge with no application form behind it
+ *   * a visible, interactive captcha widget we would have to solve
+ *
+ * A Turnstile widget sitting inside a working form is explicitly not a block:
+ * Greenhouse embeds one on many boards, usually invisible, and the form
+ * submits normally. Treating that as a wall would park most of the queue.
+ */
+async function detectChallenge(page: Page, formFound: boolean): Promise<string | null> {
+  const widget = page.locator(
+    "iframe[src*='challenges.cloudflare.com'], iframe[title*='challenge' i], " +
+      "iframe[src*='recaptcha'], .g-recaptcha, #challenge-form, #cf-challenge-running",
+  ).first();
+
+  const present = (await widget.count().catch(() => 0)) > 0;
+
+  if (!formFound) {
+    // No form at all. Now the page text is worth consulting, because there is
+    // nothing else here — but only phrases that appear on challenge pages and
+    // essentially nowhere else.
+    const text = ((await page.textContent("body").catch(() => "")) ?? "").toLowerCase();
+    const interstitial =
+      /checking your browser before|verify (that )?you are (a )?human|please complete the security check|enable javascript and cookies to continue|needs to review the security of your connection/
+        .test(text);
+    if (present || interstitial) return "Bot challenge interstitial";
+    return null;
+  }
+
+  // A form exists, so we are on the real page. Only an actually visible
+  // widget matters — one a person would have to click.
+  if (present && (await widget.isVisible().catch(() => false))) {
+    const box = await widget.boundingBox().catch(() => null);
+    if (box && box.width > 40 && box.height > 40) return "Interactive captcha on the form";
+  }
+  return null;
 }
 
 /** Gender, ethnicity, veteran and disability questions. */
@@ -217,7 +348,11 @@ async function isRequired(container: Locator, questionText: string): Promise<boo
  * Walk every question on the form and answer what we can.
  * Anything required and unanswerable is returned for the caller to park on.
  */
-async function answerQuestions(form: Locator, c: Candidate): Promise<string[]> {
+async function answerQuestions(
+  form: Locator,
+  c: Candidate,
+  jobCountry: string | null,
+): Promise<string[]> {
   const blocked: string[] = [];
 
   // Greenhouse wraps each question in its own div; both generations expose a
@@ -256,7 +391,7 @@ async function answerQuestions(form: Locator, c: Candidate): Promise<string[]> {
       continue;
     }
 
-    const answer = answerFor(question, c);
+    const answer = answerFor(question, c, jobCountry);
     if ("skip" in answer) continue;
     if ("unanswerable" in answer) {
       if (required) blocked.push(answer.unanswerable);
@@ -324,17 +459,29 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
       }
 
       const form = await locateForm(page);
-      if (!form) {
-        await captureEvidence(page, application.id, "no-form");
-        return { status: "needs_human", reason: "No application form found on the page" };
+
+      // Runs whether or not a form was found — it needs to know which, because
+      // a challenge widget means something different in each case.
+      const challenge = await detectChallenge(page, form !== null);
+      if (challenge) {
+        const shot = await captureEvidence(page, application.id, "blocked");
+        return { status: "needs_human", reason: challenge, ...(shot ? { evidence: shot } : {}) };
       }
 
-      // A login wall or bot check is a verdict, not a failure to retry.
-      const bodyText = ((await page.textContent("body").catch(() => "")) ?? "").toLowerCase();
-      if (/are you a robot|verify you are human|cloudflare|captcha/.test(bodyText)) {
-        await captureEvidence(page, application.id, "blocked");
-        return { status: "needs_human", reason: "Bot check on the application page" };
+      if (!form) {
+        const shot = await captureEvidence(page, application.id, "no-form");
+        return {
+          status: "needs_human",
+          reason: "No application form found on the page",
+          ...(shot ? { evidence: shot } : {}),
+        };
       }
+
+      // Read once, before anything is filled: several questions ask about
+      // work authorisation "in the country where this role is located" without
+      // ever naming it.
+      const jobCountry = await readJobCountry(page);
+      log.info("job country", { ...base, jobCountry });
 
       await fillIfPresent(form, SELECTORS.firstName, candidate.firstName);
       await fillIfPresent(form, SELECTORS.lastName, candidate.lastName);
@@ -349,7 +496,7 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
       }
       await resumeInput.setInputFiles(candidate.resumePath!);
 
-      const blocked = await answerQuestions(form, candidate);
+      const blocked = await answerQuestions(form, candidate, jobCountry);
       if (blocked.length) {
         const evidence = await captureEvidence(page, application.id, "blocked-questions");
         log.info("parking on unanswerable questions", { ...base, blocked });
