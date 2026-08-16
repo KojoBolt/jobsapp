@@ -29,6 +29,8 @@ export interface Candidate {
   /** "yes" | "no" | "" — "" means we were never told. */
   needsSponsorship: string;
   noticePeriod: string;
+  /** "Remote" | "Hybrid" | "On-site" — what the candidate said they want. */
+  roleTypes: string[];
   salaryMin: string;
   salaryMax: string;
   /** "decline" | "manual" */
@@ -153,6 +155,9 @@ export async function loadCandidate(app: ClaimedApplication): Promise<Candidate 
       : [],
     needsSponsorship: str(answers.needsSponsorship),
     noticePeriod: str(answers.noticePeriod),
+    roleTypes: Array.isArray(targeting.roleTypes)
+      ? (targeting.roleTypes as unknown[]).map(str).filter(Boolean)
+      : [],
     salaryMin: str(targeting.salaryMin),
     salaryMax: str(targeting.salaryMax),
     eeoHandling: str(answers.eeoHandling) || "decline",

@@ -87,6 +87,12 @@ const SELECTORS = {
   lastName: ["#last_name", "input[name='job_application[last_name]']", "input[autocomplete='family-name']"],
   email: ["#email", "input[name='job_application[email]']", "input[type='email']"],
   phone: ["#phone", "input[name='job_application[phone]']", "input[type='tel']"],
+  location: [
+    "input[id*='location' i]:not([type='hidden'])",
+    "input[name*='location' i]:not([type='hidden'])",
+    "input[aria-label*='location' i]",
+    "input[autocomplete='address-level2']",
+  ],
   resume: ["input[type='file'][name*='resume']", "#resume", "input[type='file']"],
   coverLetterText: ["#cover_letter_text", "textarea[name*='cover_letter']", "textarea[id*='cover_letter']"],
   submit: ["#submit_app", "button[type='submit']", "input[type='submit']"],
@@ -235,6 +241,17 @@ function answerFor(question: string, c: Candidate, jobCountry: string | null): A
   if (/city|where are you (based|located)|current location/.test(q)) {
     return c.city ? { value: [c.city, c.country].filter(Boolean).join(", ") } : { skip: true };
   }
+
+  // "Are you willing to work from the office(s) listed on the job
+  // description?" — answerable, because the candidate already told us which
+  // arrangements they want. Answered truthfully even when the truthful answer
+  // is the one less likely to get them an interview; the alternative is
+  // putting a preference in their mouth they did not express.
+  if (/willing to work (from|at|in) the office|work on-?site|commute to the office|in-?office/.test(q)) {
+    if (!c.roleTypes.length) return { unanswerable: "office/remote preference not on file" };
+    const willing = c.roleTypes.some((r) => /on-?site|hybrid/i.test(r));
+    return { value: willing ? "Yes" : "No" };
+  }
   if (/how did you hear|referr?al source/.test(q)) return { skip: true };
 
   return { unanswerable: `unrecognised question: "${question.slice(0, 120)}"` };
@@ -320,9 +337,18 @@ async function detectChallenge(page: Page, form: Locator | null): Promise<string
   return null;
 }
 
-/** Gender, ethnicity, veteran and disability questions. */
+/**
+ * Voluntary demographic questions.
+ *
+ * Wider than the classic US EEO four. Robinhood's form alone asks about
+ * military status (not the word "veteran") and LGBTQ+ identity, and neither
+ * matched the first version — so both fell through to the general question
+ * rules, came back unanswerable, and parked an application over questions
+ * that are optional by law and answerable with "decline".
+ */
 function isEeo(q: string): boolean {
-  return /gender|race|ethnic|hispanic|latino|veteran|disability|disabled|self-?identif|pronoun/i.test(q);
+  return /gender|race|ethnic|hispanic|latino|veteran|military|disabilit|disabled|self-?identif|pronoun|lgbtq|sexual orientation|transgender|demographic/i
+    .test(q);
 }
 
 /** What a control is, and what it is being asked. Resolved in one page call. */
@@ -568,6 +594,42 @@ async function emptyRequiredFields(form: Locator): Promise<number> {
 }
 
 /**
+ * Fill "Location (City)" from the vault.
+ *
+ * It had been falling between two stools: the question pass skipped it as a
+ * core field, and the core pass had no selector for it — so it was never
+ * filled by anything, despite being required on forms like Robinhood's.
+ *
+ * It is usually a typeahead rather than a plain text box. Typing alone leaves
+ * some of them without the internal value they need, so if a suggestion list
+ * appears the first entry is chosen. If none appears, the typed text stands.
+ */
+async function fillLocation(form: Locator, c: Candidate): Promise<boolean> {
+  if (!c.city) return false;
+
+  const input = await find(form, SELECTORS.location);
+  if (!input) return false;
+
+  const value = [c.city, c.country].filter(Boolean).join(", ");
+  // Typed rather than filled: a typeahead listens for key events, and fill()
+  // sets the value without emitting any, so no suggestions would ever appear.
+  await input.click().catch(() => {});
+  await input.fill("").catch(() => {});
+  await input.type(value, { delay: 40 }).catch(() => {});
+
+  const suggestion = form.page().locator(
+    "[role='option'], .select__option, [class*='suggestion'] li, ul[role='listbox'] li",
+  ).first();
+  const appeared = await suggestion
+    .waitFor({ state: "visible", timeout: 2500 })
+    .then(() => true)
+    .catch(() => false);
+  if (appeared) await suggestion.click().catch(() => {});
+
+  return true;
+}
+
+/**
  * Reveal a section's free-text box.
  *
  * Greenhouse offers Attach / Dropbox / Google Drive / Enter manually, and the
@@ -806,6 +868,7 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
       await fillIfPresent(form, SELECTORS.lastName, candidate.lastName);
       await fillIfPresent(form, SELECTORS.email, candidate.email);
       await fillIfPresent(form, SELECTORS.phone, candidate.phone);
+      await fillLocation(form, candidate);
 
       const resumeInput = await find(form, SELECTORS.resume);
       if (!resumeInput) {
