@@ -358,6 +358,8 @@ interface FieldMeta {
   name: string;
   /** Used to re-find the control by attribute rather than by position. */
   id: string;
+  /** "combobox" marks the search input of a React dropdown. */
+  role: string;
   question: string;
   required: boolean;
   filled: boolean;
@@ -433,6 +435,7 @@ async function readFields(form: Locator): Promise<FieldMeta[]> {
           type: (e.type ?? "").toLowerCase(),
           name: e.name ?? "",
           id: e.id ?? "",
+          role: e.getAttribute("role") ?? "",
           question,
           required:
             e.required === true ||
@@ -533,10 +536,145 @@ async function answerQuestions(
 }
 
 /**
+ * Options belonging to the dropdown that is currently open.
+ *
+ * Scoped to `.select__menu` rather than searching the page for [role=option],
+ * and that distinction is the whole bug: Greenhouse's phone field keeps a
+ * 244-entry country list in the DOM at all times. A page-wide option search
+ * finds Afghanistan long before it finds the menu that just opened, then
+ * reports that no option matched. Only one react-select menu is open at a
+ * time, so "the visible .select__menu" is unambiguous.
+ */
+const MENU_SELECTOR = ".select__menu, [class*='select__menu']";
+const OPTION_SELECTOR = ".select__option, [class*='select__option'], [role='option']";
+
+/**
+ * Read what a control is actually showing.
+ *
+ * The whole point of this function is that "the call did not throw" is not
+ * evidence a value was set. Typing into a React combobox throws nothing and
+ * selects nothing — which is exactly how three runs in a row reported success
+ * while every dropdown on the page stayed on "Select...".
+ */
+export async function readDisplayedValue(control: Locator): Promise<string> {
+  return control
+    .evaluate((el) => {
+      const e = el as unknown as {
+        value?: string;
+        closest(s: string): { querySelector(s: string): { textContent?: string | null } | null } | null;
+      };
+
+      // Inside a react-select, `value` is whatever was typed into the search
+      // box — non-empty even when nothing was chosen. Reading it would call
+      // "typed three characters, selected nothing" a success. The chosen
+      // option lives in .select__single-value and nowhere else.
+      const shell = e.closest(".select__control");
+      if (shell) {
+        const chosen =
+          shell.querySelector(".select__single-value") ??
+          shell.querySelector("[class*='singleValue']") ??
+          shell.querySelector("[class*='multi-value']");
+        return (chosen?.textContent ?? "").trim();
+      }
+
+      return (e.value ?? "").trim();
+    })
+    .catch(() => "");
+}
+
+/**
+ * Set a React dropdown by clicking, exactly as a person would.
+ *
+ * Open the control, wait for the option list to render, click the option whose
+ * visible text is the answer. There is no API to call here — the markup is
+ * divs, and selectOption() only understands a native <select>.
+ */
+export async function setComboboxValue(
+  control: Locator,
+  value: string,
+  prefer?: string,
+): Promise<boolean> {
+  const page = control.page();
+
+  // Click the control shell, not the input: react-select opens its menu from
+  // the control's own click handler.
+  const shell = control.locator("xpath=ancestor::*[contains(@class,'select__control')][1]");
+  const opener = (await shell.count().catch(() => 0)) ? shell.first() : control;
+  await opener.click().catch(() => {});
+
+  const menu = page.locator(MENU_SELECTOR).first();
+  const opened = await menu
+    .waitFor({ state: "visible", timeout: 4000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!opened) return false;
+
+  // Typing filters the list, which matters: some of these have hundreds of
+  // entries and scanning them one locator at a time is unusably slow.
+  await control.fill(value).catch(() => {});
+
+  // Poll rather than sleep once. Most of these filter an in-memory list and
+  // are ready immediately, but the location field fetches its suggestions
+  // from a server — a fixed short wait reads the "Loading..." placeholder as
+  // the option list and concludes nothing matched.
+  const options = menu.locator(OPTION_SELECTOR);
+  // 24 x 250ms = 6s. Measured against a live board, the location field's
+  // suggestions arrive around 2s — comfortably inside this, and deliberately
+  // so: at 3s it was landing on attempt 8 of 12, close enough to the ceiling
+  // that a slow response would look like "no match" rather than "not yet".
+  let texts: string[] = [];
+  for (let attempt = 0; attempt < 24; attempt++) {
+    texts = (await options.allTextContents().catch(() => [] as string[])).map((t) =>
+      t.replace(/\s+/g, " ").trim(),
+    );
+    const stillWorking =
+      texts.length === 0 || (texts.length === 1 && /^(loading|searching)/i.test(texts[0]!));
+    if (!stillWorking) break;
+    await page.waitForTimeout(250);
+  }
+
+  const wanted = value.toLowerCase();
+  const hint = prefer?.toLowerCase();
+  const lower = texts.map((t) => t.toLowerCase());
+
+  // Ranked, most specific first, so a plain "Yes" is never satisfied by
+  // "Yes, I will require sponsorship" while a bare "Yes" is on the list.
+  // The `prefer` rung disambiguates results that share a prefix: a search for
+  // "Accra" returns both "Accra, Greater Accra, Ghana" and "Accra, Western,
+  // Ghana", and for cities that exist in several countries the difference is
+  // not cosmetic.
+  const rules: Array<(t: string) => boolean> = [
+    (t) => t === wanted,
+    ...(hint ? [(t: string) => t.includes(wanted) && t.includes(hint)] : []),
+    (t) => t.startsWith(wanted),
+    (t) => t.includes(wanted),
+  ];
+
+  let index = -1;
+  for (const rule of rules) {
+    index = lower.findIndex(rule);
+    if (index !== -1) break;
+  }
+
+  if (index === -1) {
+    // Leave nothing open to cover the next field.
+    await page.keyboard.press("Escape").catch(() => {});
+    return false;
+  }
+
+  await options.nth(index).click().catch(() => {});
+  return true;
+}
+
+/**
  * Put the first workable candidate value into a control.
  *
  * Several candidates because forms word the same answer differently —
  * "Decline To Self Identify" here, "I don't wish to answer" there.
+ *
+ * Every branch verifies by reading the control back. A silent no-op is the
+ * failure mode that matters: it produces a form that looks filled to the
+ * adapter, passes every check, and arrives at the employer half empty.
  */
 async function setValue(control: Locator, f: FieldMeta, candidates: string[]): Promise<boolean> {
   for (const value of candidates) {
@@ -550,6 +688,17 @@ async function setValue(control: Locator, f: FieldMeta, candidates: string[]): P
       const ok = await control.selectOption({ label: match }).then(() => true).catch(() => false);
       if (ok) return true;
       continue;
+    }
+
+    // A combobox: an <input> that is really the search box of a React
+    // dropdown. Greenhouse renders every "Select..." on these forms this way.
+    if (f.tag === "input" && (f.type === "text" || f.type === "" || f.role === "combobox")) {
+      const before = await readDisplayedValue(control);
+      if (await setComboboxValue(control, value)) {
+        const after = await readDisplayedValue(control);
+        if (after && after !== before) return true;
+      }
+      // Not a dropdown after all — fall through to plain typing below.
     }
 
     if (f.type === "checkbox") {
@@ -576,8 +725,9 @@ async function setValue(control: Locator, f: FieldMeta, candidates: string[]): P
       continue;
     }
 
-    const ok = await control.fill(value).then(() => true).catch(() => false);
-    if (ok) return true;
+    // Plain text box. Verified by reading back, same as everything else.
+    await control.fill(value).catch(() => {});
+    if ((await readDisplayedValue(control)).trim()) return true;
   }
   return false;
 }
@@ -610,23 +760,15 @@ async function fillLocation(form: Locator, c: Candidate): Promise<boolean> {
   const input = await find(form, SELECTORS.location);
   if (!input) return false;
 
-  const value = [c.city, c.country].filter(Boolean).join(", ");
-  // Typed rather than filled: a typeahead listens for key events, and fill()
-  // sets the value without emitting any, so no suggestions would ever appear.
-  await input.click().catch(() => {});
-  await input.fill("").catch(() => {});
-  await input.type(value, { delay: 40 }).catch(() => {});
+  // Searched by city alone, with the country as a tie-breaker. Searching
+  // "Accra, Ghana" matches nothing: the options read "Accra, Greater Accra,
+  // Ghana", so the region in the middle defeats any literal comparison.
+  const ok = await setComboboxValue(input, c.city, c.country || undefined);
+  if (ok) return true;
 
-  const suggestion = form.page().locator(
-    "[role='option'], .select__option, [class*='suggestion'] li, ul[role='listbox'] li",
-  ).first();
-  const appeared = await suggestion
-    .waitFor({ state: "visible", timeout: 2500 })
-    .then(() => true)
-    .catch(() => false);
-  if (appeared) await suggestion.click().catch(() => {});
-
-  return true;
+  // Not a dropdown on this board — a plain text box will take the lot.
+  await input.fill([c.city, c.country].filter(Boolean).join(", ")).catch(() => {});
+  return (await readDisplayedValue(input)).length > 0;
 }
 
 /**
