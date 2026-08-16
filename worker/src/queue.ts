@@ -1,9 +1,34 @@
 import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 import { config } from "./config.ts";
 import { log } from "./log.ts";
 
+/**
+ * The worker never uses realtime — it reads, writes and calls RPCs — but
+ * createClient builds a RealtimeClient eagerly, and from supabase-js 2.9x
+ * that constructor demands a WebSocket implementation:
+ *
+ *   transport = options?.transport ?? WebSocketFactory.getWebSocketConstructor()
+ *
+ * `WebSocket` is only a Node global from v22, and the Playwright base image
+ * ships Node 20 — so the default path throws at import time and the process
+ * dies before main() runs. Passing `ws` takes the left branch and the
+ * constructor is never asked to find one.
+ *
+ * Upgrading the base image to a Node 22 build removes the need for this, and
+ * is worth doing eventually — supabase-js has begun deprecating Node 20. It
+ * is a separate change with its own risk, so it is not bundled in here.
+ */
+/** Derived rather than hand-written: `ws` and the browser WebSocket differ in
+ *  their event types, so a cast is unavoidable — but taking the target type
+ *  from createClient itself means an upstream change surfaces here. */
+type RealtimeTransport = NonNullable<
+  NonNullable<Parameters<typeof createClient>[2]>["realtime"]
+>["transport"];
+
 export const db = createClient(config.supabaseUrl, config.supabaseServiceKey, {
   auth: { persistSession: false, autoRefreshToken: false },
+  realtime: { transport: WebSocket as unknown as RealtimeTransport },
 });
 
 export interface ClaimedApplication {
