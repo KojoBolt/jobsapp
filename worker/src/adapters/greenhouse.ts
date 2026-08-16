@@ -506,13 +506,7 @@ async function answerQuestions(
         }
         continue;
       }
-      const declined = await setValue(control, f, [
-        "Decline To Self Identify",
-        "I don't wish to answer",
-        "Prefer not to say",
-        "I do not wish to disclose",
-        "Decline",
-      ]);
+      const declined = await setValue(control, f, [], DECLINE_OPTION);
       if (!declined && f.required) {
         blocked.push(`could not decline EEO question: "${f.question.slice(0, 80)}"`);
       }
@@ -545,6 +539,19 @@ async function answerQuestions(
  * reports that no option matched. Only one react-select menu is open at a
  * time, so "the visible .select__menu" is unambiguous.
  */
+/**
+ * "I would rather not say", however this particular form words it.
+ *
+ * A list of exact phrases does not survive contact with real boards. Cloudflare
+ * offers "I do not want to answer"; Discord offers "I don't wish to answer";
+ * others say "Decline To Self Identify" or "Prefer not to say". Enumerating
+ * them means silently missing the next variant — which is what happened here.
+ * Matching the intent covers wordings nobody has written yet.
+ */
+const DECLINE_OPTION = (option: string): boolean =>
+  /decline|prefer not|choose not|opt out|no response|(do not|don't|do ?n'?t)\s+(want|wish|care|choose)\s+to\s+(answer|say|disclose|identify|specify|respond)|not\s+to\s+(answer|disclose|identify)|rather not/i
+    .test(option);
+
 const MENU_SELECTOR = ".select__menu, [class*='select__menu']";
 const OPTION_SELECTOR = ".select__option, [class*='select__option'], [role='option']";
 
@@ -593,6 +600,7 @@ export async function setComboboxValue(
   control: Locator,
   value: string,
   prefer?: string,
+  matcher?: (optionText: string) => boolean,
 ): Promise<boolean> {
   const page = control.page();
 
@@ -611,7 +619,9 @@ export async function setComboboxValue(
 
   // Typing filters the list, which matters: some of these have hundreds of
   // entries and scanning them one locator at a time is unusably slow.
-  await control.fill(value).catch(() => {});
+  // With a matcher there is nothing sensible to type — the whole list has to
+  // be read and judged, because the wording is what we are searching for.
+  if (!matcher) await control.fill(value).catch(() => {});
 
   // Poll rather than sleep once. Most of these filter an in-memory list and
   // are ready immediately, but the location field fetches its suggestions
@@ -643,17 +653,31 @@ export async function setComboboxValue(
   // "Accra" returns both "Accra, Greater Accra, Ghana" and "Accra, Western,
   // Ghana", and for cities that exist in several countries the difference is
   // not cosmetic.
+  // Word-boundary, never raw substring. "No" appears inside "I do NOt want to
+  // answer", and a substring match would answer a disability question with
+  // the wrong option and call it a success. This is the mechanism that makes
+  // automated answers read like a bot rather than a person.
+  const whole = (haystack: string, needle: string) =>
+    new RegExp(`(^|[^a-z0-9])${escape(needle)}([^a-z0-9]|$)`, "i").test(haystack);
+
   const rules: Array<(t: string) => boolean> = [
     (t) => t === wanted,
-    ...(hint ? [(t: string) => t.includes(wanted) && t.includes(hint)] : []),
+    // Punctuation-insensitive exact: "Yes." and "Yes," are the same answer.
+    (t) => t.replace(/[^a-z0-9]+$/i, "") === wanted,
+    ...(hint ? [(t: string) => whole(t, wanted) && whole(t, hint)] : []),
     (t) => t.startsWith(wanted),
-    (t) => t.includes(wanted),
+    (t) => whole(t, wanted),
   ];
 
   let index = -1;
-  for (const rule of rules) {
-    index = lower.findIndex(rule);
-    if (index !== -1) break;
+  if (matcher) {
+    // Judged on the option's own wording, exactly as displayed.
+    index = texts.findIndex((t) => matcher(t));
+  } else {
+    for (const rule of rules) {
+      index = lower.findIndex(rule);
+      if (index !== -1) break;
+    }
   }
 
   if (index === -1) {
@@ -676,7 +700,30 @@ export async function setComboboxValue(
  * failure mode that matters: it produces a form that looks filled to the
  * adapter, passes every check, and arrives at the employer half empty.
  */
-async function setValue(control: Locator, f: FieldMeta, candidates: string[]): Promise<boolean> {
+async function setValue(
+  control: Locator,
+  f: FieldMeta,
+  candidates: string[],
+  matcher?: (optionText: string) => boolean,
+): Promise<boolean> {
+  // A matcher describes the answer we want rather than naming it, which is how
+  // "decline to say" is found across boards that all word it differently.
+  if (matcher) {
+    if (f.tag === "select") {
+      const options = await control.locator("option").allTextContents().catch(() => [] as string[]);
+      const match = options.find((o) => matcher(o.trim()));
+      if (!match) return false;
+      await control.selectOption({ label: match }).catch(() => {});
+      return (await readDisplayedValue(control)).length > 0;
+    }
+    const before = await readDisplayedValue(control);
+    if (await setComboboxValue(control, "", undefined, matcher)) {
+      const after = await readDisplayedValue(control);
+      return !!after && after !== before;
+    }
+    return false;
+  }
+
   for (const value of candidates) {
     if (f.tag === "select") {
       const options = await control.locator("option").allTextContents().catch(() => [] as string[]);
@@ -763,12 +810,29 @@ async function fillLocation(form: Locator, c: Candidate): Promise<boolean> {
   // Searched by city alone, with the country as a tie-breaker. Searching
   // "Accra, Ghana" matches nothing: the options read "Accra, Greater Accra,
   // Ghana", so the region in the middle defeats any literal comparison.
-  const ok = await setComboboxValue(input, c.city, c.country || undefined);
-  if (ok) return true;
+  await setComboboxValue(input, c.city, c.country || undefined);
+
+  let shown = await readDisplayedValue(input);
 
   // Not a dropdown on this board — a plain text box will take the lot.
-  await input.fill([c.city, c.country].filter(Boolean).join(", ")).catch(() => {});
-  return (await readDisplayedValue(input)).length > 0;
+  if (!shown) {
+    await input.fill([c.city, c.country].filter(Boolean).join(", ")).catch(() => {});
+    shown = await readDisplayedValue(input);
+  }
+
+  // VERIFY, because a wrong answer here is worse than a blank one. A form
+  // showing "Chicago, Illinois, United States" for a candidate in Accra is
+  // not a cosmetic error — it is a false statement about where they live,
+  // sent to an employer under their name. These fields prefill from IP
+  // geolocation and keep whatever they were given, so an unchecked write can
+  // silently leave the wrong city standing.
+  if (shown && !shown.toLowerCase().includes(c.city.toLowerCase())) {
+    log.warn("location did not take the candidate's city", { wanted: c.city, shown });
+    await input.fill("").catch(() => {});
+    return false;
+  }
+
+  return !!shown;
 }
 
 /**
@@ -1010,7 +1074,7 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
       await fillIfPresent(form, SELECTORS.lastName, candidate.lastName);
       await fillIfPresent(form, SELECTORS.email, candidate.email);
       await fillIfPresent(form, SELECTORS.phone, candidate.phone);
-      await fillLocation(form, candidate);
+      const locationOk = await fillLocation(form, candidate);
 
       const resumeInput = await find(form, SELECTORS.resume);
       if (!resumeInput) {
@@ -1026,6 +1090,18 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
       log.info("cover letter", { ...base, how: cover.how });
 
       const blocked = await answerQuestions(form, candidate, jobCountry);
+
+      // A required location we could not set correctly is a park, not a
+      // shrug: the field is cleared above, so submitting would either fail
+      // validation or send a blank where an address was asked for.
+      if (!locationOk && candidate.city) {
+        const required = await form
+          .locator("label")
+          .filter({ hasText: /location.*\*|location \(city\)/i })
+          .count()
+          .catch(() => 0);
+        if (required) blocked.push(`could not set location to "${candidate.city}"`);
+      }
       if (blocked.length) {
         const evidence = await captureEvidence(page, application.id, "blocked-questions");
         log.info("parking on unanswerable questions", { ...base, blocked });
