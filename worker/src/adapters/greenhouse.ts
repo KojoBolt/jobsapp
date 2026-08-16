@@ -1,4 +1,7 @@
-import type { Locator, Page } from "playwright";
+import { promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { BrowserContext, Locator, Page } from "playwright";
 import type { Adapter, ApplyContext, ApplyOutcome } from "./types.ts";
 import { withContext } from "../browser.ts";
 import { captureEvidence } from "../evidence.ts";
@@ -255,13 +258,48 @@ function answerFor(question: string, c: Candidate, jobCountry: string | null): A
  * Greenhouse embeds one on many boards, usually invisible, and the form
  * submits normally. Treating that as a wall would park most of the queue.
  */
-async function detectChallenge(page: Page, formFound: boolean): Promise<string | null> {
-  const widget = page.locator(
-    "iframe[src*='challenges.cloudflare.com'], iframe[title*='challenge' i], " +
-      "iframe[src*='recaptcha'], .g-recaptcha, #challenge-form, #cf-challenge-running",
-  ).first();
+const CHALLENGE_SELECTOR =
+  "iframe[src*='challenges.cloudflare.com'], iframe[title*='challenge' i], " +
+  "iframe[src*='recaptcha'], .g-recaptcha, #challenge-form, #cf-challenge-running";
 
-  const present = (await widget.count().catch(() => 0)) > 0;
+/**
+ * Is there a challenge widget a person would actually have to solve?
+ *
+ * The exclusions matter more than the selector. Google's invisible reCAPTCHA
+ * renders a floating badge — roughly 256x60, visible, and present on a large
+ * share of Greenhouse forms that submit perfectly well without anyone
+ * touching it. A naive "visible and bigger than 40x40" test calls that a
+ * blocker, and because the badge loads lazily, whether it is on screen when
+ * we look depends on network timing. That is worse than a consistent bug: the
+ * same job would park or fill at random.
+ */
+async function hasBlockingWidget(scope: Page | Locator): Promise<boolean> {
+  const widgets = scope.locator(CHALLENGE_SELECTOR);
+  const total = Math.min(await widgets.count().catch(() => 0), 10);
+
+  for (let i = 0; i < total; i++) {
+    const w = widgets.nth(i);
+
+    // The floating badge, by Google's own class name.
+    const isBadge = await w
+      .evaluate((el) => !!(el as unknown as { closest(s: string): unknown }).closest(".grecaptcha-badge"))
+      .catch(() => false);
+    if (isBadge) continue;
+
+    // An invisible reCAPTCHA says so in its own iframe URL.
+    const src = (await w.getAttribute("src").catch(() => null)) ?? "";
+    if (/size=invisible/.test(src)) continue;
+
+    if (!(await w.isVisible().catch(() => false))) continue;
+
+    const box = await w.boundingBox().catch(() => null);
+    if (box && box.width > 40 && box.height > 40) return true;
+  }
+  return false;
+}
+
+async function detectChallenge(page: Page, form: Locator | null): Promise<string | null> {
+  const formFound = form !== null;
 
   if (!formFound) {
     // No form at all. Now the page text is worth consulting, because there is
@@ -271,16 +309,14 @@ async function detectChallenge(page: Page, formFound: boolean): Promise<string |
     const interstitial =
       /checking your browser before|verify (that )?you are (a )?human|please complete the security check|enable javascript and cookies to continue|needs to review the security of your connection/
         .test(text);
-    if (present || interstitial) return "Bot challenge interstitial";
+    if (interstitial || (await hasBlockingWidget(page))) return "Bot challenge interstitial";
     return null;
   }
 
-  // A form exists, so we are on the real page. Only an actually visible
-  // widget matters — one a person would have to click.
-  if (present && (await widget.isVisible().catch(() => false))) {
-    const box = await widget.boundingBox().catch(() => null);
-    if (box && box.width > 40 && box.height > 40) return "Interactive captcha on the form";
-  }
+  // A form exists, so we are on the real page. Scoped to the form on purpose:
+  // a widget elsewhere on the page — a badge, a newsletter signup's captcha —
+  // is not standing between us and this application.
+  if (await hasBlockingWidget(form!)) return "Interactive captcha on the form";
   return null;
 }
 
@@ -289,122 +325,235 @@ function isEeo(q: string): boolean {
   return /gender|race|ethnic|hispanic|latino|veteran|disability|disabled|self-?identif|pronoun/i.test(q);
 }
 
-/**
- * Put `value` into whichever control this is — select, radio group, or text.
- * Returns false when nothing could be set, which the caller treats as an
- * unanswered question rather than a success.
- */
-async function setControl(container: Locator, value: string): Promise<boolean> {
-  // <select>
-  const select = container.locator("select").first();
-  if (await select.count().catch(() => 0)) {
-    const options = await select.locator("option").allTextContents().catch(() => [] as string[]);
-    const match = options.find((o) => o.trim().toLowerCase() === value.toLowerCase())
-      ?? options.find((o) => o.trim().toLowerCase().startsWith(value.toLowerCase()));
-    if (!match) return false;
-    await select.selectOption({ label: match }).catch(() => {});
-    return true;
-  }
-
-  // Radio group — click the label whose text is the answer.
-  const radios = container.locator("input[type='radio']");
-  if (await radios.count().catch(() => 0)) {
-    const labels = container.locator("label");
-    const count = await labels.count().catch(() => 0);
-    for (let i = 0; i < count; i++) {
-      const label = labels.nth(i);
-      const text = (await label.textContent().catch(() => "") ?? "").trim().toLowerCase();
-      if (text === value.toLowerCase() || text.startsWith(value.toLowerCase())) {
-        await label.click().catch(() => {});
-        return true;
-      }
-    }
-    return false;
-  }
-
-  const textarea = container.locator("textarea").first();
-  if (await textarea.count().catch(() => 0)) {
-    await textarea.fill(value).catch(() => {});
-    return true;
-  }
-
-  const input = container.locator("input[type='text'], input:not([type])").first();
-  if (await input.count().catch(() => 0)) {
-    await input.fill(value).catch(() => {});
-    return true;
-  }
-
-  return false;
-}
-
-/** Greenhouse marks required fields several different ways. */
-async function isRequired(container: Locator, questionText: string): Promise<boolean> {
-  if (/\*\s*$/.test(questionText.trim())) return true;
-  const flagged = container.locator("[required], [aria-required='true']");
-  return (await flagged.count().catch(() => 0)) > 0;
+/** What a control is, and what it is being asked. Resolved in one page call. */
+interface FieldMeta {
+  tag: string;
+  type: string;
+  name: string;
+  /** Used to re-find the control by attribute rather than by position. */
+  id: string;
+  question: string;
+  required: boolean;
+  filled: boolean;
 }
 
 /**
- * Walk every question on the form and answer what we can.
- * Anything required and unanswerable is returned for the caller to park on.
+ * Read every answerable control and the question attached to it.
+ *
+ * The first version walked *containers* — `div:has(> label)` and friends — and
+ * that is why the last run declined the disability question but left gender,
+ * ethnicity and veteran status untouched: those three sit in markup where the
+ * label is not a direct child, so the container never matched and the question
+ * was never seen. Nothing reported a problem, because as far as the adapter
+ * knew there was nothing there.
+ *
+ * Starting from the controls instead means every control is considered exactly
+ * once, and the label is resolved the way a browser does it: aria-label, then
+ * `label[for]`, then the nearest enclosing label text.
  */
+async function readFields(form: Locator): Promise<FieldMeta[]> {
+  return form
+    .locator(ANSWERABLE_CONTROLS)
+    .evaluateAll((els) =>
+      els.map((el) => {
+        const e = el as unknown as {
+          tagName: string;
+          type?: string;
+          name?: string;
+          id?: string;
+          value?: string;
+          checked?: boolean;
+          required?: boolean;
+          getAttribute(a: string): string | null;
+          ownerDocument: { querySelectorAll(s: string): ArrayLike<{ getAttribute(a: string): string | null; textContent: string | null }> };
+          parentElement: unknown;
+        };
+
+        let question = e.getAttribute("aria-label") ?? "";
+
+        // label[for="id"] — matched by walking labels rather than building a
+        // selector, so ids containing brackets (job_application[answers][0])
+        // do not need escaping.
+        if (!question && e.id) {
+          const labels = e.ownerDocument.querySelectorAll("label");
+          for (let i = 0; i < labels.length; i++) {
+            if (labels[i]!.getAttribute("for") === e.id) {
+              question = labels[i]!.textContent ?? "";
+              break;
+            }
+          }
+        }
+
+        if (!question) {
+          let node: unknown = e.parentElement;
+          for (let depth = 0; node && depth < 4; depth++) {
+            const n = node as {
+              querySelector(s: string): { textContent: string | null } | null;
+              parentElement: unknown;
+            };
+            const found = n.querySelector("label");
+            if (found?.textContent) {
+              question = found.textContent;
+              break;
+            }
+            node = n.parentElement;
+          }
+        }
+
+        question = question.replace(/\s+/g, " ").trim();
+
+        return {
+          tag: e.tagName.toLowerCase(),
+          type: (e.type ?? "").toLowerCase(),
+          name: e.name ?? "",
+          id: e.id ?? "",
+          question,
+          required:
+            e.required === true ||
+            e.getAttribute("aria-required") === "true" ||
+            /\*\s*$/.test(question),
+          filled: e.type === "checkbox" || e.type === "radio" ? !!e.checked : !!e.value,
+        };
+      }),
+    )
+    .catch(() => [] as FieldMeta[]);
+}
+
+const ANSWERABLE_CONTROLS =
+  "select, textarea, input:not([type='hidden']):not([type='file'])" +
+  ":not([type='submit']):not([type='button'])";
+
+/**
+ * Re-find a control from its metadata.
+ *
+ * By id or name, falling back to position only when it has neither. Position
+ * alone is not safe here: Greenhouse forms reveal conditional follow-ups when
+ * a question is answered — Robinhood's has two of them, "If you answered Yes
+ * to the above question…" — and every field after the newly inserted one
+ * shifts by a slot. Index-addressed, the loop would answer question N+1 with
+ * question N's answer and never notice.
+ *
+ * Attribute selectors, not `#id`: Greenhouse ids look like
+ * job_application[answers_attributes][0][text_value], and the brackets are
+ * CSS syntax.
+ */
+function locateField(form: Locator, f: FieldMeta, index: number): Locator {
+  const quote = (v: string) => v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  if (f.id) return form.locator(`[id="${quote(f.id)}"]`).first();
+  if (f.name) return form.locator(`[name="${quote(f.name)}"]`).first();
+  return form.locator(ANSWERABLE_CONTROLS).nth(index);
+}
+
+/** Core fields, handled by their own pass — skipped here by label. */
+const CORE_FIELD = /^(first|last|preferred first|full)?\s*name|^email|^phone|^resume|^cv\b|^cover letter|^location \(city\)|^country$/i;
+
 async function answerQuestions(
   form: Locator,
   c: Candidate,
   jobCountry: string | null,
 ): Promise<string[]> {
   const blocked: string[] = [];
+  const fields = await readFields(form);
+  const handledRadioGroups = new Set<string>();
 
-  // Greenhouse wraps each question in its own div; both generations expose a
-  // label, which is the only stable handle across them.
-  const fields = form.locator("div:has(> label), div.field, div[class*='question']");
-  const count = Math.min(await fields.count().catch(() => 0), 80);
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i]!;
+    if (!f.question || CORE_FIELD.test(f.question)) continue;
 
-  for (let i = 0; i < count; i++) {
-    const container = fields.nth(i);
-    const label = container.locator("label").first();
-    if (!(await label.count().catch(() => 0))) continue;
+    // A radio group is one question spread over several inputs.
+    if (f.type === "radio") {
+      if (handledRadioGroups.has(f.name)) continue;
+      handledRadioGroups.add(f.name);
+    }
 
-    const question = ((await label.textContent().catch(() => "")) ?? "").replace(/\s+/g, " ").trim();
-    if (!question) continue;
+    const control = locateField(form, f, i);
 
-    // Already handled by the core-field pass.
-    if (/^(first name|last name|email|phone|resume|cv|cover letter)/i.test(question)) continue;
-
-    const required = await isRequired(container, question);
-
-    if (isEeo(question)) {
+    if (isEeo(f.question)) {
       // Voluntary, and declining is a normal answer. Whoever asked to handle
       // these personally gets the application held back instead.
       if (c.eeoHandling === "manual") {
-        if (required) blocked.push(`EEO question held for manual answer: "${question.slice(0, 80)}"`);
+        if (f.required) {
+          blocked.push(`EEO question held for manual answer: "${f.question.slice(0, 80)}"`);
+        }
         continue;
       }
-      const declined =
-        (await setControl(container, "Decline To Self Identify")) ||
-        (await setControl(container, "I don't wish to answer")) ||
-        (await setControl(container, "Prefer not to say")) ||
-        (await setControl(container, "Decline"));
-      if (!declined && required) {
-        blocked.push(`could not decline EEO question: "${question.slice(0, 80)}"`);
+      const declined = await setValue(control, f, [
+        "Decline To Self Identify",
+        "I don't wish to answer",
+        "Prefer not to say",
+        "I do not wish to disclose",
+        "Decline",
+      ]);
+      if (!declined && f.required) {
+        blocked.push(`could not decline EEO question: "${f.question.slice(0, 80)}"`);
       }
       continue;
     }
 
-    const answer = answerFor(question, c, jobCountry);
+    const answer = answerFor(f.question, c, jobCountry);
     if ("skip" in answer) continue;
     if ("unanswerable" in answer) {
-      if (required) blocked.push(answer.unanswerable);
+      if (f.required) blocked.push(answer.unanswerable);
       continue;
     }
 
-    const ok = await setControl(container, answer.value);
-    if (!ok && required) {
-      blocked.push(`could not set an answer for: "${question.slice(0, 80)}"`);
+    const ok = await setValue(control, f, [answer.value]);
+    if (!ok && f.required) {
+      blocked.push(`could not set an answer for: "${f.question.slice(0, 80)}"`);
     }
   }
 
   return blocked;
+}
+
+/**
+ * Put the first workable candidate value into a control.
+ *
+ * Several candidates because forms word the same answer differently —
+ * "Decline To Self Identify" here, "I don't wish to answer" there.
+ */
+async function setValue(control: Locator, f: FieldMeta, candidates: string[]): Promise<boolean> {
+  for (const value of candidates) {
+    if (f.tag === "select") {
+      const options = await control.locator("option").allTextContents().catch(() => [] as string[]);
+      const match =
+        options.find((o) => o.trim().toLowerCase() === value.toLowerCase()) ??
+        options.find((o) => o.trim().toLowerCase().startsWith(value.toLowerCase())) ??
+        options.find((o) => o.trim().toLowerCase().includes(value.toLowerCase()));
+      if (!match) continue;
+      const ok = await control.selectOption({ label: match }).then(() => true).catch(() => false);
+      if (ok) return true;
+      continue;
+    }
+
+    if (f.type === "checkbox") {
+      // Only ever ticked for an affirmative — never cleared, since an unticked
+      // box is already the safe state.
+      if (/^(yes|true|i agree|i acknowledge)$/i.test(value)) {
+        const ok = await control.check().then(() => true).catch(() => false);
+        if (ok) return true;
+      }
+      continue;
+    }
+
+    if (f.type === "radio") {
+      const group = control.page().locator(`input[type='radio'][name="${f.name}"]`);
+      const total = await group.count().catch(() => 0);
+      for (let i = 0; i < total; i++) {
+        const radio = group.nth(i);
+        const radioValue = (await radio.getAttribute("value").catch(() => "")) ?? "";
+        if (radioValue.trim().toLowerCase() === value.toLowerCase()) {
+          const ok = await radio.check().then(() => true).catch(() => false);
+          if (ok) return true;
+        }
+      }
+      continue;
+    }
+
+    const ok = await control.fill(value).then(() => true).catch(() => false);
+    if (ok) return true;
+  }
+  return false;
 }
 
 /** Required controls still empty after everything above. */
@@ -416,6 +565,173 @@ async function emptyRequiredFields(form: Locator): Promise<number> {
     // lib is Node-only and has no DOM globals.
     .evaluateAll((els) => els.filter((e) => !(e as { value?: string }).value).length)
     .catch(() => 0);
+}
+
+/**
+ * Reveal a section's free-text box.
+ *
+ * Greenhouse offers Attach / Dropbox / Google Drive / Enter manually, and the
+ * textarea does not exist until "Enter manually" is clicked. Looking for a
+ * textarea first and giving up when it is absent — which is what the first
+ * version did — silently skipped every cover letter on a form of this shape.
+ *
+ * Both the résumé and cover letter sections carry an identical button, so the
+ * right one is found by walking up from each button until a container mentions
+ * the section we want.
+ */
+async function clickManualEntry(form: Locator, sectionText: string): Promise<boolean> {
+  const buttons = form.getByRole("button", { name: /enter manually|paste|type/i });
+  const total = Math.min(await buttons.count().catch(() => 0), 6);
+
+  for (let i = 0; i < total; i++) {
+    const btn = buttons.nth(i);
+    const belongsHere = await btn
+      .evaluate((el, needle) => {
+        let node: unknown = (el as unknown as { parentElement: unknown }).parentElement;
+        for (let depth = 0; node && depth < 6; depth++) {
+          const n = node as { textContent?: string | null; parentElement?: unknown };
+          if ((n.textContent ?? "").toLowerCase().includes(needle)) return true;
+          node = n.parentElement;
+        }
+        return false;
+      }, sectionText.toLowerCase())
+      .catch(() => false);
+
+    if (belongsHere) {
+      await btn.click().catch(() => {});
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Render the cover letter as a PDF using the browser already running.
+ *
+ * Chosen over a PDF library because it adds no dependency, no bundled fonts
+ * and no layout code to maintain — and over a plain .txt because a recruiter
+ * opening a raw text file next to a designed CV notices.
+ *
+ * page.pdf() is headless-Chromium only, so this returns null under a headed
+ * run and the caller falls back to .txt. A slightly plainer attachment while
+ * debugging is a fair price for not maintaining a typesetter.
+ */
+async function renderCoverLetter(
+  browserCtx: BrowserContext,
+  text: string,
+  candidateName: string,
+): Promise<string | null> {
+  const dir = await fs.mkdtemp(join(tmpdir(), "cl-"));
+  const safeName = candidateName.replace(/[^\w\s-]/g, "").trim() || "Candidate";
+  const pdfPath = join(dir, `Cover Letter - ${safeName}.pdf`);
+
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const page = await browserCtx.newPage();
+  try {
+    await page.setContent(
+      `<html><head><meta charset="utf-8"><style>
+         @page { margin: 25mm 20mm; }
+         body { font: 11pt/1.6 Georgia, "Times New Roman", serif; color: #111; }
+         p { margin: 0 0 1em; white-space: pre-wrap; }
+       </style></head><body>${escaped
+         .split(/\n{2,}/)
+         .map((para) => `<p>${para}</p>`)
+         .join("")}</body></html>`,
+      { waitUntil: "load" },
+    );
+    await page.pdf({ path: pdfPath, format: "A4", printBackground: false });
+    return pdfPath;
+  } catch (err) {
+    log.warn("cover letter PDF failed, will fall back to text", { error: String(err) });
+    return null;
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
+/** Same folder, plain text — the fallback when a PDF cannot be produced. */
+async function writeCoverLetterTxt(text: string, candidateName: string): Promise<string> {
+  const dir = await fs.mkdtemp(join(tmpdir(), "cl-"));
+  const safeName = candidateName.replace(/[^\w\s-]/g, "").trim() || "Candidate";
+  const path = join(dir, `Cover Letter - ${safeName}.txt`);
+  await fs.writeFile(path, text, "utf8");
+  return path;
+}
+
+/**
+ * Attach the cover letter however this particular form allows.
+ *
+ * Manual text is preferred where it exists: it lands in the ATS as a
+ * searchable field rather than a binary the recruiter has to download. A file
+ * is the fallback, and no cover letter at all is better than no application —
+ * it is rarely required, so this never blocks.
+ */
+async function attachCoverLetter(
+  form: Locator,
+  browserCtx: BrowserContext,
+  c: Candidate,
+): Promise<{ how: string; tempPath: string | null }> {
+  if (!c.coverLetter) return { how: "none-drafted", tempPath: null };
+
+  // 1. A textarea already on the page.
+  if (await fillIfPresent(form, SELECTORS.coverLetterText, c.coverLetter)) {
+    return { how: "text", tempPath: null };
+  }
+
+  // 2. One hidden behind "Enter manually".
+  if (await clickManualEntry(form, "cover letter")) {
+    await form.page().waitForTimeout(400); // the textarea animates in
+    if (await fillIfPresent(form, SELECTORS.coverLetterText, c.coverLetter)) {
+      return { how: "text-after-reveal", tempPath: null };
+    }
+  }
+
+  // 3. Upload instead.
+  const fileInput = await findCoverLetterFileInput(form);
+  if (!fileInput) return { how: "no-field", tempPath: null };
+
+  const name = c.fullName || [c.firstName, c.lastName].filter(Boolean).join(" ");
+  const pdf = await renderCoverLetter(browserCtx, c.coverLetter, name);
+  const path = pdf ?? (await writeCoverLetterTxt(c.coverLetter, name));
+  await fileInput.setInputFiles(path).catch(() => {});
+  return { how: pdf ? "pdf" : "txt", tempPath: path };
+}
+
+/**
+ * The cover letter's own file input — never the résumé's.
+ *
+ * Both are `input[type=file]`, so picking "the first one" would overwrite the
+ * CV with the cover letter, which is the kind of mistake nobody notices until
+ * a candidate asks why they were rejected.
+ */
+async function findCoverLetterFileInput(form: Locator): Promise<Locator | null> {
+  const named = form.locator(
+    "input[type='file'][name*='cover' i], input[type='file'][id*='cover' i]",
+  ).first();
+  if (await named.count().catch(() => 0)) return named;
+
+  const inputs = form.locator("input[type='file']");
+  const total = Math.min(await inputs.count().catch(() => 0), 6);
+  for (let i = 0; i < total; i++) {
+    const input = inputs.nth(i);
+    const nearCoverLetter = await input
+      .evaluate((el) => {
+        let node: unknown = (el as unknown as { parentElement: unknown }).parentElement;
+        for (let depth = 0; node && depth < 6; depth++) {
+          const n = node as { textContent?: string | null; parentElement?: unknown };
+          if ((n.textContent ?? "").toLowerCase().includes("cover letter")) return true;
+          node = n.parentElement;
+        }
+        return false;
+      })
+      .catch(() => false);
+    if (nearCoverLetter) return input;
+  }
+  return null;
 }
 
 /**
@@ -447,6 +763,9 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
     return { status: "needs_human", reason: `Vault incomplete: ${gaps.join(", ")}` };
   }
 
+  /** Set only when a cover letter file was generated, so `finally` can bin it. */
+  let coverLetterTemp: string | null = null;
+
   try {
     return await withContext(async (browserCtx) => {
       const page = await browserCtx.newPage();
@@ -462,7 +781,7 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
 
       // Runs whether or not a form was found — it needs to know which, because
       // a challenge widget means something different in each case.
-      const challenge = await detectChallenge(page, form !== null);
+      const challenge = await detectChallenge(page, form);
       if (challenge) {
         const shot = await captureEvidence(page, application.id, "blocked");
         return { status: "needs_human", reason: challenge, ...(shot ? { evidence: shot } : {}) };
@@ -487,7 +806,6 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
       await fillIfPresent(form, SELECTORS.lastName, candidate.lastName);
       await fillIfPresent(form, SELECTORS.email, candidate.email);
       await fillIfPresent(form, SELECTORS.phone, candidate.phone);
-      await fillIfPresent(form, SELECTORS.coverLetterText, candidate.coverLetter);
 
       const resumeInput = await find(form, SELECTORS.resume);
       if (!resumeInput) {
@@ -495,6 +813,12 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
         return { status: "needs_human", reason: "No resume upload field found" };
       }
       await resumeInput.setInputFiles(candidate.resumePath!);
+
+      // After the résumé, so a form with two file inputs already has the CV in
+      // the first one and cannot confuse the two.
+      const cover = await attachCoverLetter(form, browserCtx, candidate);
+      coverLetterTemp = cover.tempPath;
+      log.info("cover letter", { ...base, how: cover.how });
 
       const blocked = await answerQuestions(form, candidate, jobCountry);
       if (blocked.length) {
@@ -559,6 +883,7 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
     return { status: "failed", reason: `Greenhouse: ${reason}` };
   } finally {
     await discardResume(candidate.resumePath);
+    await discardResume(coverLetterTemp);
   }
 }
 
