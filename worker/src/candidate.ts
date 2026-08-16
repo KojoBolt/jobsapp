@@ -126,7 +126,7 @@ export async function loadCandidate(app: ClaimedApplication): Promise<Candidate 
   const answers = (vault.applicationAnswers ?? {}) as Record<string, unknown>;
 
   // The cover letter is drafted per application by process-batch, so it is
-  // read from the row rather than the profile.
+  // read from the row rather than the profiles.
   const { data: appRow } = await db
     .from("applications")
     .select("cover_letter")
