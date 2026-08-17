@@ -240,6 +240,30 @@ async function readFields(form: Locator): Promise<FieldMeta[]> {
 
         question = question.replace(/\s+/g, " ").trim();
 
+        // For a radio or checkbox, everything resolved so far is the OPTION's
+        // own words — "New Zealand", "U.S. citizen", "[ ] 51% - 75%". The real
+        // question sits above the group, and reporting the option instead
+        // filled the blocked list with dozens of country names that were never
+        // questions at all. Walk up for a heading that is plainly not an
+        // option: longer than this one, and ending like a question or a label.
+        const t = (e.type ?? "").toLowerCase();
+        if (t === "radio" || t === "checkbox") {
+          let node: unknown = e.parentElement;
+          for (let depth = 0; node && depth < 7; depth++) {
+            const n = node as {
+              querySelector(s: string): { textContent?: string | null } | null;
+              parentElement: unknown;
+            };
+            const head = n.querySelector("legend, .application-label, [class*='label'], label");
+            const text = (head?.textContent ?? "").replace(/\s+/g, " ").trim();
+            if (text && text.length > question.length + 3 && text.length < 300) {
+              question = text;
+              break;
+            }
+            node = n.parentElement;
+          }
+        }
+
         return {
           tag: e.tagName.toLowerCase(),
           type: (e.type ?? "").toLowerCase(),
@@ -328,7 +352,10 @@ async function answerQuestions(
     handledQuestions.add(label);
 
     // A radio group is one question spread over several inputs.
-    if (f.type === "radio") {
+    // Checkboxes too, not just radios: a multi-select country list is ONE
+    // question spread over thirty inputs, and treating each as its own
+    // question is what produced "unrecognised question: New Zealand".
+    if ((f.type === "radio" || f.type === "checkbox") && f.name) {
       if (handledRadioGroups.has(f.name)) continue;
       handledRadioGroups.add(f.name);
     }

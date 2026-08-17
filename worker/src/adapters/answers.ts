@@ -61,7 +61,7 @@ const COUNTRY_ABBREVIATIONS: Record<string, string> = {
  * work in the country where this role is located?"
  */
 const REFERS_TO_JOB_COUNTRY =
-  /\b(this|the) country\b|country (where|in which) (this|the) (role|position|job)|country of (the )?(role|position|employment)|where this role is located/i;
+  /\b(this|the) country\b|country (where|in which) (this|the) (role|position|job)|country of (the )?(role|position|employment)|where this role is located|country in which you are applying|country you are applying|stated location of this role|location of this (role|position)/i;
 
 export const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -114,6 +114,12 @@ export const NEGATED = (o: string) =>
  */
 const BARE_YES = (o: string) => /^\s*yes\b/i.test(o);
 const BARE_NO = (o: string) => /^\s*no\b/i.test(o);
+
+/** However a form words "yes, I have seen this notice". */
+export const ACKNOWLEDGE_OPTION = (o: string): boolean =>
+  !NEGATED(o) &&
+  /^\s*(yes|i acknowledge|acknowledge|i agree|agree|i confirm|confirm|i consent|consent|i have read|understood|i understand|accept)\b/i
+    .test(o.trim());
 
 export const RELOCATION_OPTION = {
   livesThere: (o: string) =>
@@ -181,8 +187,11 @@ export function answerFor(
     return { value: "No" };
   }
 
-  if (/acknowledg|privacy (policy|notice)|i (have )?(read|agree)|consent to/.test(q)) {
-    return { value: "Yes" };
+  if (/acknowledg|privacy (policy|notice)|i (have )?(read|agree)|consent to|confirm receipt/.test(q)) {
+    // A matcher, not the literal "Yes": Robinhood's dropdown offers
+    // "I acknowledge", Brex's offers "I consent", and answering those with
+    // the word "Yes" matched nothing at all.
+    return { matcher: ACKNOWLEDGE_OPTION, label: "acknowledged" };
   }
 
   // ── Work authorisation ──────────────────────────────────────────────
@@ -204,6 +213,20 @@ export function answerFor(
     if (c.needsSponsorship === "yes") return { value: "Yes" };
     if (c.needsSponsorship === "no") return { value: "No" };
     return { unanswerable: "sponsorship requirement not on file" };
+  }
+
+  // ── "Do you currently live there?" — a FACT, not a preference ───────
+  // Separated from relocation and checked first. "Do you currently live in
+  // the job's location?" was being answered from willingness to relocate,
+  // which with a plain Yes/No dropdown produces "Yes" for a candidate in
+  // Chicago applying to Toronto. That is not a worse answer, it is an untrue
+  // one — so it is only answered when the posting actually names their city,
+  // and parks otherwise.
+  if (/do you (currently )?(live|reside)\b/.test(q) && !/relocat|willing|move/.test(q)) {
+    if (!c.city || !jobLocation) {
+      return { unanswerable: `cannot verify where they live for: "${question.slice(0, 70)}"` };
+    }
+    return { value: jobLocation.toLowerCase().includes(c.city.toLowerCase()) ? "Yes" : "No" };
   }
 
   // ── Relocation ──────────────────────────────────────────────────────
@@ -250,11 +273,14 @@ export function answerFor(
   // Split from the city rule below because Stripe asks "Please select the
   // country where you currently reside" as a country dropdown — answering it
   // with "Chicago, United States" would match no option at all.
-  if (/country (where|in which) you (currently )?(reside|live)|country of residence|which country do you (live|reside)/.test(q)) {
+  if (/country (where|in which) you (currently )?(reside|live)|country of residence|which country do you (live|reside)|what country are you based in|country you (are )?based in/.test(q)) {
     return c.country ? { value: c.country } : { unanswerable: "country of residence not on file" };
   }
 
-  if (/city|where are you (based|located)|current location/.test(q)) {
+  // \bcity\b, never a bare substring: "capacity" contains "city", and
+  // "Have you previously been employed by Coinbase in any capacity?" was
+  // matching this rule and being answered with a city name.
+  if (/\bcity\b|where are you (based|located)|current location/.test(q)) {
     return c.city ? { value: [c.city, c.country].filter(Boolean).join(", ") } : { skip: true };
   }
 
