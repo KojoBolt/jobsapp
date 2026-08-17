@@ -7,6 +7,15 @@ import { withContext } from "../browser.ts";
 import { captureEvidence } from "../evidence.ts";
 import { log } from "../log.ts";
 import {
+  answerFor,
+  CHALLENGE_SELECTOR,
+  countryInText,
+  DECLINE_OPTION,
+  escape,
+  isEeo,
+  type Answer,
+} from "./answers.ts";
+import {
   discardResume,
   loadCandidate,
   missingEssentials,
@@ -33,54 +42,6 @@ import {
  * plus an embedded variant that puts the whole form in an iframe. Every
  * selector below is therefore a list of candidates tried in order.
  */
-
-/**
- * Country names, matched case-insensitively. Safe: no ordinary English
- * sentence contains "united kingdom" by accident.
- */
-const COUNTRY_NAMES: Record<string, string> = {
-  "united states": "United States",
-  "america": "United States",
-  "united kingdom": "United Kingdom",
-  "great britain": "United Kingdom",
-  "england": "United Kingdom",
-  "scotland": "United Kingdom",
-  "wales": "United Kingdom",
-  "canada": "Canada",
-  "australia": "Australia",
-  "new zealand": "New Zealand",
-  "ireland": "Ireland",
-  "switzerland": "Switzerland",
-  "european union": "European Union",
-};
-
-/**
- * Abbreviations, matched CASE-SENSITIVELY and only as whole words.
- *
- * This is not fussiness. Lowercased, "us" is one of the commonest words in
- * English — "the right to work for us", "tell us about yourself" — and a
- * case-insensitive match would silently read those as the United States and
- * answer a work-authorisation question from them. Requiring "US" in capitals
- * makes the match mean what it looks like.
- */
-const COUNTRY_ABBREVIATIONS: Record<string, string> = {
-  "US": "United States",
-  "USA": "United States",
-  "U.S.": "United States",
-  "U.S.A.": "United States",
-  "UK": "United Kingdom",
-  "U.K.": "United Kingdom",
-  "EU": "European Union",
-  "NZ": "New Zealand",
-};
-
-/**
- * Wordings that mean "the country this job is in" without naming it.
- * Robinhood's form is the example: "Do you have the unrestricted right to
- * work in the country where this role is located?"
- */
-const REFERS_TO_JOB_COUNTRY =
-  /\b(this|the) country\b|country (where|in which) (this|the) (role|position|job)|country of (the )?(role|position|employment)|where this role is located/i;
 
 const SELECTORS = {
   firstName: ["#first_name", "input[name='job_application[first_name]']", "input[autocomplete='given-name']"],
@@ -119,34 +80,6 @@ async function fillIfPresent(
   return true;
 }
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/** Pull a country we recognise out of some text, or null if none is named. */
-export function countryInText(text: string): string | null {
-  if (!text) return null;
-
-  // Full names first, longest first so "United States" is not shadowed by a
-  // shorter entry that happens to be a substring of it.
-  const names = Object.keys(COUNTRY_NAMES).sort((a, b) => b.length - a.length);
-  const lower = text.toLowerCase();
-  for (const name of names) {
-    if (new RegExp(`\\b${escape(name)}\\b`).test(lower)) return COUNTRY_NAMES[name]!;
-  }
-  // The vault's own spellings, which are already full names.
-  for (const c of KNOWN_COUNTRIES) {
-    if (new RegExp(`\\b${escape(c.toLowerCase())}\\b`).test(lower)) return c;
-  }
-
-  // Abbreviations against the ORIGINAL text, so case still carries meaning.
-  const abbrs = Object.keys(COUNTRY_ABBREVIATIONS).sort((a, b) => b.length - a.length);
-  for (const abbr of abbrs) {
-    if (new RegExp(`(^|[^A-Za-z])${escape(abbr)}([^A-Za-z]|$)`).test(text)) {
-      return COUNTRY_ABBREVIATIONS[abbr]!;
-    }
-  }
-  return null;
-}
-
 /**
  * Where the job itself is, read off the posting.
  *
@@ -170,166 +103,6 @@ async function readJobLocation(page: Page): Promise<string> {
   const heading = ((await page.locator("h1, h2").first().textContent().catch(() => null)) ?? "").trim();
   return countryInText(heading) ? heading.replace(/\s+/g, " ").slice(0, 200) : "";
 }
-
-/**
- * Relocation options, matched by intent.
- *
- * Order and negation both matter here. Cloudflare's third option reads "I do
- * not live and not willing to relocate to this job's location" — it contains
- * the exact phrase "willing to relocate", so a positive-only match would
- * select the refusal when the candidate said yes. Every test therefore checks
- * for negation first.
- */
-const NEGATED = (o: string) =>
-  /\b(do not|don't|doesn'?t|not|unable|unwilling|cannot|can'?t|no longer)\b/i.test(o);
-
-const RELOCATION_OPTION = {
-  livesThere: (o: string) =>
-    !NEGATED(o) && /(currently|already)\s+(live|reside|located|based)|^i live\b/i.test(o),
-  willRelocate: (o: string) =>
-    !NEGATED(o) && /willing to relocate|open to relocat|would relocate|able to relocate|happy to relocate/i.test(o),
-  wontRelocate: (o: string) => NEGATED(o) && /relocat|live/i.test(o),
-};
-
-type Answer =
-  | { value: string }
-  | { matcher: (optionText: string) => boolean; label: string }
-  | { skip: true }
-  | { unanswerable: string };
-
-/**
- * Decide what a question should be answered with, using only stored data.
- *
- * Returning `unanswerable` is a normal outcome, not an error — it is how the
- * application ends up with a person instead of a guess.
- */
-function answerFor(
-  question: string,
-  c: Candidate,
-  jobCountry: string | null,
-  jobLocation = "",
-): Answer {
-  const q = question.toLowerCase();
-
-  /**
-   * The country a question is about: named outright, or referred to as "this
-   * country" / "the country where this role is located", in which case it is
-   * the job's own. Returns null when neither applies — and null must always
-   * mean "park", never "assume".
-   */
-  const subjectCountry = (): string | null =>
-    countryInText(question) ?? (REFERS_TO_JOB_COUNTRY.test(question) ? jobCountry : null);
-
-  // ── Acknowledgements ────────────────────────────────────────────────
-  // Handled before the question rules because these are not questions: they
-  // are a condition of submitting, like a terms box. Confirming that a notice
-  // was presented is materially different from declaring a fact about the
-  // candidate — nothing here asserts anything about them, so it is inside the
-  // remit of "apply to this job on my behalf". Factual claims below still
-  // never get an inferred answer.
-  if (/acknowledg|privacy (policy|notice)|i (have )?(read|agree)|consent to/.test(q)) {
-    return { value: "Yes" };
-  }
-
-  // ── Work authorisation ──────────────────────────────────────────────
-  if (/(legally )?(authoriz|authoris)ed to work|right to work|work authoriz|eligible to work/.test(q)) {
-    if (!c.authorizedCountries.length) return { unanswerable: "no work authorisation on file" };
-    const country = subjectCountry();
-    if (!country) {
-      return { unanswerable: `work authorisation, country unclear: "${question.slice(0, 90)}"` };
-    }
-    return { value: c.authorizedCountries.includes(country) ? "Yes" : "No" };
-  }
-
-  // ── Sponsorship ─────────────────────────────────────────────────────
-  if (/sponsor/.test(q)) {
-    const country = subjectCountry();
-    // Authorised there means no sponsorship needed, whatever the general
-    // answer says — this is more specific and therefore more accurate.
-    if (country && c.authorizedCountries.includes(country)) return { value: "No" };
-    if (c.needsSponsorship === "yes") return { value: "Yes" };
-    if (c.needsSponsorship === "no") return { value: "No" };
-    return { unanswerable: "sponsorship requirement not on file" };
-  }
-
-  // ── Relocation ──────────────────────────────────────────────────────
-  if (/relocat|currently live|willing to move|open to moving/.test(q)) {
-    // "I currently live in this job's location" is a claim about where they
-    // are, not a preference — so it is only made when the posting actually
-    // names their city. A country match is not enough: this role lists
-    // Austin, New York and San Francisco, and a candidate in Chicago lives in
-    // none of them while sharing a country with all three.
-    const livesThere =
-      !!c.city && !!jobLocation && jobLocation.toLowerCase().includes(c.city.toLowerCase());
-
-    if (livesThere) {
-      return { matcher: RELOCATION_OPTION.livesThere, label: "already lives there" };
-    }
-    if (c.willingToRelocate === "yes") {
-      return { matcher: RELOCATION_OPTION.willRelocate, label: "willing to relocate" };
-    }
-    if (c.willingToRelocate === "no") {
-      return { matcher: RELOCATION_OPTION.wontRelocate, label: "not willing to relocate" };
-    }
-    return { unanswerable: "relocation preference not on file" };
-  }
-
-  if (/how did you hear|referr?al source|where did you (hear|find)/.test(q)) {
-    return c.hearAboutUs ? { value: c.hearAboutUs } : { skip: true };
-  }
-
-  if (/notice period|when (can|could) you start|available to start|start date/.test(q)) {
-    return c.noticePeriod ? { value: c.noticePeriod } : { unanswerable: "notice period not on file" };
-  }
-
-  if (/salary|compensation|expected pay|rate expectation/.test(q)) {
-    const range = [c.salaryMin, c.salaryMax].filter(Boolean).join(" - ");
-    return range ? { value: range } : { unanswerable: "salary expectation not on file" };
-  }
-
-  if (/linkedin/.test(q)) return c.linkedinUrl ? { value: c.linkedinUrl } : { skip: true };
-  if (/github/.test(q)) return c.githubUrl ? { value: c.githubUrl } : { skip: true };
-  if (/portfolio|website|personal site/.test(q)) {
-    return c.portfolioUrl ? { value: c.portfolioUrl } : { skip: true };
-  }
-  if (/city|where are you (based|located)|current location/.test(q)) {
-    return c.city ? { value: [c.city, c.country].filter(Boolean).join(", ") } : { skip: true };
-  }
-
-  // "Are you willing to work from the office(s) listed on the job
-  // description?" — answerable, because the candidate already told us which
-  // arrangements they want. Answered truthfully even when the truthful answer
-  // is the one less likely to get them an interview; the alternative is
-  // putting a preference in their mouth they did not express.
-  if (/willing to work (from|at|in) the office|work on-?site|commute to the office|in-?office/.test(q)) {
-    if (!c.roleTypes.length) return { unanswerable: "office/remote preference not on file" };
-    const willing = c.roleTypes.some((r) => /on-?site|hybrid/i.test(r));
-    return { value: willing ? "Yes" : "No" };
-  }
-  return { unanswerable: `unrecognised question: "${question.slice(0, 120)}"` };
-}
-
-/**
- * Is this page a bot wall?
- *
- * The first version of this asked whether the page text contained the word
- * "cloudflare". A job at Cloudflare therefore looked like a Cloudflare
- * challenge, and the adapter refused to fill a perfectly ordinary form. The
- * lesson generalises: a company's name is not evidence of anything, and a
- * page that merely MENTIONS a security vendor is not one that is blocking you.
- *
- * So detection is now by what is on the page, not what it says:
- *
- *   * an interstitial — a challenge with no application form behind it
- *   * a visible, interactive captcha widget we would have to solve
- *
- * A Turnstile widget sitting inside a working form is explicitly not a block:
- * Greenhouse embeds one on many boards, usually invisible, and the form
- * submits normally. Treating that as a wall would park most of the queue.
- */
-const CHALLENGE_SELECTOR =
-  "iframe[src*='challenges.cloudflare.com'], iframe[title*='challenge' i], " +
-  "iframe[src*='recaptcha'], .g-recaptcha, #challenge-form, #cf-challenge-running";
 
 /**
  * Is there a challenge widget a person would actually have to solve?
@@ -389,21 +162,6 @@ async function detectChallenge(page: Page, form: Locator | null): Promise<string
   return null;
 }
 
-/**
- * Voluntary demographic questions.
- *
- * Wider than the classic US EEO four. Robinhood's form alone asks about
- * military status (not the word "veteran") and LGBTQ+ identity, and neither
- * matched the first version — so both fell through to the general question
- * rules, came back unanswerable, and parked an application over questions
- * that are optional by law and answerable with "decline".
- */
-function isEeo(q: string): boolean {
-  return /gender|race|ethnic|hispanic|latino|veteran|military|disabilit|disabled|self-?identif|pronoun|lgbtq|sexual orientation|transgender|demographic/i
-    .test(q);
-}
-
-/** What a control is, and what it is being asked. Resolved in one page call. */
 interface FieldMeta {
   tag: string;
   type: string;
@@ -626,19 +384,6 @@ async function answerQuestions(
  * reports that no option matched. Only one react-select menu is open at a
  * time, so "the visible .select__menu" is unambiguous.
  */
-/**
- * "I would rather not say", however this particular form words it.
- *
- * A list of exact phrases does not survive contact with real boards. Cloudflare
- * offers "I do not want to answer"; Discord offers "I don't wish to answer";
- * others say "Decline To Self Identify" or "Prefer not to say". Enumerating
- * them means silently missing the next variant — which is what happened here.
- * Matching the intent covers wordings nobody has written yet.
- */
-const DECLINE_OPTION = (option: string): boolean =>
-  /decline|prefer not|choose not|opt out|no response|(do not|don't|do ?n'?t)\s+(want|wish|care|choose)\s+to\s+(answer|say|disclose|identify|specify|respond)|not\s+to\s+(answer|disclose|identify)|rather not/i
-    .test(option);
-
 const MENU_SELECTOR = ".select__menu, [class*='select__menu']";
 const OPTION_SELECTOR = ".select__option, [class*='select__option'], [role='option']";
 

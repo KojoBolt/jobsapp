@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { useToast } from "@/admin/toast/ToastContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  T, Panel, Th, Avatar, StatusPill, ScoreMeter, SearchInput, TabBar,
+  T, Panel, Th, Avatar, StatusPill, ScoreMeter, SearchInput, TabBar, PillMenu,
   PrimaryButton, GhostButton, Pagination, EmptyState, ConfirmDialog,
 } from "@/admin/ui/system";
 
@@ -24,6 +24,8 @@ interface Application {
   created_at: string;
   campaign_id: string | null;
   match_score: number | null;
+  /** Which job API the posting came from — see SOURCE_LABELS. */
+  source: string | null;
 }
 
 interface UserWithApps {
@@ -55,6 +57,33 @@ const TABS: { key: TabKey; label: string; statuses: DbStatus[] }[] = [
   { key: "rejected",  label: "Rejected",         statuses: ["failed"] },
 ];
 
+/**
+ * Every value `applications.source` is written with, mapped to how it should
+ * read on screen. Anything not listed still appears in the filter — titlecased
+ * from the raw value — so a source added to sourcing.ts shows up here without
+ * this file needing to change. The map exists for capitalisation the machine
+ * cannot guess: "smartrecruiters" is SmartRecruiters, not Smartrecruiters.
+ */
+const SOURCE_LABELS: Record<string, string> = {
+  greenhouse: "Greenhouse",
+  lever: "Lever",
+  workday: "Workday",
+  smartrecruiters: "SmartRecruiters",
+  adzuna: "Adzuna",
+  reed: "Reed",
+  arbeitnow: "Arbeitnow",
+  remotive: "Remotive",
+  jsearch: "JSearch",
+  findwork: "Findwork",
+  themuse: "The Muse",
+};
+
+const sourceLabel = (raw: string) =>
+  SOURCE_LABELS[raw] ?? raw.charAt(0).toUpperCase() + raw.slice(1);
+
+/** Sentinel for "don't filter" — an empty string reads as a real option. */
+const ALL_SOURCES = "__all__";
+
 const ITEMS_PER_PAGE = 10;
 const JOBS_PER_PAGE = 5;
 
@@ -65,6 +94,7 @@ const ReviewQueuePage = (): JSX.Element => {
   const [activeTab, setActiveTab] = useState<TabKey>("pending");
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<string>(ALL_SOURCES);
   const [currentPage, setCurrentPage] = useState(1);
   const [jobPages, setJobPages] = useState<Record<string, number>>({});
   const [deleteTarget, setDeleteTarget] = useState<Application | null>(null);
@@ -147,6 +177,10 @@ const ReviewQueuePage = (): JSX.Element => {
             created_at: app.created_at,
             campaign_id: app.campaign_id,
             match_score: app.match_score,
+            // Cast because `source` is not in the generated Supabase types —
+            // the column exists in the database but the types were generated
+            // before it was added. Same drift as resumes.file_path.
+            source: (app as { source?: string | null }).source ?? null,
           });
         });
 
@@ -346,14 +380,59 @@ const ReviewQueuePage = (): JSX.Element => {
     }
   };
 
+  /**
+   * Sources present in what's currently loaded, with counts.
+   *
+   * Built from the data rather than hard-coded so a provider added to
+   * sourcing.ts appears here on its own — and so the menu never offers a
+   * filter that would return nothing.
+   */
+  const sourceOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    let missing = 0;
+    for (const user of users) {
+      for (const app of user.applications) {
+        if (!app.source) { missing++; continue; }
+        counts.set(app.source, (counts.get(app.source) ?? 0) + 1);
+      }
+    }
+    const total = [...counts.values()].reduce((s, n) => s + n, 0) + missing;
+
+    const options = [{ value: ALL_SOURCES, label: `All sources (${total})` }];
+    for (const [value, count] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
+      options.push({ value, label: `${sourceLabel(value)} (${count})` });
+    }
+    // Older rows predate the source column. Offered explicitly rather than
+    // hidden, because "why do these totals not add up" is a worse question
+    // than an Unknown bucket.
+    if (missing) options.push({ value: "__none__", label: `Unknown (${missing})` });
+    return options;
+  }, [users]);
+
+  /**
+   * Search narrows candidates; the source filter narrows their applications.
+   * A candidate left with no matching applications drops out of the list
+   * entirely — showing a name with an empty job list reads as a bug.
+   */
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return users.filter(
+    const byName = users.filter(
       (user) =>
         user.full_name.toLowerCase().includes(q) ||
         user.email.toLowerCase().includes(q),
     );
-  }, [users, search]);
+
+    if (sourceFilter === ALL_SOURCES) return byName;
+
+    return byName
+      .map((user) => {
+        const applications = user.applications.filter((a) =>
+          sourceFilter === "__none__" ? !a.source : a.source === sourceFilter,
+        );
+        return { ...user, applications, total_apps: applications.length };
+      })
+      .filter((user) => user.total_apps > 0);
+  }, [users, search, sourceFilter]);
 
   // Typeahead over the already-loaded candidates — no extra round trip. The
   // subtitle carries the pending count, which is what you're triaging by.
@@ -450,7 +529,19 @@ const ReviewQueuePage = (): JSX.Element => {
               </div>
             </div>
 
-            <span className={`truncate text-[12.5px] ${T.ink2}`}>{app.job_title}</span>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className={`truncate text-[12.5px] ${T.ink2}`}>{app.job_title}</span>
+              {app.source && (
+                <span
+                  title={`Sourced from ${sourceLabel(app.source)}`}
+                  className={`hidden shrink-0 rounded-md border ${T.hairline} px-1.5 py-0.5
+                              text-[9.5px] font-semibold uppercase tracking-[0.06em]
+                              text-[#6B6A66] lg:inline dark:text-[#C3C2B7]`}
+                >
+                  {sourceLabel(app.source)}
+                </span>
+              )}
+            </div>
 
             <span className="hidden md:block">
               <ScoreMeter value={app.match_score} />
@@ -517,6 +608,21 @@ const ReviewQueuePage = (): JSX.Element => {
             suggestions={suggestions}
             onSelectSuggestion={selectSuggestion}
           />
+
+          {/* Only worth showing once there is more than one source to choose
+              between — a menu with a single option is furniture. */}
+          {!loading && sourceOptions.length > 2 && (
+            <PillMenu
+              value={sourceFilter}
+              options={sourceOptions}
+              heading="Job source"
+              onChange={(v) => {
+                setSourceFilter(v);
+                setCurrentPage(1);
+                setExpandedUser(null);
+              }}
+            />
+          )}
           {/* Only offered when there is actually something listed to delete. */}
           {!loading && totalApps > 0 && (
             <button
@@ -743,6 +849,15 @@ const ReviewQueuePage = (): JSX.Element => {
           <>
             This removes every application currently listed under{" "}
             <strong>{TABS.find((t) => t.key === activeTab)?.label}</strong>
+            {sourceFilter !== ALL_SOURCES ? (
+              <>
+                {" "}
+                sourced from{" "}
+                <strong>
+                  {sourceFilter === "__none__" ? "Unknown" : sourceLabel(sourceFilter)}
+                </strong>
+              </>
+            ) : null}
             {search ? <> matching “{search}”</> : null}, across{" "}
             <strong>{filtered.length}</strong> user{filtered.length !== 1 ? "s" : ""}.
             {(activeTab === "submitted" || activeTab === "completed") && (
