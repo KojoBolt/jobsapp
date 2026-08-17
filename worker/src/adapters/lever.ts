@@ -237,6 +237,12 @@ async function answerGroups(
           : false;
     } else if ("matcher" in answer) {
       ok = await chooseOption(form, g, answer.matcher);
+      // Same as Greenhouse: a consent checkbox has no options to match — the
+      // tick is the answer. Its label reads "By checking this box, I consent
+      // to…", which no option matcher will ever accept.
+      if (!ok && g.kind === "checkbox" && answer.label === "acknowledged") {
+        ok = await chooseOption(form, g, () => true);
+      }
     } else if ("values" in answer) {
       // A checkbox group with several applicable answers.
       const wantedSet = answer.values.map((v) => v.toLowerCase());

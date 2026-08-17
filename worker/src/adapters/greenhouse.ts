@@ -573,6 +573,15 @@ async function setValue(
   // A matcher describes the answer we want rather than naming it, which is how
   // "decline to say" is found across boards that all word it differently.
   if (matcher) {
+    // An acknowledgement on a CHECKBOX has no options to match — ticking the
+    // box IS the answer. Switching acknowledgements from the literal "Yes" to
+    // an intent matcher fixed Robinhood's dropdown and broke Cloudflare's
+    // checkbox, which has no menu for a matcher to read.
+    if (f.type === "checkbox") {
+      await control.check().catch(() => {});
+      return control.isChecked().catch(() => false);
+    }
+
     if (f.tag === "select") {
       const options = await control.locator("option").allTextContents().catch(() => [] as string[]);
       const match = options.find((o) => matcher(o.trim()));
