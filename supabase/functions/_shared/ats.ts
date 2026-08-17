@@ -227,17 +227,123 @@ export async function resolveFinalUrl(
 }
 
 /**
+ * ATS fingerprints left in a company's own careers URL.
+ *
+ * Large employers front their ATS with their own domain — Stripe serves
+ * stripe.com/jobs/search?gh_jid=7557899 — so the hostname says "stripe.com"
+ * and the job gets parked as unknown even though it is an ordinary Greenhouse
+ * posting. The job id is right there in the query string; only the board slug
+ * is missing, and that is guessable from the domain.
+ *
+ * Verified against the live site: for gh_jid 7557899,
+ *   job-boards.greenhouse.io/embed/job_app?for=stripe&token=7557899
+ * returns the complete application form the Greenhouse adapter already fills.
+ */
+const FINGERPRINTS: { param: string; provider: AtsProvider }[] = [
+  { param: "gh_jid", provider: "greenhouse" },
+];
+
+/** "stripe.com" → "stripe". The registrable label, minus any www. */
+function domainLabel(host: string): string | null {
+  const parts = host.replace(/^www\./, "").split(".");
+  if (parts.length < 2) return null;
+  // Handles co.uk-style suffixes: take the label before the public suffix.
+  const label = parts.length > 2 && parts[parts.length - 2]!.length <= 3
+    ? parts[parts.length - 3]
+    : parts[parts.length - 2];
+  return label && /^[a-z0-9-]+$/i.test(label) ? label.toLowerCase() : null;
+}
+
+/**
+ * Turn a fingerprinted careers URL into the real application form.
+ *
+ * The board slug is a GUESS derived from the domain, so it is verified before
+ * being used: the rebuilt URL must respond 200 AND its page must mention the
+ * job id. Applying to the wrong company's job is far worse than parking, so
+ * anything short of both checks passing falls back to "unknown".
+ */
+async function resolveFingerprint(
+  u: URL,
+  timeoutMs: number,
+): Promise<(AtsMatch & { resolvedUrl: string }) | null> {
+  for (const { param, provider } of FINGERPRINTS) {
+    const jobId = u.searchParams.get(param);
+    if (!jobId || !/^\d+$/.test(jobId)) continue;
+
+    const board = domainLabel(u.hostname);
+    if (!board) continue;
+
+    const candidate =
+      `https://job-boards.greenhouse.io/embed/job_app` +
+      `?for=${encodeURIComponent(board)}&token=${encodeURIComponent(jobId)}`;
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(candidate, { signal: ctrl.signal, redirect: "follow" });
+      if (!res.ok) continue;
+
+      // A 200 proves nothing here. Measured against the live endpoint, a wrong
+      // board or a nonexistent job id BOTH return 200 with the board's job
+      // list ("Jobs at Stripe", 102KB, no form); a real one returns the
+      // application page ("Job Application for …", 115KB). So the test is
+      // whether an actual form came back — which is also precisely what the
+      // adapter needs in order to do anything.
+      //
+      // Checking that the job id appears in the body was the obvious idea and
+      // is worthless: "1" occurs in essentially every HTML document, so a
+      // bogus gh_jid=1 sailed through it.
+      const body = await res.text();
+      const hasForm = body.includes("first_name") && body.includes("Job Application for");
+      if (!hasForm) continue;
+
+      return {
+        provider,
+        strategy: STRATEGY[provider],
+        boardToken: board,
+        host: u.hostname,
+        resolvedUrl: candidate,
+      };
+    } catch {
+      // Network failure means we simply do not know — fall through to unknown.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+
+/**
  * Classify, following one aggregator hop when needed. This is what callers
  * should use in the pipeline; `detectAts` alone is for already-resolved URLs.
  */
 export async function classifyJobUrl(rawUrl: string): Promise<AtsMatch & { resolvedUrl: string }> {
   const first = detectAts(rawUrl);
   if (first.strategy !== "resolve") {
+    // A recognised host wins outright. Only an unknown one is worth probing
+    // for a fingerprint, and only then is the extra request justified.
+    if (first.provider !== "unknown") return { ...first, resolvedUrl: rawUrl };
+
+    try {
+      const found = await resolveFingerprint(new URL(rawUrl), 8000);
+      if (found) return found;
+    } catch {
+      // Unparseable URL — detectAts already returned unknown/human.
+    }
     return { ...first, resolvedUrl: rawUrl };
   }
 
   const { url } = await resolveFinalUrl(rawUrl);
   const second = detectAts(url);
+
+  // The aggregator may well have landed us on a company's own careers page,
+  // which is exactly where fingerprints live.
+  if (second.provider === "unknown") {
+    try {
+      const found = await resolveFingerprint(new URL(url), 8000);
+      if (found) return found;
+    } catch { /* fall through */ }
+  }
 
   // Still an aggregator after the hop (or the fetch failed): a person decides.
   if (second.strategy === "resolve") {
