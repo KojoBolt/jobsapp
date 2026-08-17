@@ -1,23 +1,3 @@
-// =====================================================================
-//  ATS detection — works out which applicant tracking system a job URL
-//  belongs to, and therefore how we're allowed to apply to it.
-//
-//  This is the routing table for the whole automation effort:
-//
-//    "api"     → the vendor publishes an application endpoint. Submit over
-//                HTTP. No browser. Fastest, cheapest, sanctioned.
-//    "browser" → no API, but a stable form we can drive with Playwright.
-//    "human"   → hand to the Submission Queue. Either the site's terms
-//                forbid automation, or we don't recognise it and guessing
-//                would be worse than waiting.
-//    "resolve" → an aggregator link. Follow the redirect and classify the
-//                destination; the aggregator itself hosts no form.
-//
-//  Deliberately dependency-free (no Deno/Node APIs beyond URL and fetch) so
-//  the same file can be used by edge functions today and by the Playwright
-//  worker later without a rewrite.
-// =====================================================================
-
 export type AtsProvider =
   // Application APIs available
   | "greenhouse" | "lever" | "ashby" | "workable" | "smartrecruiters"
