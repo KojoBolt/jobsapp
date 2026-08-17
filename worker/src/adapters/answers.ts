@@ -113,6 +113,8 @@ export const RELOCATION_OPTION = {
 
 export type Answer =
   | { value: string }
+  /** Several answers at once — a checkbox group where more than one applies. */
+  | { values: string[] }
   | { matcher: (optionText: string) => boolean; label: string }
   | { skip: true }
   | { unanswerable: string };
@@ -153,8 +155,16 @@ export function answerFor(
   // otherwise be ticked. Signing someone up for marketing they never asked for
   // is not inside "apply to this job on my behalf". Left unticked, which is
   // both the neutral state and the lawful default.
-  if (/contact me about|future (job )?opportunit|marketing|job alerts|newsletter|talent (community|network)/.test(q)) {
-    return { skip: true };
+  // Marketing and messaging opt-ins. Answered "No" rather than skipped:
+  // Stripe's "Do you opt in to receive WhatsApp messages from Stripe
+  // Recruiting?" is REQUIRED, so skipping it left the field blank and blocked
+  // an otherwise complete application. Declining is truthful, respects the
+  // candidate, and unblocks the form — silence does neither.
+  if (
+    /contact me about|future (job )?opportunit|marketing|job alerts|newsletter|talent (community|network)|opt ?in to receive|whatsapp|sms|text messages/
+      .test(q)
+  ) {
+    return { value: "No" };
   }
 
   if (/acknowledg|privacy (policy|notice)|i (have )?(read|agree)|consent to/.test(q)) {
@@ -222,8 +232,33 @@ export function answerFor(
   if (/portfolio|website|personal site/.test(q)) {
     return c.portfolioUrl ? { value: c.portfolioUrl } : { skip: true };
   }
+  // ── Where the candidate lives ───────────────────────────────────────
+  // Split from the city rule below because Stripe asks "Please select the
+  // country where you currently reside" as a country dropdown — answering it
+  // with "Chicago, United States" would match no option at all.
+  if (/country (where|in which) you (currently )?(reside|live)|country of residence|which country do you (live|reside)/.test(q)) {
+    return c.country ? { value: c.country } : { unanswerable: "country of residence not on file" };
+  }
+
   if (/city|where are you (based|located)|current location/.test(q)) {
     return c.city ? { value: [c.city, c.country].filter(Boolean).join(", ") } : { skip: true };
+  }
+
+  // ── Where they may work ─────────────────────────────────────────────
+  // "Please select the country or countries you anticipate working in for the
+  // role in which you are applying" — that is the authorised-countries list,
+  // which is already stored. Returned as a list because these render as
+  // checkbox groups where more than one answer is expected.
+  if (/countr(y|ies) you (anticipate|expect|plan|intend|would be) work|countr(y|ies) (you are|of) (applying|work)/.test(q)) {
+    return c.authorizedCountries.length
+      ? { values: c.authorizedCountries }
+      : { unanswerable: "no work authorisation on file" };
+  }
+
+  // ── Remote preference ───────────────────────────────────────────────
+  if (/would you (like|prefer|want) to work remotely|prefer(ence)? for remote|work remotely/.test(q)) {
+    if (!c.roleTypes.length) return { unanswerable: "remote preference not on file" };
+    return { value: c.roleTypes.some((r) => /remote/i.test(r)) ? "Yes" : "No" };
   }
 
   // "Are you willing to work from the office(s) listed on the job

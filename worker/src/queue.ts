@@ -88,6 +88,23 @@ export async function recordEvidence(id: string, key: string): Promise<void> {
   if (error) log.warn("evidence path write failed", { applicationId: id, error: error.message });
 }
 
+/**
+ * Store the full list of reasons an application could not be finished.
+ *
+ * Separate from `automation_error`, which holds a truncated summary for
+ * display. This is the countable version — the one that answers "which
+ * questions block us most often", and therefore what the vault should collect
+ * next. Written on every attempt, cleared when there is nothing to report so a
+ * fixed application does not keep its old complaints.
+ */
+export async function recordBlocked(id: string, questions: string[] | null): Promise<void> {
+  const { error } = await db
+    .from("applications")
+    .update({ automation_blocked: questions?.length ? questions : null })
+    .eq("id", id);
+  if (error) log.warn("blocked list write failed", { applicationId: id, error: error.message });
+}
+
 /** Record what we learned about a job without changing its status. */
 export async function recordClassification(
   id: string,

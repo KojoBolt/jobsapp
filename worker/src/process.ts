@@ -6,6 +6,7 @@ import {
   markSubmitted,
   parkForHuman,
   recordClassification,
+  recordBlocked,
   recordEvidence,
   releaseForRetry,
   type ClaimedApplication,
@@ -59,6 +60,10 @@ export async function processApplication(app: ClaimedApplication): Promise<strin
     // Before the branch below, so it is recorded whatever the verdict — the
     // screenshot of a form we could not finish is the useful one.
     if (outcome.evidence) await recordEvidence(app.id, outcome.evidence);
+
+    // Written whatever the verdict, and cleared on success — a row that now
+    // completes should not keep the complaints from a previous attempt.
+    await recordBlocked(app.id, "blocked" in outcome ? (outcome.blocked ?? null) : null);
 
     if (outcome.status === "submitted") {
       // Dry run means we filled the form but never pressed Submit — recording

@@ -18,7 +18,18 @@ export type ApplyOutcome =
   | { status: "submitted"; evidence?: string }
   /** Adapter reached the form but can't finish — captcha, login wall, a
    *  required question we have no answer for. A person takes it from here. */
-  | { status: "needs_human"; reason: string; evidence?: string }
+  | {
+      status: "needs_human";
+      reason: string;
+      evidence?: string;
+      /**
+       * EVERY question that blocked the application, not the sample that fits
+       * in `reason`. Stripe's form blocked on eleven and reported three, which
+       * meant the admin saw a fraction of the work and nobody could count
+       * which questions block most often across the queue.
+       */
+      blocked?: string[];
+    }
   | { status: "failed"; reason: string; evidence?: string };
 
 export interface Adapter {

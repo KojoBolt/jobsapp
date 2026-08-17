@@ -360,13 +360,18 @@ async function answerQuestions(
 
     // A matcher describes the answer rather than naming it — needed wherever
     // the options are whole sentences that differ per employer.
+    // `values` means a checkbox group where several answers apply — tick each
+    // one that exists and count it a success if any did.
     const ok =
       "matcher" in answer
         ? await setValue(control, f, [], answer.matcher)
-        : await setValue(control, f, [answer.value]);
+        : "values" in answer
+          ? (await Promise.all(answer.values.map((v) => setValue(control, f, [v])))).some(Boolean)
+          : await setValue(control, f, [answer.value]);
 
     if (!ok && f.required) {
-      const wanted = "matcher" in answer ? answer.label : answer.value;
+      const wanted =
+        "matcher" in answer ? answer.label : "values" in answer ? answer.values.join(", ") : answer.value;
       blocked.push(`could not set "${wanted}" for: "${label.slice(0, 70)}"`);
     }
   }
@@ -581,11 +586,17 @@ async function setValue(
     }
 
     if (f.type === "checkbox") {
-      // Only ever ticked for an affirmative — never cleared, since an unticked
-      // box is already the safe state.
       if (/^(yes|true|i agree|i acknowledge)$/i.test(value)) {
         const ok = await control.check().then(() => true).catch(() => false);
         if (ok) return true;
+        continue;
+      }
+      // A negative answer on a checkbox IS an unticked box, so the desired
+      // state is already reached. Reporting failure here is what made a
+      // required "do you opt in?" block an otherwise finished application.
+      if (/^(no|false|decline)$/i.test(value)) {
+        await control.uncheck().catch(() => {});
+        return true;
       }
       continue;
     }
@@ -940,7 +951,8 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
         log.info("parking on unanswerable questions", { ...base, blocked });
         return {
           status: "needs_human",
-          reason: `Needs a person: ${blocked.slice(0, 3).join("; ")}`,
+          reason: `Needs a person (${blocked.length}): ${blocked.slice(0, 3).join("; ")}`,
+          blocked,
           ...(evidence ? { evidence } : {}),
         };
       }

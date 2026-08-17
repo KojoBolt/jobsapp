@@ -230,17 +230,31 @@ async function answerGroups(
 
     let ok: boolean;
     if (g.kind === "text") {
-      ok = "value" in answer ? await fill(form, `[name="${g.name}"]`, answer.value) : false;
+      ok = "value" in answer
+        ? await fill(form, `[name="${g.name}"]`, answer.value)
+        : "values" in answer
+          ? await fill(form, `[name="${g.name}"]`, answer.values.join(", "))
+          : false;
     } else if ("matcher" in answer) {
       ok = await chooseOption(form, g, answer.matcher);
+    } else if ("values" in answer) {
+      // A checkbox group with several applicable answers.
+      const wantedSet = answer.values.map((v) => v.toLowerCase());
+      ok = await chooseOption(form, g, (o) => wantedSet.includes(o.trim().toLowerCase()));
     } else {
-      const wanted = answer.value.toLowerCase();
+      const value = answer.value;
+      const wanted = value.toLowerCase();
       ok = await chooseOption(form, g, (o) => o.trim().toLowerCase() === wanted)
         || await chooseOption(form, g, (o) => o.trim().toLowerCase().startsWith(wanted));
+
+      // "No" on a single checkbox is an unticked box — already the state we
+      // want, so it counts as answered rather than as a failure.
+      if (!ok && g.kind === "checkbox" && /^(no|false|decline)$/i.test(value)) ok = true;
     }
 
     if (!ok && required) {
-      const wanted = "matcher" in answer ? answer.label : answer.value;
+      const wanted =
+        "matcher" in answer ? answer.label : "values" in answer ? answer.values.join(", ") : answer.value;
       blocked.push(`could not set "${wanted}" for: "${label.slice(0, 60)}"`);
     }
   }
@@ -345,7 +359,8 @@ async function applyToLever(ctx: ApplyContext): Promise<ApplyOutcome> {
         log.info("parking on unanswerable questions", { ...base, blocked });
         return {
           status: "needs_human",
-          reason: `Needs a person: ${blocked.slice(0, 3).join("; ")}`,
+          reason: `Needs a person (${blocked.length}): ${blocked.slice(0, 3).join("; ")}`,
+          blocked,
           ...(shot ? { evidence: shot } : {}),
         };
       }
