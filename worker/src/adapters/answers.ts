@@ -103,12 +103,26 @@ export function countryInText(text: string): string | null {
 export const NEGATED = (o: string) =>
   /\b(do not|don't|doesn'?t|not|unable|unwilling|cannot|can'?t|no longer)\b/i.test(o);
 
+/**
+ * Bare yes/no options.
+ *
+ * Employers word this question two completely different ways. Cloudflare
+ * offers whole sentences — "I am willing to relocate to this job's location."
+ * Stripe offers plain Yes / No. Matching only the sentence form left Stripe's
+ * dropdown empty and blocked the application, so each intent below also
+ * accepts the bare answer that means the same thing.
+ */
+const BARE_YES = (o: string) => /^\s*yes\b/i.test(o);
+const BARE_NO = (o: string) => /^\s*no\b/i.test(o);
+
 export const RELOCATION_OPTION = {
   livesThere: (o: string) =>
-    !NEGATED(o) && /(currently|already)\s+(live|reside|located|based)|^i live\b/i.test(o),
+    (!NEGATED(o) && /(currently|already)\s+(live|reside|located|based)|^i live\b/i.test(o)) || BARE_YES(o),
   willRelocate: (o: string) =>
-    !NEGATED(o) && /willing to relocate|open to relocat|would relocate|able to relocate|happy to relocate/i.test(o),
-  wontRelocate: (o: string) => NEGATED(o) && /relocat|live/i.test(o),
+    (!NEGATED(o) &&
+      /willing to relocate|open to relocat|would relocate|able to relocate|happy to relocate/i.test(o)) ||
+    BARE_YES(o),
+  wontRelocate: (o: string) => (NEGATED(o) && /relocat|live/i.test(o)) || BARE_NO(o),
 };
 
 export type Answer =
