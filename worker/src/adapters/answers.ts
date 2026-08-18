@@ -231,10 +231,46 @@ export function answerFor(
     return { value: worked ? "Yes" : "No" };
   }
 
+  /**
+   * Employment dates, asked one dropdown at a time.
+   *
+   * Greenhouse splits a single date across "Start date month" and "Start date
+   * year", so the stored month and year are handed over separately — which is
+   * why the vault keeps them apart rather than as one string.
+   */
+  if (/^(start|end) date (month|year)\b|^(start|end) (month|year)\b/.test(q)) {
+    if (!latestJob) return { unanswerable: "employment history not on file" };
+
+    const isEnd = /^end/.test(q);
+    // A current role has no leaving date, and inventing one would contradict
+    // the "I currently work here" the candidate ticked.
+    if (isEnd && latestJob.current) return { skip: true };
+
+    const value = /month/.test(q)
+      ? (isEnd ? latestJob.endMonth : latestJob.startMonth)
+      : (isEnd ? latestJob.endYear : latestJob.startYear);
+
+    return value ? { value } : { unanswerable: `employment ${isEnd ? "end" : "start"} date not on file` };
+  }
+
+  // ── Age ─────────────────────────────────────────────────────────────
+  // Asked on plenty of forms and always required. It is a fact about the
+  // candidate, so it comes from something they stated — never assumed from
+  // the fact that they are applying for work.
+  if (/at least 18|18 years of age|over 18|of legal working age|are you 18/.test(q)) {
+    if (c.atLeast18 === "yes") return { value: "Yes" };
+    if (c.atLeast18 === "no") return { value: "No" };
+    return { unanswerable: "age confirmation not on file" };
+  }
+
   // ── Education ───────────────────────────────────────────────────────
   const topEducation = c.education[0];
 
-  if (/^school\b|university|college|institution|where did you study/.test(q)) {
+  // \binstitution\b, not a bare substring: "institutional client" appears in
+  // conflict-of-interest questions, and this rule matched one — it was about
+  // to put a school name into "were you referred by a senior leader at a
+  // prospective institutional client?". Same class as "capacity"/"city".
+  if (/^school\b|\buniversity\b|\bcollege\b|\binstitution\b|where did you study/.test(q)) {
     return topEducation?.school
       ? { value: topEducation.school }
       : { unanswerable: "education not on file" };
@@ -328,7 +364,11 @@ export function answerFor(
     return c.hearAboutUs ? { value: c.hearAboutUs } : { skip: true };
   }
 
-  if (/notice period|when (can|could) you start|available to start|start date/.test(q)) {
+  // "start date" is deliberately NOT matched on its own here. Employment
+  // history asks "Start date month" and "Start date year", and this rule was
+  // claiming those first — putting a notice period of "1 week" into a month
+  // dropdown. Only phrasings that unambiguously mean availability qualify.
+  if (/notice period|when (can|could) you start|available to start|earliest start date|how soon (can|could) you start/.test(q)) {
     return c.noticePeriod ? { value: c.noticePeriod } : { unanswerable: "notice period not on file" };
   }
 

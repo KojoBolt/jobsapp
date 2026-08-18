@@ -159,6 +159,20 @@ const degreeOptions = [
   "Master's Degree", "MBA", "Doctorate (PhD)", "Professional Certification", "Other",
 ];
 
+/* Same reasoning as `degreeOptions`: employers offer Discipline as a dropdown
+   from a standard list, so free text loses. A vault reading "Bussiness Admin"
+   matched nothing against a list containing "Business Administration" — and no
+   amount of matching logic rescues a typo. */
+const disciplineOptions = [
+  "Accounting", "Biology", "Business Administration", "Chemistry", "Communications",
+  "Computer Science", "Data Science", "Design", "Economics", "Education",
+  "Engineering", "English", "Environmental Science", "Finance", "Health Sciences",
+  "History", "Human Resources", "Information Technology", "Law", "Marketing",
+  "Mathematics", "Medicine", "Nursing", "Physics", "Political Science",
+  "Psychology", "Public Health", "Sociology", "Statistics", "Supply Chain",
+  "Other",
+];
+
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -189,6 +203,8 @@ const EMPTY_ANSWERS = {
   /** "yes" | "no" | "" — "" means we were never told, so those questions park. */
   willingToRelocate: "",
   hearAboutUs: "",
+  /** "yes" | "no" | "" — a fact the candidate states, never assumed. */
+  atLeast18: "",
   portfolioUrl: "",
   githubUrl: "",
   eeoHandling: "decline",
@@ -819,8 +835,11 @@ const IdentityVault = () => {
                     <option value="" className={OPTION}>Select a degree</option>
                     {degreeOptions.map((d) => <option key={d} value={d} className={OPTION}>{d}</option>)}
                   </select>
-                  <input placeholder="Field of study (e.g. Computer Science)" value={ed.discipline} className={FIELD}
-                    onChange={(e) => setEducation(education.map((x, k) => k === i ? { ...x, discipline: e.target.value } : x))} />
+                  <select value={ed.discipline} className={SELECT_FIELD}
+                    onChange={(e) => setEducation(education.map((x, k) => k === i ? { ...x, discipline: e.target.value } : x))}>
+                    <option value="" className={OPTION}>Field of study</option>
+                    {disciplineOptions.map((d) => <option key={d} value={d} className={OPTION}>{d}</option>)}
+                  </select>
                   <div className="grid grid-cols-2 gap-2.5">
                     <input placeholder="Start year" value={ed.startYear} inputMode="numeric" className={FIELD}
                       onChange={(e) => setEducation(education.map((x, k) => k === i ? { ...x, startYear: e.target.value } : x))} />
@@ -918,6 +937,19 @@ const IdentityVault = () => {
             </div>
 
             <div className="grid gap-3.5 sm:grid-cols-2">
+              <div>
+                <FieldLabel icon={ShieldCheck}>Are you at least 18 years old?</FieldLabel>
+                <Select value={answers.atLeast18}
+                  onValueChange={(v) => setAnswers({ ...answers, atLeast18: v })}>
+                  <SelectTrigger className={FIELD}>
+                    <SelectValue placeholder="Select an answer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="yes"><span>Yes</span></SelectItem>
+                    <SelectItem value="no"><span>No</span></SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <FieldLabel icon={CalendarClock}>Notice period</FieldLabel>
                 <Select value={answers.noticePeriod}

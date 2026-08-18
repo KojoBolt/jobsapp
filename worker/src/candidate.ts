@@ -59,6 +59,8 @@ export interface Candidate {
    */
   willingToRelocate: string;
   hearAboutUs: string;
+  /** "yes" | "no" | "" — stated by the candidate, never assumed. */
+  atLeast18: string;
   /** "Remote" | "Hybrid" | "On-site" — what the candidate said they want. */
   roleTypes: string[];
   salaryMin: string;
@@ -190,6 +192,7 @@ export async function loadCandidate(app: ClaimedApplication): Promise<Candidate 
     noticePeriod: str(answers.noticePeriod),
     willingToRelocate: str(answers.willingToRelocate),
     hearAboutUs: str(answers.hearAboutUs),
+    atLeast18: str(answers.atLeast18),
     roleTypes: Array.isArray(targeting.roleTypes)
       ? (targeting.roleTypes as unknown[]).map(str).filter(Boolean)
       : [],
