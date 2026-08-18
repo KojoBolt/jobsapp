@@ -149,6 +149,35 @@ const EMPTY_TARGETING = {
   mustHaves: "",
 };
 
+/* Employers ask for a degree from a short, standard list, so the vault offers
+   the same list — a free-text degree would have to be fuzzy-matched against a
+   dropdown, and "BSc" vs "Bachelor's Degree" is exactly where that goes wrong.
+   School stays free text because those lists run to thousands of entries and
+   are searched by typing. */
+const degreeOptions = [
+  "High School Diploma", "Associate's Degree", "Bachelor's Degree",
+  "Master's Degree", "MBA", "Doctorate (PhD)", "Professional Certification", "Other",
+];
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** Month and year separately, because that is how the forms ask for them —
+ *  "Start date month" and "Start date year" are two different dropdowns. */
+const EMPTY_EDUCATION = { school: "", degree: "", discipline: "", startYear: "", endYear: "" };
+
+const EMPTY_JOB = {
+  employer: "",
+  title: "",
+  startMonth: "",
+  startYear: "",
+  endMonth: "",
+  endYear: "",
+  current: false,
+};
+
 const EMPTY_ANSWERS = {
   city: "",
   country: "",
@@ -179,6 +208,14 @@ const FIELD =
   "w-full rounded-lg border border-[#EAEAE7] bg-transparent px-3 py-2 text-[12.5px] " +
   "text-[#111110] placeholder:text-[#9A9995] focus:outline-none focus:ring-2 " +
   "focus:ring-[#2a78d6]/30 dark:border-white/10 dark:text-white";
+
+/* A native <select> needs a real background colour, not `bg-transparent`.
+   The control inherits the page in light mode either way, but the popup list
+   the browser draws does not — it falls back to white, so dark mode showed
+   white options with white text. The <option> elements need it too: they are
+   rendered by the OS and do not inherit from the select. */
+const SELECT_FIELD = `${FIELD} bg-white dark:bg-[#1A1A19]`;
+const OPTION = "bg-white text-[#111110] dark:bg-[#1A1A19] dark:text-white";
 
 const Section = ({
   icon: Icon,
@@ -277,6 +314,8 @@ const IdentityVault = () => {
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [targeting, setTargeting] = useState(EMPTY_TARGETING);
   const [answers, setAnswers] = useState(EMPTY_ANSWERS);
+  const [education, setEducation] = useState<(typeof EMPTY_EDUCATION)[]>([]);
+  const [employment, setEmployment] = useState<(typeof EMPTY_JOB)[]>([]);
 
   // ✅ State for the "Other" custom role input
   const [customRoleInput, setCustomRoleInput] = useState("");
@@ -366,6 +405,10 @@ const IdentityVault = () => {
         setPersonalInfo(saved);
         setTargeting({ ...EMPTY_TARGETING, ...(vault.targeting as object ?? {}) });
         setAnswers({ ...EMPTY_ANSWERS, ...(vault.applicationAnswers as object ?? {}) });
+        // Merged per entry so a list saved before a field existed still fills
+        // every input rather than leaving some undefined.
+        setEducation(((vault.education as object[]) ?? []).map((e) => ({ ...EMPTY_EDUCATION, ...e })));
+        setEmployment(((vault.employment as object[]) ?? []).map((e) => ({ ...EMPTY_JOB, ...e })));
 
         // ✅ Restore saved custom roles from vault
         if (vault.customRoles) setCustomRoles(vault.customRoles as string[]);
@@ -384,6 +427,8 @@ const IdentityVault = () => {
           toneOfVoice: resumeData?.tone_preference || "",
         });
         setAnswers(EMPTY_ANSWERS);
+        setEducation([]);
+        setEmployment([]);
       }
     } catch (error) {
       console.error("Unexpected error loading vault:", error);
@@ -450,6 +495,10 @@ const IdentityVault = () => {
         targeting,
         customRoles,
         applicationAnswers: answers,
+        // Blank rows are dropped: an empty entry would put an empty option into
+        // a required dropdown on a real application.
+        education: education.filter((e) => e.school.trim() || e.degree.trim()),
+        employment: employment.filter((e) => e.employer.trim() || e.title.trim()),
       };
       const { error: vaultError } = await supabase
         .from("profiles")
@@ -690,6 +739,103 @@ const IdentityVault = () => {
             </span>
           </label>
           <input id="vault-resume" type="file" accept=".pdf" className="hidden" onChange={handleFileChange} />
+        </Section>
+
+        {/* Employment history — asked for by name on almost every ATS, and the
+            source of "have you worked here before?" answers too. */}
+        <Section icon={Briefcase} title="Employment history" accent={accent}
+                 hint="Your most recent roles — two or three is usually enough">
+          <div className="space-y-3">
+            {employment.map((job, i) => (
+              <div key={i} className={`rounded-xl border ${T.hairline} p-3.5`}>
+                <div className="mb-2.5 flex items-center justify-between">
+                  <span className={`text-[11.5px] font-semibold ${T.ink2}`}>Role {i + 1}</span>
+                  <button type="button" aria-label={`Remove role ${i + 1}`}
+                    onClick={() => setEmployment(employment.filter((_, j) => j !== i))}
+                    className={`${T.muted} transition-colors hover:text-[#B32F2F]`}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <input placeholder="Employer" value={job.employer} className={FIELD}
+                    onChange={(e) => setEmployment(employment.map((j, k) => k === i ? { ...j, employer: e.target.value } : j))} />
+                  <input placeholder="Job title" value={job.title} className={FIELD}
+                    onChange={(e) => setEmployment(employment.map((j, k) => k === i ? { ...j, title: e.target.value } : j))} />
+                </div>
+                <div className="mt-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                  <select value={job.startMonth} className={SELECT_FIELD}
+                    onChange={(e) => setEmployment(employment.map((j, k) => k === i ? { ...j, startMonth: e.target.value } : j))}>
+                    <option value="" className={OPTION}>Start month</option>
+                    {MONTHS.map((m) => <option key={m} value={m} className={OPTION}>{m}</option>)}
+                  </select>
+                  <input placeholder="Start year" value={job.startYear} inputMode="numeric" className={FIELD}
+                    onChange={(e) => setEmployment(employment.map((j, k) => k === i ? { ...j, startYear: e.target.value } : j))} />
+                  <select value={job.endMonth} disabled={job.current} className={SELECT_FIELD}
+                    onChange={(e) => setEmployment(employment.map((j, k) => k === i ? { ...j, endMonth: e.target.value } : j))}>
+                    <option value="" className={OPTION}>End month</option>
+                    {MONTHS.map((m) => <option key={m} value={m} className={OPTION}>{m}</option>)}
+                  </select>
+                  <input placeholder="End year" value={job.endYear} disabled={job.current} inputMode="numeric" className={FIELD}
+                    onChange={(e) => setEmployment(employment.map((j, k) => k === i ? { ...j, endYear: e.target.value } : j))} />
+                </div>
+                <label className={`mt-2.5 flex items-center gap-2 text-[11.5px] ${T.ink2}`}>
+                  <input type="checkbox" checked={job.current}
+                    onChange={(e) => setEmployment(employment.map((j, k) =>
+                      // Clearing the end date keeps "current" and a leaving
+                      // date from contradicting each other on the form.
+                      k === i ? { ...j, current: e.target.checked, endMonth: "", endYear: "" } : j))} />
+                  I currently work here
+                </label>
+              </div>
+            ))}
+            <button type="button" onClick={() => setEmployment([...employment, { ...EMPTY_JOB }])}
+              className={`inline-flex items-center gap-1 rounded-lg border ${T.hairline} px-3 py-2
+                          text-[12px] font-semibold ${T.ink} hover:bg-[#F4F4F2] dark:hover:bg-white/5`}>
+              <Plus size={13} /> Add a role
+            </button>
+          </div>
+        </Section>
+
+        {/* Education — School and Degree are the two most common blockers. */}
+        <Section icon={Building2} title="Education" accent={accent}
+                 hint="Employers ask for school and degree by name">
+          <div className="space-y-3">
+            {education.map((ed, i) => (
+              <div key={i} className={`rounded-xl border ${T.hairline} p-3.5`}>
+                <div className="mb-2.5 flex items-center justify-between">
+                  <span className={`text-[11.5px] font-semibold ${T.ink2}`}>Qualification {i + 1}</span>
+                  <button type="button" aria-label={`Remove qualification ${i + 1}`}
+                    onClick={() => setEducation(education.filter((_, j) => j !== i))}
+                    className={`${T.muted} transition-colors hover:text-[#B32F2F]`}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <input placeholder="School or university" value={ed.school} className={FIELD}
+                    onChange={(e) => setEducation(education.map((x, k) => k === i ? { ...x, school: e.target.value } : x))} />
+                  {/* A fixed list, matching what the forms offer. */}
+                  <select value={ed.degree} className={SELECT_FIELD}
+                    onChange={(e) => setEducation(education.map((x, k) => k === i ? { ...x, degree: e.target.value } : x))}>
+                    <option value="" className={OPTION}>Select a degree</option>
+                    {degreeOptions.map((d) => <option key={d} value={d} className={OPTION}>{d}</option>)}
+                  </select>
+                  <input placeholder="Field of study (e.g. Computer Science)" value={ed.discipline} className={FIELD}
+                    onChange={(e) => setEducation(education.map((x, k) => k === i ? { ...x, discipline: e.target.value } : x))} />
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <input placeholder="Start year" value={ed.startYear} inputMode="numeric" className={FIELD}
+                      onChange={(e) => setEducation(education.map((x, k) => k === i ? { ...x, startYear: e.target.value } : x))} />
+                    <input placeholder="End year" value={ed.endYear} inputMode="numeric" className={FIELD}
+                      onChange={(e) => setEducation(education.map((x, k) => k === i ? { ...x, endYear: e.target.value } : x))} />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button type="button" onClick={() => setEducation([...education, { ...EMPTY_EDUCATION }])}
+              className={`inline-flex items-center gap-1 rounded-lg border ${T.hairline} px-3 py-2
+                          text-[12px] font-semibold ${T.ink} hover:bg-[#F4F4F2] dark:hover:bg-white/5`}>
+              <Plus size={13} /> Add a qualification
+            </button>
+          </div>
         </Section>
 
         {/* Application answers — what employers ask on the form itself. */}

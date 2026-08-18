@@ -13,6 +13,30 @@ import type { ClaimedApplication } from "./queue.ts";
  * for a human. The alternative — guessing — puts a false statement on a real
  * job application in the candidate's name.
  */
+
+/**
+ * One role. Month and year are separate fields because that is how the forms
+ * ask for them — "Start date month" and "Start date year" are two different
+ * dropdowns, and a single date string would only have to be split again.
+ */
+export interface EmploymentEntry {
+  employer: string;
+  title: string;
+  startMonth: string;
+  startYear: string;
+  endMonth: string;
+  endYear: string;
+  current: boolean;
+}
+
+export interface EducationEntry {
+  school: string;
+  degree: string;
+  discipline: string;
+  startYear: string;
+  endYear: string;
+}
+
 export interface Candidate {
   firstName: string;
   lastName: string;
@@ -39,6 +63,9 @@ export interface Candidate {
   roleTypes: string[];
   salaryMin: string;
   salaryMax: string;
+  /** Most recent first — index 0 is what "current employer" questions mean. */
+  employment: EmploymentEntry[];
+  education: EducationEntry[];
   /** "decline" | "manual" */
   eeoHandling: string;
   coverLetter: string;
@@ -168,6 +195,28 @@ export async function loadCandidate(app: ClaimedApplication): Promise<Candidate 
       : [],
     salaryMin: str(targeting.salaryMin),
     salaryMax: str(targeting.salaryMax),
+    // Entries with neither an employer nor a school are dropped: a blank row
+    // would put an empty value into a required field on a real application.
+    employment: (Array.isArray(vault.employment) ? vault.employment : [])
+      .map((e: Record<string, unknown>) => ({
+        employer: str(e.employer),
+        title: str(e.title),
+        startMonth: str(e.startMonth),
+        startYear: str(e.startYear),
+        endMonth: str(e.endMonth),
+        endYear: str(e.endYear),
+        current: e.current === true,
+      }))
+      .filter((e: EmploymentEntry) => e.employer || e.title),
+    education: (Array.isArray(vault.education) ? vault.education : [])
+      .map((e: Record<string, unknown>) => ({
+        school: str(e.school),
+        degree: str(e.degree),
+        discipline: str(e.discipline),
+        startYear: str(e.startYear),
+        endYear: str(e.endYear),
+      }))
+      .filter((e: EducationEntry) => e.school || e.degree),
     eeoHandling: str(answers.eeoHandling) || "decline",
     coverLetter: str(appRow?.cover_letter),
     resumePath: resume?.path ?? null,

@@ -194,6 +194,64 @@ export function answerFor(
     return { matcher: ACKNOWLEDGE_OPTION, label: "acknowledged" };
   }
 
+  // ── Employment history ──────────────────────────────────────────────
+  const latestJob = c.employment[0];
+
+  if (/who is your (current|previous|most recent)|current or previous employer|name of (your )?(current|previous|last) employer|current company/.test(q)) {
+    return latestJob?.employer
+      ? { value: latestJob.employer }
+      : { unanswerable: "employment history not on file" };
+  }
+
+  if (/current or previous job title|what is your (current|previous|most recent) (job )?title|your job title/.test(q)) {
+    return latestJob?.title
+      ? { value: latestJob.title }
+      : { unanswerable: "employment history not on file" };
+  }
+
+  /**
+   * "Have you ever been employed by Stripe?" — asked by five different
+   * employers in the measured data, so it earns a rule rather than a park.
+   *
+   * "No" is only returned when we actually hold a history to check against.
+   * With an empty list we do not know, and answering "No" would be a claim
+   * about someone's past we cannot support — so it parks instead.
+   */
+  if (/have you (ever )?(been employed|worked)( for| at| by)|do you currently or have you previously work|previously been employed/.test(q)) {
+    if (!c.employment.length) return { unanswerable: "employment history not on file" };
+
+    const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const asked = normalise(question);
+    const worked = c.employment.some((e) => {
+      const name = normalise(e.employer);
+      // Two words minimum: a one-word employer like "Box" would match almost
+      // any sentence containing it.
+      return name.length > 3 && asked.includes(name);
+    });
+    return { value: worked ? "Yes" : "No" };
+  }
+
+  // ── Education ───────────────────────────────────────────────────────
+  const topEducation = c.education[0];
+
+  if (/^school\b|university|college|institution|where did you study/.test(q)) {
+    return topEducation?.school
+      ? { value: topEducation.school }
+      : { unanswerable: "education not on file" };
+  }
+
+  if (/^degree\b|highest (level of )?(education|degree)|level of (education|study)/.test(q)) {
+    return topEducation?.degree
+      ? { value: topEducation.degree }
+      : { unanswerable: "education not on file" };
+  }
+
+  if (/^discipline\b|field of study|major|course of study|subject/.test(q)) {
+    return topEducation?.discipline
+      ? { value: topEducation.discipline }
+      : { unanswerable: "education not on file" };
+  }
+
   // ── "…in the location(s) you selected in your previous response" ────
   // A question about an answer we just gave. We only ever tick countries from
   // the authorised list, so by construction the candidate is authorised in
