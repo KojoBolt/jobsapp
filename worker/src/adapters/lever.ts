@@ -343,7 +343,7 @@ async function applyToLever(ctx: ApplyContext): Promise<ApplyOutcome> {
       // whatever the parser guessed.
       await page.locator(F.resume).first().setInputFiles(candidate.resumePath!);
       await page
-        .waitForSelector("text=/success|analyz|couldn.t auto-read/i", { timeout: 20_000 })
+        .waitForSelector("text=/application (has been |was )?(received|submitted)|thank you for (applying|your (application|interest))|we.?ve received|successfully submitted|submission (was )?successful/i", { timeout: 20_000 })
         .catch(() => {});
       await page.waitForTimeout(800);
 

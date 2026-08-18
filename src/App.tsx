@@ -44,6 +44,7 @@ import AdminLayout from "./admin/layout/AdminLayout";
 import AdminDashboardPage from "./admin/dashboard/AdminDashboardPage";
 import ReviewQueuePage from "./admin/pages/ReviewQueuePage";
 import AllApplicationsPage from "./admin/pages/AllApplicationsPage";
+import EvidencePage from "@/admin/pages/EvidencePage";
 import UserManagementPage from "./admin/pages/UserManagementPage";
 import SubmissionQueuePage from "./admin/pages/SubmissionQueuePage";
 import CampaignMonitorPage from "./admin/pages/CampaignMonitorPage";
@@ -247,6 +248,7 @@ const App = () => (
               <Route path="review-queue" element={<ReviewQueuePage />} />
               <Route path="applications" element={<AllApplicationsPage />} />
               <Route path="activity" element={<MyActivityPage />} />
+              <Route path="/admin/evidence" element={<EvidencePage />} />
               <Route path="/admin/users" element={<UserManagementPage />} />
               <Route path="/admin/submission-queue" element={<SubmissionQueuePage />} />
               <Route path="/admin/campaigns" element={<CampaignMonitorPage />} />

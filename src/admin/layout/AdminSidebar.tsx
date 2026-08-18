@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, ClipboardCheck, Files, Radio, Send, Users2,
-  Bell, Activity, ChevronsUpDown, Zap, X,
+  Bell, Camera, Activity, ChevronsUpDown, Zap, X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSidebar } from "../context/SidebarContext";
@@ -35,6 +35,7 @@ const SECTIONS: NavSection[] = [
     label: "Other",
     items: [
       { name: "Submission Queue", icon: Send,   path: "/admin/submission-queue" },
+      { name: "Screenshots",      icon: Camera, path: "/admin/evidence" },
       { name: "User Management",  icon: Users2, path: "/admin/users" },
       { name: "Notifications",    icon: Bell,   path: "/admin/notifications", badge: "unread" },
     ],

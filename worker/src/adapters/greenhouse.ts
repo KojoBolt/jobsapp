@@ -284,6 +284,70 @@ async function readFields(form: Locator): Promise<FieldMeta[]> {
     .catch(() => [] as FieldMeta[]);
 }
 
+/**
+ * Tick every checkbox in the form whose own label is one of `wanted`.
+ *
+ * Grouping fixed the READING of a multi-select — that is why country names
+ * stopped being reported as questions — but the writing side still aimed at a
+ * single control, so "Canada, United States" was handed to one checkbox that
+ * matched neither.
+ *
+ * Matched by label text rather than by a shared `name`, because Greenhouse
+ * does not reliably give the members of a checkbox group the same name. The
+ * label is what the candidate reads, and it is what the answer is phrased in.
+ */
+async function tickCheckboxesByLabel(form: Locator, wanted: string[]): Promise<number> {
+  if (!wanted.length) return 0;
+
+  const boxes = await form
+    .locator("input[type='checkbox']")
+    .evaluateAll((els) =>
+      els.map((el, index) => {
+        const e = el as unknown as {
+          id?: string;
+          ownerDocument: { querySelectorAll(s: string): ArrayLike<{ getAttribute(a: string): string | null; textContent: string | null }> };
+          parentElement: { tagName: string; textContent: string | null; parentElement: unknown } | null;
+        };
+
+        let label = "";
+        if (e.id) {
+          const labels = e.ownerDocument.querySelectorAll("label");
+          for (let i = 0; i < labels.length; i++) {
+            if (labels[i]!.getAttribute("for") === e.id) { label = labels[i]!.textContent ?? ""; break; }
+          }
+        }
+        if (!label) {
+          // Otherwise the checkbox sits inside its own label.
+          let n = e.parentElement;
+          for (let d = 0; n && d < 3; d++) {
+            if (n.tagName === "LABEL" && n.textContent) { label = n.textContent; break; }
+            n = n.parentElement as typeof n;
+          }
+        }
+        return { index, label: label.replace(/\s+/g, " ").trim() };
+      }),
+    )
+    .catch(() => [] as { index: number; label: string }[]);
+
+  const targets = wanted.map((w) => w.trim().toLowerCase());
+  let ticked = 0;
+
+  for (const box of boxes) {
+    const label = box.label.toLowerCase();
+    if (!label || !targets.some((t) => label === t || label.startsWith(t))) continue;
+
+    const input = form.locator("input[type='checkbox']").nth(box.index);
+    await input.check().catch(async () => {
+      // Some are visually hidden behind a styled label, which is what takes
+      // the click.
+      await input.locator("xpath=ancestor::label[1]").first().click().catch(() => {});
+    });
+    if (await input.isChecked().catch(() => false)) ticked++;
+  }
+
+  return ticked;
+}
+
 const ANSWERABLE_CONTROLS =
   "select, textarea, input:not([type='hidden']):not([type='file'])" +
   ":not([type='submit']):not([type='button'])";
@@ -393,7 +457,12 @@ async function answerQuestions(
       "matcher" in answer
         ? await setValue(control, f, [], answer.matcher)
         : "values" in answer
-          ? (await Promise.all(answer.values.map((v) => setValue(control, f, [v])))).some(Boolean)
+          ? // A checkbox group: tick each option by its own label rather than
+            // aiming several values at one control, which is what produced
+            // `could not set "Canada, United States"`.
+            f.type === "checkbox"
+            ? (await tickCheckboxesByLabel(form, answer.values)) > 0
+            : (await Promise.all(answer.values.map((v) => setValue(control, f, [v])))).some(Boolean)
           : await setValue(control, f, [answer.value]);
 
     if (!ok && f.required) {
@@ -491,7 +560,13 @@ export async function setComboboxValue(
   // are ready immediately, but the location field fetches its suggestions
   // from a server — a fixed short wait reads the "Loading..." placeholder as
   // the option list and concludes nothing matched.
-  const options = menu.locator(OPTION_SELECTOR);
+  // By ROLE first, class second. Measured on Stripe's form: the menu opens
+  // with 275 options and aria-expanded="true", yet `.select__option` matched
+  // nothing — that board's build uses different class names. The accessibility
+  // role is the one thing every react-select build agrees on, so chasing class
+  // variants per board is the wrong shape of fix.
+  const byRole = menu.getByRole("option");
+  const options = (await byRole.count().catch(() => 0)) > 0 ? byRole : menu.locator(OPTION_SELECTOR);
   // 24 x 250ms = 6s. Measured against a live board, the location field's
   // suggestions arrive around 2s — comfortably inside this, and deliberately
   // so: at 3s it was landing on attempt 8 of 12, close enough to the ceiling
@@ -1018,7 +1093,7 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
       // a retry and a retry would apply twice. Ambiguity goes to a human.
       const confirmed = await page
         .waitForSelector(
-          "text=/application submitted|thank you for applying|we.ve received your application|submitted successfully/i",
+          "text=/application (has been |was )?(received|submitted)|thank you for (applying|your (application|interest))|we.?ve received|successfully submitted|submission (was )?successful/i",
           { timeout: 20_000 },
         )
         .then(() => true)

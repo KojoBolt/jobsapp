@@ -3,6 +3,7 @@ import { X, ExternalLink, ChevronDown, ChevronUp, Check, Ban } from 'lucide-reac
 import {
   T, Avatar, ScoreMeter, GhostButton, ConfirmDialog,
 } from '@/admin/ui/system';
+import ApplicationEvidence from '@/admin/ApplicationEvidence';
 
 interface Application {
   id: string;
@@ -151,6 +152,15 @@ const ReviewModal = ({
                   )}
                 </>
               )}
+            </div>
+
+            {/* What the automation actually did — the screenshots it took
+                while working this application, in order. */}
+            <div>
+              <span className={sectionLabel}>Automation screenshots</span>
+              <div className="mt-1.5">
+                <ApplicationEvidence applicationId={application.id} />
+              </div>
             </div>
 
             {/* Cover letter */}
