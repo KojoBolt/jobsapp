@@ -329,7 +329,27 @@ async function tickCheckboxesByLabel(form: Locator, wanted: string[]): Promise<n
     )
     .catch(() => [] as { index: number; label: string }[]);
 
-  const targets = wanted.map((w) => w.trim().toLowerCase());
+  // Boards abbreviate. Stripe's list reads "US" and "UK" while the vault
+  // stores "United States" and "United Kingdom", which is why Canada ticked
+  // and the US did not. Each wanted value carries its short forms with it.
+  const ALIASES: Record<string, string[]> = {
+    "united states": ["us", "usa", "u.s.", "u.s.a.", "united states of america"],
+    "united kingdom": ["uk", "u.k.", "great britain", "britain"],
+    "european union": ["eu"],
+    "new zealand": ["nz"],
+    "united arab emirates": ["uae"],
+    "the netherlands": ["netherlands", "holland"],
+  };
+
+  const targets = wanted.flatMap((w) => {
+    const base = w.trim().toLowerCase();
+    // Both directions: "United States" should find "US", and a vault holding
+    // "US" should find "United States".
+    const reverse = Object.entries(ALIASES)
+      .filter(([, shorts]) => shorts.includes(base))
+      .map(([full]) => full);
+    return [base, ...(ALIASES[base] ?? []), ...reverse];
+  });
   let ticked = 0;
 
   for (const box of boxes) {

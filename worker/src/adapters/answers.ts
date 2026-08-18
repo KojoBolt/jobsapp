@@ -194,6 +194,21 @@ export function answerFor(
     return { matcher: ACKNOWLEDGE_OPTION, label: "acknowledged" };
   }
 
+  // ── "…in the location(s) you selected in your previous response" ────
+  // A question about an answer we just gave. We only ever tick countries from
+  // the authorised list, so by construction the candidate is authorised in
+  // every one of them — which makes this answerable rather than a park, and
+  // truthfully so. If nothing is on file we never ticked anything either, and
+  // it stays unanswerable.
+  if (
+    /(authoriz|authoris)ed to work/.test(q) &&
+    /you selected|previous response|previously selected|selected above/.test(q)
+  ) {
+    return c.authorizedCountries.length
+      ? { value: "Yes" }
+      : { unanswerable: "no work authorisation on file" };
+  }
+
   // ── Work authorisation ──────────────────────────────────────────────
   if (/(legally )?(authoriz|authoris)ed to work|right to work|work authoriz|eligible to work/.test(q)) {
     if (!c.authorizedCountries.length) return { unanswerable: "no work authorisation on file" };
