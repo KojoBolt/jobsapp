@@ -266,7 +266,7 @@ export function answerFor(
   // ── Education ───────────────────────────────────────────────────────
   const topEducation = c.education[0];
 
-  // \binstitution\b, not a bare substring: "institutional clients" appears in
+  // \binstitution\b, not a bare substring: "institutional client" appears in
   // conflict-of-interest questions, and this rule matched one — it was about
   // to put a school name into "were you referred by a senior leader at a
   // prospective institutional client?". Same class as "capacity"/"city".
