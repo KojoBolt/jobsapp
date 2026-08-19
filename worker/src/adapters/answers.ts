@@ -118,7 +118,12 @@ const BARE_NO = (o: string) => /^\s*no\b/i.test(o);
 /** However a form words "yes, I have seen this notice". */
 export const ACKNOWLEDGE_OPTION = (o: string): boolean =>
   !NEGATED(o) &&
-  /^\s*(yes|i acknowledge|acknowledge|i agree|agree|i confirm|confirm|i consent|consent|i have read|understood|i understand|accept)\b/i
+  // Past and third-person forms included deliberately. Coinbase's privacy
+  // notice offers exactly one option — "Confirmed" — and `confirm\b` does not
+  // match it, because there is no word boundary between "confirm" and "ed".
+  // A one-option dropdown that we fail to set blocks an otherwise finished
+  // application, so the endings matter.
+  /^\s*(yes|ok|okay|i acknowledge|acknowledge[ds]?|i agree|agree[ds]?|i confirm|confirm(ed|s)?|i consent|consent(ed|s)?|i have read|understood|i understand|accept(ed|s)?|affirm(ed|s)?)\b/i
     .test(o.trim());
 
 export const RELOCATION_OPTION = {
@@ -187,7 +192,15 @@ export function answerFor(
     return { value: "No" };
   }
 
-  if (/acknowledg|privacy (policy|notice)|i (have )?(read|agree)|consent to|confirm receipt/.test(q)) {
+  // "^i understand that" included: Coinbase's "I understand that Coinbase may
+  // use AI tools to assist in the application and interview process." is an
+  // acknowledgement of a notice, and its dropdown offers a single "Yes".
+  // Anchored to the statement form so a competency question — "Do you
+  // understand distributed systems?" — cannot reach this rule.
+  if (
+    /acknowledg|privacy (policy|notice)|i (have )?(read|agree)|consent to|confirm receipt|^i understand that|^i confirm/
+      .test(q)
+  ) {
     // A matcher, not the literal "Yes": Robinhood's dropdown offers
     // "I acknowledge", Brex's offers "I consent", and answering those with
     // the word "Yes" matched nothing at all.

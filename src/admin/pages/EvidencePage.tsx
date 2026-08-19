@@ -6,6 +6,7 @@ import {
   T, Panel, SearchInput, PillMenu, EmptyState, StatusPill, Pagination, ConfirmDialog,
 } from "@/admin/ui/system";
 import ApplicationEvidence from "@/admin/ApplicationEvidence";
+import ApplicationFillValues from "@/admin/ApplicationFillValues";
 import { Trash2 } from "lucide-react";
 
 const BUCKET = "application-evidence";
@@ -53,6 +54,9 @@ async function deleteEvidenceFor(applicationId: string): Promise<number> {
 
 interface Row {
   id: string;
+  /** Needed to read that candidate's vault for the copy-to-fill panel. */
+  user_id: string;
+  cover_letter: string | null;
   company_name: string | null;
   job_title: string | null;
   job_url: string | null;
@@ -88,7 +92,7 @@ const EvidencePage = (): JSX.Element => {
       // the set of applications that could possibly have a screenshot.
       const { data, error } = await supabase
         .from("applications")
-        .select("id, company_name, job_title, job_url, status, automation_error, automation_blocked, automation_claimed_at")
+        .select("id, user_id, cover_letter, company_name, job_title, job_url, status, automation_error, automation_blocked, automation_claimed_at")
         .or("automation_error.not.is.null,automation_evidence.not.is.null")
         .order("automation_claimed_at", { ascending: false, nullsFirst: false })
         .limit(200);
@@ -314,18 +318,17 @@ const EvidencePage = (): JSX.Element => {
                   <div className={`border-t ${T.hairline} bg-[#FAFAF8] p-4 dark:bg-white/[0.02]`}>
                     <ApplicationEvidence applicationId={r.id} worked={blockedCount > 0} />
 
-                    {blockedCount > 0 && (
-                      <div className="mt-4">
-                        <p className={`mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] ${T.muted}`}>
-                          Everything that blocked it
-                        </p>
-                        <ul className="space-y-1">
-                          {r.automation_blocked!.map((b, i) => (
-                            <li key={i} className={`text-[11.5px] ${T.ink2}`}>• {b}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                    {/* Everything needed to finish this application by hand,
+                        right beside the screenshot of where the bot stopped.
+                        The panel lists the blocked questions itself, so the
+                        separate list that used to sit here only repeated it. */}
+                    <div className="mt-4">
+                      <ApplicationFillValues
+                        applicationId={r.id}
+                        userId={r.user_id}
+                        coverLetter={r.cover_letter}
+                      />
+                    </div>
                   </div>
                 )}
               </Panel>
