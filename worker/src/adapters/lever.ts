@@ -4,6 +4,7 @@ import {
   answerFor,
   CHALLENGE_SELECTOR,
   countryInText,
+  countryVariants,
   DECLINE_OPTION,
   isEeo,
 } from "./answers.ts";
@@ -244,14 +245,22 @@ async function answerGroups(
         ok = await chooseOption(form, g, () => true);
       }
     } else if ("values" in answer) {
-      // A checkbox group with several applicable answers.
-      const wantedSet = answer.values.map((v) => v.toLowerCase());
-      ok = await chooseOption(form, g, (o) => wantedSet.includes(o.trim().toLowerCase()));
+      // A checkbox group with several applicable answers. Variants for the
+      // same reason as Greenhouse: a list offering "US" must be found by a
+      // vault holding "United States". Shared so the two adapters cannot drift.
+      const wantedSet = new Set(
+        answer.values.flatMap((v) => countryVariants(v).map((x) => x.toLowerCase())),
+      );
+      ok = await chooseOption(form, g, (o) => wantedSet.has(o.trim().toLowerCase()));
     } else {
       const value = answer.value;
-      const wanted = value.toLowerCase();
-      ok = await chooseOption(form, g, (o) => o.trim().toLowerCase() === wanted)
-        || await chooseOption(form, g, (o) => o.trim().toLowerCase().startsWith(wanted));
+      const variants = countryVariants(value).map((v) => v.toLowerCase());
+      // An empty answer used to reach startsWith(""), which is true of every
+      // string — so a blank value silently selected the FIRST option in the
+      // group. countryVariants("") returns nothing, which fails and blocks.
+      ok = await chooseOption(form, g, (o) => variants.includes(o.trim().toLowerCase()))
+        || await chooseOption(form, g, (o) =>
+             variants.some((w) => o.trim().toLowerCase().startsWith(w)));
 
       // "No" on a single checkbox is an unticked box — already the state we
       // want, so it counts as answered rather than as a failure.

@@ -56,6 +56,44 @@ const COUNTRY_ABBREVIATIONS: Record<string, string> = {
 };
 
 /**
+ * Country spellings a form might use for the same place.
+ *
+ * Separate from COUNTRY_ABBREVIATIONS above, and deliberately so. That map is
+ * matched case-sensitively against PROSE, where a lowercase "us" is the English
+ * pronoun far more often than the country. This one is matched against a single
+ * dropdown option or checkbox label — "US", "United States of America" — where
+ * there is no surrounding sentence to be misread and case carries no meaning.
+ * Merging the two would reintroduce the "tell us about yourself" bug.
+ */
+const COUNTRY_VARIANTS: Record<string, string[]> = {
+  "united states": ["us", "usa", "u.s.", "u.s.a.", "united states of america"],
+  "united kingdom": ["uk", "u.k.", "great britain", "britain"],
+  "european union": ["eu"],
+  "new zealand": ["nz"],
+  "united arab emirates": ["uae"],
+  "the netherlands": ["netherlands", "holland"],
+};
+
+/**
+ * Every spelling of `value` worth trying against a form's own wording, the
+ * candidate's own first.
+ *
+ * Both directions: a vault holding "United States" must find an option reading
+ * "US", and a vault holding "US" must find "United States". Anything that is
+ * not a country we know comes back unchanged, so this is safe to apply to every
+ * answer rather than only the ones we guess are countries.
+ */
+export function countryVariants(value: string): string[] {
+  const base = value.trim().toLowerCase();
+  if (!base) return [];
+  const forward = COUNTRY_VARIANTS[base] ?? [];
+  const reverse = Object.entries(COUNTRY_VARIANTS)
+    .filter(([, shorts]) => shorts.includes(base))
+    .map(([full]) => full);
+  return [...new Set([value.trim(), ...forward, ...reverse])];
+}
+
+/**
  * Wordings that mean "the country this job is in" without naming it.
  * Robinhood's form is the example: "Do you have the unrestricted right to
  * work in the country where this role is located?"

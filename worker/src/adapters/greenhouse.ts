@@ -10,6 +10,7 @@ import {
   answerFor,
   CHALLENGE_SELECTOR,
   countryInText,
+  countryVariants,
   DECLINE_OPTION,
   escape,
   isEeo,
@@ -332,24 +333,7 @@ async function tickCheckboxesByLabel(form: Locator, wanted: string[]): Promise<n
   // Boards abbreviate. Stripe's list reads "US" and "UK" while the vault
   // stores "United States" and "United Kingdom", which is why Canada ticked
   // and the US did not. Each wanted value carries its short forms with it.
-  const ALIASES: Record<string, string[]> = {
-    "united states": ["us", "usa", "u.s.", "u.s.a.", "united states of america"],
-    "united kingdom": ["uk", "u.k.", "great britain", "britain"],
-    "european union": ["eu"],
-    "new zealand": ["nz"],
-    "united arab emirates": ["uae"],
-    "the netherlands": ["netherlands", "holland"],
-  };
-
-  const targets = wanted.flatMap((w) => {
-    const base = w.trim().toLowerCase();
-    // Both directions: "United States" should find "US", and a vault holding
-    // "US" should find "United States".
-    const reverse = Object.entries(ALIASES)
-      .filter(([, shorts]) => shorts.includes(base))
-      .map(([full]) => full);
-    return [base, ...(ALIASES[base] ?? []), ...reverse];
-  });
+  const targets = wanted.flatMap((w) => countryVariants(w).map((v) => v.toLowerCase()));
   let ticked = 0;
 
   for (const box of boxes) {
@@ -483,7 +467,15 @@ async function answerQuestions(
             f.type === "checkbox"
             ? (await tickCheckboxesByLabel(form, answer.values)) > 0
             : (await Promise.all(answer.values.map((v) => setValue(control, f, [v])))).some(Boolean)
-          : await setValue(control, f, [answer.value]);
+          : // countryVariants, not a bare [answer.value]. The abbreviation fix
+            // reached the checkbox path only, so "Please select the country
+            // where you currently reside" still failed on a vault holding
+            // "United States" against a menu offering "US" — the very next
+            // question on the same Stripe form. setValue tries these in order
+            // and verifies each by reading the control back, so the extra
+            // spellings are fallbacks: the candidate's own wins wherever the
+            // form accepts it.
+            await setValue(control, f, countryVariants(answer.value));
 
     if (!ok && f.required) {
       const wanted =
