@@ -1133,42 +1133,48 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
       // ── Past this point the application may already be with the employer.
       // Nothing below may return "failed", because that hands the row back for
       // a retry and a retry would apply twice. Ambiguity goes to a human.
+
+      /**
+       * Look for text across the main frame AND every embedded frame.
+       *
+       * locateForm() already accepts a form inside Greenhouse's embed iframe,
+       * but page.waitForSelector only ever searches the main frame — selectors
+       * do not cross frame boundaries. On an embedded board that means the
+       * post-submit check reads the host page while the confirmation, or the
+       * security-code prompt, renders inside the iframe. Every outcome then
+       * comes back ambiguous no matter how good the pattern is.
+       */
+      const visibleAnywhere = async (pattern: string): Promise<boolean> => {
+        for (const f of page.frames()) {
+          const seen = await f
+            .locator(`text=/${pattern}/i`)
+            .first()
+            .isVisible()
+            .catch(() => false); // a frame detached mid-check is simply not it
+          if (seen) return true;
+        }
+        return false;
+      };
+
+      // Polled rather than awaited. Clicking submit navigates — the host page,
+      // the embed iframe, or both — and a frame captured before that
+      // navigation detaches, so a waitForSelector held against it rejects
+      // instead of seeing the new content. Re-reading page.frames() each tick
+      // follows the page wherever it goes.
       //
-      // Raced rather than checked in sequence. Waiting for a confirmation
-      // first would burn the full 20s on every verification-gated board and
-      // then report the ambiguous "clicked but saw no confirmation" — which
-      // reads as a bug and sends an admin hunting for one, when the actual
-      // state is routine and finishable in two minutes.
-      // Promise.any, never Promise.race: race settles on the first promise to
-      // FINISH, including one that rejected. A submit click navigates, and a
-      // waitForSelector interrupted by that navigation can reject in
-      // milliseconds — under race, that early rejection would beat the real
-      // match still pending and report "no confirmation" on a submitted
-      // application. any() ignores rejections and settles on the first genuine
-      // match, falling through to null only when both time out.
-      const match = (pattern: string, verdict: "confirmed" | "verification") =>
-        page.waitForSelector(`text=/${pattern}/i`, { timeout: 20_000 }).then(() => verdict);
-
-      const settled = await Promise.any([
-        match(CONFIRMED_TEXT, "confirmed"),
-        match(VERIFICATION_TEXT, "verification"),
-      ]).catch(() => null);
-
-      // Verification wins whenever both are on the page. A code prompt that
-      // also says "thank you for your application" would otherwise resolve
-      // whichever way the two waits happened to settle — and the wrong way
-      // marks an UNSUBMITTED application as submitted, which is the worst
-      // outcome this system can produce: the candidate believes they applied
-      // and never hears back. Re-read rather than trusting the race.
-      const verdict =
-        settled !== null &&
-        (await page
-          .locator(`text=/${VERIFICATION_TEXT}/i`)
-          .first()
-          .isVisible()
-          .catch(() => false))
-          ? "verification"
-          : settled;
+      // Verification is tested FIRST every tick, which is what gives it
+      // precedence: a code prompt that also says "thank you for your
+      // application" must never be read as a submission. Getting that backwards
+      // marks an UNSUBMITTED application as submitted — the candidate believes
+      // they applied and never hears back, which is the worst outcome this
+      // system can produce.
+      // 40 x 500ms = the same 20s budget as before.
+      let verdict: "confirmed" | "verification" | null = null;
+      for (let attempt = 0; attempt < 40 && verdict === null; attempt++) {
+        if (await visibleAnywhere(VERIFICATION_TEXT)) verdict = "verification";
+        else if (await visibleAnywhere(CONFIRMED_TEXT)) verdict = "confirmed";
+        else await page.waitForTimeout(500);
+      }
 
       // Named for what it shows, so the Screenshots page is readable without
       // opening every image.
