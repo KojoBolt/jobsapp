@@ -112,11 +112,13 @@ const ApplicationFillValues = ({
           fields: [
             { label: "Employer", value: s(j.employer) },
             { label: "Job title", value: s(j.title) },
+            { label: "Location", value: s(j.location) },
             { label: "Start", value: [s(j.startMonth), s(j.startYear)].filter(Boolean).join(" ") },
             {
               label: "End",
               value: j.current === true ? "Current role" : [s(j.endMonth), s(j.endYear)].filter(Boolean).join(" "),
             },
+            { label: "Role description", value: s(j.description), long: true },
           ],
         })),
         ...edu.slice(0, 2).map((e, i) => ({

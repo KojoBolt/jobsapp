@@ -546,7 +546,14 @@ export const CHALLENGE_SELECTOR =
   "iframe[src*='recaptcha'], .g-recaptcha, #challenge-form, #cf-challenge-running, " +
   // Lever's forms carry hCaptcha — usually invisible, which the size and
   // visibility checks downstream are there to tolerate.
-  "iframe[src*='hcaptcha'], .h-captcha, [data-hcaptcha-widget-id]";
+  "iframe[src*='hcaptcha'], .h-captcha, [data-hcaptcha-widget-id], " +
+  // DataDome. Measured on SmartRecruiters: the posting page loads openly, and
+  // the apply form behind it returns a captcha-delivery.com iframe and zero
+  // form controls — 4 attempts, 2 tenants, every time. Without this the
+  // adapter sees an empty page and reports "no form found", which sends
+  // somebody looking for a selector bug that does not exist. Naming it means
+  // the row parks saying what actually happened.
+  "iframe[src*='captcha-delivery.com'], #datadome-captcha, [id^='ddv1-']";
 
 /**
  * Voluntary demographic questions.

@@ -196,6 +196,11 @@ const EMPTY_EDUCATION = { school: "", degree: "", discipline: "", startYear: "",
 const EMPTY_JOB = {
   employer: "",
   title: "",
+  /** Where the role was based. Workday asks for it on every work-history row. */
+  location: "",
+  /** What the role involved. Workday's "Role Description" box, and the only
+   *  free-text field in a work history — left blank it simply stays blank. */
+  description: "",
   startMonth: "",
   startYear: "",
   endMonth: "",
@@ -806,6 +811,18 @@ const IdentityVault = () => {
                   </select>
                   <input placeholder="End year" value={job.endYear} disabled={job.current} inputMode="numeric" className={FIELD}
                     onChange={(e) => setEmployment(employment.map((j, k) => k === i ? { ...j, endYear: e.target.value } : j))} />
+                </div>
+                {/* Workday asks for both on every work-history row. Optional
+                    here: a blank one is left blank on the form rather than
+                    guessed at, same as everywhere else. */}
+                <div className="mt-2.5">
+                  <input placeholder="Location — e.g. Accra, Ghana" value={job.location} className={FIELD}
+                    onChange={(e) => setEmployment(employment.map((j, k) => k === i ? { ...j, location: e.target.value } : j))} />
+                </div>
+                <div className="mt-2.5">
+                  <textarea placeholder="What the role involved (optional)" value={job.description}
+                    rows={3} className={`${FIELD} resize-none`}
+                    onChange={(e) => setEmployment(employment.map((j, k) => k === i ? { ...j, description: e.target.value } : j))} />
                 </div>
                 <label className={`mt-2.5 flex items-center gap-2 text-[11.5px] ${T.ink2}`}>
                   <input type="checkbox" checked={job.current}

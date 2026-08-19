@@ -22,6 +22,10 @@ import type { ClaimedApplication } from "./queue.ts";
 export interface EmploymentEntry {
   employer: string;
   title: string;
+  /** Where the role was based — Workday asks per work-history row. */
+  location: string;
+  /** Free text describing the role. Workday's "Role Description". */
+  description: string;
   startMonth: string;
   startYear: string;
   endMonth: string;
@@ -212,6 +216,8 @@ export async function loadCandidate(app: ClaimedApplication): Promise<Candidate 
       .map((e: Record<string, unknown>) => ({
         employer: str(e.employer),
         title: str(e.title),
+        location: str(e.location),
+        description: str(e.description),
         startMonth: str(e.startMonth),
         startYear: str(e.startYear),
         endMonth: str(e.endMonth),
