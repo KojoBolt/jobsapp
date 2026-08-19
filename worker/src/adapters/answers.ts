@@ -197,16 +197,36 @@ export function answerFor(
   // ── Employment history ──────────────────────────────────────────────
   const latestJob = c.employment[0];
 
-  if (/who is your (current|previous|most recent)|current or previous employer|name of (your )?(current|previous|last) employer|current company/.test(q)) {
+  /**
+   * Bare labels as well as questions.
+   *
+   * Coinbase's Employment section is labelled "Company name" and "Title" —
+   * no sentence, no question mark. Matching only the conversational phrasings
+   * left both blank on a form that clearly wanted the history we now hold.
+   */
+  if (
+    /who is your (current|previous|most recent)|current or previous employer|name of (your )?(current|previous|last) employer|current company|^company name\b|^employer\b|^organi[sz]ation\b/
+      .test(q)
+  ) {
     return latestJob?.employer
       ? { value: latestJob.employer }
       : { unanswerable: "employment history not on file" };
   }
 
-  if (/current or previous job title|what is your (current|previous|most recent) (job )?title|your job title/.test(q)) {
+  if (
+    /current or previous job title|what is your (current|previous|most recent) (job )?title|your job title|^title\b|^job title\b|^position title\b|^role title\b/
+      .test(q)
+  ) {
     return latestJob?.title
       ? { value: latestJob.title }
       : { unanswerable: "employment history not on file" };
+  }
+
+  // The "Current role" checkbox beside the dates. Answered from the flag the
+  // candidate ticked, so it cannot contradict the end date beside it.
+  if (/^current role\b|^i currently work here\b|^current position\b/.test(q)) {
+    if (!latestJob) return { unanswerable: "employment history not on file" };
+    return { value: latestJob.current ? "Yes" : "No" };
   }
 
   /**
