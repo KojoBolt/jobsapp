@@ -149,28 +149,39 @@ const EMPTY_TARGETING = {
   mustHaves: "",
 };
 
-/* Employers ask for a degree from a short, standard list, so the vault offers
-   the same list — a free-text degree would have to be fuzzy-matched against a
-   dropdown, and "BSc" vs "Bachelor's Degree" is exactly where that goes wrong.
-   School stays free text because those lists run to thousands of entries and
-   are searched by typing. */
+/* Greenhouse's OWN degree list, read off a live form. Not a list I chose:
+   these dropdowns match on exact option text, and a vault offering "MBA" or
+   "Doctorate (PhD)" matched nothing against "Master of Business Administration
+   (M.B.A.)". Typing an absent value filters the menu to empty, which reads as
+   "no options" rather than as a mismatch — so it failed silently. */
 const degreeOptions = [
-  "High School Diploma", "Associate's Degree", "Bachelor's Degree",
-  "Master's Degree", "MBA", "Doctorate (PhD)", "Professional Certification", "Other",
+  "Associate's Degree", "Bachelor's Degree", "Doctor of Medicine (M.D.)",
+  "Doctor of Philosophy (Ph.D.)", "Engineer's Degree", "High School",
+  "Juris Doctor (J.D.)", "Master of Business Administration (M.B.A.)",
+  "Master's Degree", "Other",
 ];
 
-/* Same reasoning as `degreeOptions`: employers offer Discipline as a dropdown
-   from a standard list, so free text loses. A vault reading "Bussiness Admin"
-   matched nothing against a list containing "Business Administration" — and no
-   amount of matching logic rescues a typo. */
+/* Greenhouse's own discipline list, same reasoning. Note there is no
+   "Information Technology" — the nearest is "Information Systems", which is
+   exactly the mismatch that left this field blank. */
 const disciplineOptions = [
-  "Accounting", "Biology", "Business Administration", "Chemistry", "Communications",
-  "Computer Science", "Data Science", "Design", "Economics", "Education",
-  "Engineering", "English", "Environmental Science", "Finance", "Health Sciences",
-  "History", "Human Resources", "Information Technology", "Law", "Marketing",
-  "Mathematics", "Medicine", "Nursing", "Physics", "Political Science",
-  "Psychology", "Public Health", "Sociology", "Statistics", "Supply Chain",
-  "Other",
+  "Accounting", "African Studies", "Agriculture", "Anthropology", "Applied Health Services",
+  "Architecture", "Art", "Asian Studies", "Biology", "Business", "Business Administration",
+  "Business Analytics", "Chemistry", "Classical Languages", "Communications & Film",
+  "Computer Science", "Dentistry", "Developing Nations", "Discipline Unknown",
+  "Earth Sciences", "Economics", "Education", "Electronics", "Engineering",
+  "English Studies", "Environmental Studies", "European Studies", "Fashion", "Finance",
+  "Fine Arts", "General Studies", "Health Services", "History", "Humanities",
+  "Human Resources Management", "Industrial Arts & Carpentry", "Information Systems",
+  "International Relations", "Journalism", "Languages", "Latin American Studies", "Law",
+  "Linguistics", "Manufacturing & Mechanics", "Mathematics", "Medicine",
+  "Middle Eastern Studies", "Naval Science", "North American Studies", "Nuclear Technics",
+  "Operations Research & Strategy", "Organizational Theory", "Other", "Philosophy",
+  "Physical Education", "Physical Sciences", "Physics", "Political Science", "Psychology",
+  "Public Policy", "Public Service", "Religious Studies", "Russian & Soviet Studies",
+  "Scandinavian Studies", "Science", "Slavic Studies", "Social Science", "Social Sciences",
+  "Sociology", "Speech", "Statistics & Decision Theory", "Urban Studies",
+  "Veterinary Medicine",
 ];
 
 const MONTHS = [
