@@ -205,6 +205,8 @@ const EMPTY_JOB = {
 
 const EMPTY_ANSWERS = {
   city: "",
+  /** State, province or region. US forms ask for it alongside the city. */
+  state: "",
   country: "",
   /** Where the candidate can work WITHOUT sponsorship. */
   authorizedCountries: [] as string[],
@@ -872,11 +874,19 @@ const IdentityVault = () => {
         <Section icon={ClipboardCheck} title="Application answers" accent={accent}
                  hint="Questions employers ask that we can't answer for you">
           <div className="space-y-4">
-            <div className="grid gap-3.5 sm:grid-cols-2">
+            <div className="grid gap-3.5 sm:grid-cols-3">
               <div>
                 <FieldLabel icon={MapPin} htmlFor="vault-city">Where you live — city</FieldLabel>
                 <input id="vault-city" placeholder="Chicago" value={answers.city}
                   onChange={(e) => setAnswers({ ...answers, city: e.target.value })} className={FIELD} />
+              </div>
+              {/* Its own field, not part of the city. US forms ask "in what city
+                  and state do you reside?" as one required box, and a city alone
+                  does not answer it. Optional — many countries have no state. */}
+              <div>
+                <FieldLabel icon={MapPin} htmlFor="vault-state">State / province</FieldLabel>
+                <input id="vault-state" placeholder="Illinois" value={answers.state}
+                  onChange={(e) => setAnswers({ ...answers, state: e.target.value })} className={FIELD} />
               </div>
               <div>
                 <FieldLabel icon={Globe} htmlFor="vault-country">Country</FieldLabel>

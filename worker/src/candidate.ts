@@ -47,6 +47,13 @@ export interface Candidate {
   portfolioUrl: string;
   githubUrl: string;
   city: string;
+  /**
+   * State, province or region. Kept apart from `city` because US forms ask for
+   * them together — "in what city and state do you reside?" — and a city on its
+   * own does not answer that. Optional: plenty of countries have no equivalent,
+   * so a blank one narrows the answer rather than blocking it.
+   */
+  state: string;
   country: string;
   /** Countries where the candidate can work WITHOUT sponsorship. */
   authorizedCountries: string[];
@@ -184,6 +191,7 @@ export async function loadCandidate(app: ClaimedApplication): Promise<Candidate 
     portfolioUrl: str(answers.portfolioUrl),
     githubUrl: str(answers.githubUrl),
     city: str(answers.city) || str(personal.city),
+    state: str(answers.state) || str(personal.state),
     country: str(answers.country) || str(personal.country),
     authorizedCountries: Array.isArray(answers.authorizedCountries)
       ? (answers.authorizedCountries as unknown[]).map(str).filter(Boolean)

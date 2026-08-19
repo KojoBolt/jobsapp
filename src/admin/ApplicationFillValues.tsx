@@ -83,6 +83,7 @@ const ApplicationFillValues = ({
             { label: "Email", value: s(p.email) || s(profile?.email) },
             { label: "Phone", value: s(p.phone) },
             { label: "City", value: s(a.city) },
+            { label: "State / province", value: s(a.state) },
             { label: "Country", value: s(a.country) },
           ],
         },

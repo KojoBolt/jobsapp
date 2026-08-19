@@ -395,6 +395,25 @@ export function answerFor(
     return { unanswerable: "sponsorship requirement not on file" };
   }
 
+  /**
+   * "In what city and state do you reside?" — a PLACE, not a yes/no.
+   *
+   * Must be tested before the rule below, which claims anything containing
+   * "do you reside". Stripe's field reads "If located in the US, in what city
+   * and state do you reside?" and is a free-text input — that rule would have
+   * matched it and typed the word "No" into it. Not a poor answer: a nonsense
+   * one, on a real application.
+   *
+   * Answered with whatever we hold. A missing state narrows the answer rather
+   * than blocking it — "Chicago" is an incomplete reply to "city and state",
+   * but it is a true one, and a blank required field stops the application
+   * outright.
+   */
+  if (/what (city|town)|which (city|town)|city and (state|province|region)|(state|province) (and|or) city/.test(q)) {
+    const place = [c.city, c.state, c.country].filter(Boolean).join(", ");
+    return place ? { value: place } : { unanswerable: "no city on file" };
+  }
+
   // ── "Do you currently live there?" — a FACT, not a preference ───────
   // Separated from relocation and checked first. "Do you currently live in
   // the job's location?" was being answered from willingness to relocate,
@@ -465,7 +484,7 @@ export function answerFor(
   // "Have you previously been employed by Coinbase in any capacity?" was
   // matching this rule and being answered with a city name.
   if (/\bcity\b|where are you (based|located)|current location/.test(q)) {
-    return c.city ? { value: [c.city, c.country].filter(Boolean).join(", ") } : { skip: true };
+    return c.city ? { value: [c.city, c.state, c.country].filter(Boolean).join(", ") } : { skip: true };
   }
 
   // ── Where they may work ─────────────────────────────────────────────
