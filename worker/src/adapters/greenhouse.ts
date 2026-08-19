@@ -991,6 +991,28 @@ async function locateForm(page: Page): Promise<Locator | null> {
   return null;
 }
 
+/** The employer has it. Wording varies per board, so this stays generous. */
+const CONFIRMED_TEXT =
+  "application (has been |was )?(received|submitted)|thank you for (applying|your (application|interest))|" +
+  "we.?ve received|successfully submitted|submission (was )?successful";
+
+/**
+ * Some boards switch on application email verification: clicking Submit does
+ * not submit, it swaps the form for "we emailed you a code, paste it here".
+ *
+ * Detected by page text rather than by the field's markup — the input's name
+ * is a Greenhouse implementation detail that varies, while the sentence shown
+ * to the applicant is the thing the feature exists to say.
+ *
+ * Deliberately narrow. This runs after the click and races the confirmation
+ * check, so a phrase that also appears in ordinary page copy would beat a
+ * genuine confirmation and mislabel a successful application as unfinished.
+ */
+const VERIFICATION_TEXT =
+  "(security|verification) code|enter the code (we )?(just )?(sent|emailed)|" +
+  "we (just )?(sent|emailed) (you )?a (security |verification )?code|" +
+  "check your (email|inbox) for (a|the) code";
+
 async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
   const { application, resolvedUrl, dryRun } = ctx;
   const base = { applicationId: application.id, company: application.company_name };
@@ -1111,17 +1133,67 @@ async function applyToGreenhouse(ctx: ApplyContext): Promise<ApplyOutcome> {
       // ── Past this point the application may already be with the employer.
       // Nothing below may return "failed", because that hands the row back for
       // a retry and a retry would apply twice. Ambiguity goes to a human.
-      const confirmed = await page
-        .waitForSelector(
-          "text=/application (has been |was )?(received|submitted)|thank you for (applying|your (application|interest))|we.?ve received|successfully submitted|submission (was )?successful/i",
-          { timeout: 20_000 },
-        )
-        .then(() => true)
-        .catch(() => false);
+      //
+      // Raced rather than checked in sequence. Waiting for a confirmation
+      // first would burn the full 20s on every verification-gated board and
+      // then report the ambiguous "clicked but saw no confirmation" — which
+      // reads as a bug and sends an admin hunting for one, when the actual
+      // state is routine and finishable in two minutes.
+      // Promise.any, never Promise.race: race settles on the first promise to
+      // FINISH, including one that rejected. A submit click navigates, and a
+      // waitForSelector interrupted by that navigation can reject in
+      // milliseconds — under race, that early rejection would beat the real
+      // match still pending and report "no confirmation" on a submitted
+      // application. any() ignores rejections and settles on the first genuine
+      // match, falling through to null only when both time out.
+      const match = (pattern: string, verdict: "confirmed" | "verification") =>
+        page.waitForSelector(`text=/${pattern}/i`, { timeout: 20_000 }).then(() => verdict);
 
-      const after = await captureEvidence(page, application.id, "after-submit");
+      const settled = await Promise.any([
+        match(CONFIRMED_TEXT, "confirmed"),
+        match(VERIFICATION_TEXT, "verification"),
+      ]).catch(() => null);
 
-      if (!confirmed) {
+      // Verification wins whenever both are on the page. A code prompt that
+      // also says "thank you for your application" would otherwise resolve
+      // whichever way the two waits happened to settle — and the wrong way
+      // marks an UNSUBMITTED application as submitted, which is the worst
+      // outcome this system can produce: the candidate believes they applied
+      // and never hears back. Re-read rather than trusting the race.
+      const verdict =
+        settled !== null &&
+        (await page
+          .locator(`text=/${VERIFICATION_TEXT}/i`)
+          .first()
+          .isVisible()
+          .catch(() => false))
+          ? "verification"
+          : settled;
+
+      // Named for what it shows, so the Screenshots page is readable without
+      // opening every image.
+      const after = await captureEvidence(
+        page,
+        application.id,
+        verdict === "verification" ? "email-verification" : "after-submit",
+      );
+
+      if (verdict === "verification") {
+        // NOT a failure, and not really an error either: the form is filled and
+        // correct, and the only thing left needs a person with the inbox. Said
+        // plainly so the admin knows it is two minutes of work rather than a
+        // defect to investigate.
+        log.info("email verification required — parking for a human", { ...base });
+        return {
+          status: "needs_human",
+          reason:
+            "Greenhouse emailed a verification code — open the job, paste the code into " +
+            "the security code field and resubmit. Every other field is already filled.",
+          ...(after ? { evidence: after } : {}),
+        };
+      }
+
+      if (verdict !== "confirmed") {
         return {
           status: "needs_human",
           reason: "Clicked submit but saw no confirmation — verify before resending",

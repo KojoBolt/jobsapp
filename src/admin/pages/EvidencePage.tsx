@@ -69,6 +69,7 @@ interface Row {
 const OUTCOMES = [
   { value: "__all__", label: "All outcomes" },
   { value: "submitted", label: "Submitted" },
+  { value: "verify", label: "Needs a code" },
   { value: "blocked", label: "Blocked on questions" },
   { value: "dry", label: "Dry run" },
 ] as const;
@@ -109,6 +110,10 @@ const EvidencePage = (): JSX.Element => {
       if (q && !`${r.company_name ?? ""} ${r.job_title ?? ""}`.toLowerCase().includes(q)) return false;
       if (outcome === "__all__") return true;
       if (outcome === "submitted") return r.status === "submitted";
+      // The form is filled and correct; a person has to paste the emailed code
+      // and press submit. The most actionable rows on this page, so they get
+      // their own filter rather than being mixed in with real failures.
+      if (outcome === "verify") return /verification code/i.test(r.automation_error ?? "");
       if (outcome === "dry") return /dry run/i.test(r.automation_error ?? "");
       return (r.automation_blocked?.length ?? 0) > 0;
     });
